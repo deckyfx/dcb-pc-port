@@ -22,8 +22,10 @@ class CdRom {
 public:
     static constexpr uint32_t kBase = 0x1F801800, kEnd = 0x1F801804;
 
-    /// `raise_irq2` requests the CD-ROM interrupt (I_STAT bit 2).
-    explicit CdRom(std::function<void()> raise_irq2);
+    /// `raise_irq2` requests the CD-ROM interrupt (I_STAT bit 2). `clock` returns the current
+    /// guest time in cycles (register accesses happen between ticks); without one, the time of
+    /// the last tick is used.
+    explicit CdRom(std::function<void()> raise_irq2, std::function<uint64_t()> clock = {});
 
     void insert(std::unique_ptr<Disc> disc) { disc_ = std::move(disc); }
 
@@ -49,6 +51,7 @@ private:
     };
 
     std::function<void()> raise_irq2_;
+    std::function<uint64_t()> clock_;
     std::unique_ptr<Disc> disc_;
     bool trace_ = false;  ///< DCB_TRACE_CD=1
     unsigned trace_regs_ = 0;
@@ -59,6 +62,7 @@ private:
     // Power-on state as the BIOS leaves it after booting a disc: CD interrupts enabled. libcd's
     // first command (CdlNop in CD_init) is sent before it programs the enable register itself.
     uint8_t irq_enable_ = 0x1F, irq_flags_ = 0;
+    uint64_t hold_until_ = 0;             // no response is delivered before this (just acknowledged)
     std::deque<uint8_t> params_, response_;
     std::vector<uint8_t> data_;           // data FIFO (current sector, after a BFRD request)
     size_t data_pos_ = 0;
