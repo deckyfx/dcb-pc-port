@@ -1,9 +1,39 @@
 # dcb-static-recomp
 
-Static recompilation of Digimon Card Battle (PS1) into a native executable: MIPS R3000A → C,
-with native HLE of the kernel and Psy-Q libraries. It needs **no BIOS and no emulator** at runtime.
+Static recompilation of **Digimon World: Digital Card Arena** (PS1, SLPS-03101) into a native PC
+executable: MIPS R3000A → C, with native HLE of the kernel and Psy-Q libraries. It needs
+**no BIOS and no emulator** at runtime.
 
 > Copyrighted inputs (`disc/`, `bios/`, `extracted/`, `assets/`, `generated/`) are gitignored. Never commit them.
+
+## Showcase
+
+![Title screen running natively (Linux, SDL3 on Wayland)](screenshoots/00_title_screen.png)
+
+*Title screen running natively on Linux (SDL3 on Wayland): recompiled game code, native GPU renderer.*
+
+## Progress
+
+- [x] Disc extraction and Ghidra pipeline (`ghidra_psx_ldr`, Psy-Q signatures, Ghidra MCP)
+- [x] MIPS → C recompiler with overlay support (boot EXE 99.4% covered, overlays 83–98%)
+- [x] Native BIOS/kernel HLE: no BIOS image needed
+- [x] Game task system on native fibers
+- [x] CD-ROM streaming from the original disc image
+- [x] Render boot FMV (MDEC, 24-bit)
+- [x] Title screen (GPU renderer, SDL3 window)
+- [x] Sound: SPU music and effects, XA-ADPCM movie audio
+- [ ] Input map (keyboard and gamepad → PS1 pad)
+- [ ] Main menu and navigation
+- [ ] Card battles (KAWSEG overlay)
+- [ ] Remaining game modes and overlays (EVOSEG, SAISEG, SUBSEG, SUGSEG, ENDSEG)
+- [ ] GTE commands (geometry for 3D effects)
+- [ ] Memory card saves (BIOS file API, `bu00:`)
+- [ ] `PSX2.EXE` mode (`LoadExec`)
+- [ ] Windows x64 release build tested on Windows
+- [ ] US version (SLUS-01328, Digimon Digital Card Battle)
+- [ ] PC options: resolution scaling, filtering, key rebinding
+- [ ] Enhancements: widescreen, HD textures, translation
+- [ ] Rust port of the game logic
 
 ## Layout
 
@@ -19,7 +49,7 @@ ghidra/scripts/         Ghidra scripts (export_functions.py → config/)
 ghidra/symbols/         exported, reviewable symbol maps
 src/runtime/            CPU context, memory bus, dispatch, GTE (the C ABI of generated code)
 src/hle/                kernel + Psy-Q replacements, MMIO fallback (see src/hle/README.md)
-src/platform/           host seam (headless now, SDL3 later)
+src/platform/           host seam: SDL3 window, input, audio (+ headless)
 src/game/               entry point + hand-written overrides of recompiled functions
 tools/disc/             extract_disc.py (+ tests)
 tools/ghidra/           setup_ghidra_mcp.sh, import_ghidra.sh
