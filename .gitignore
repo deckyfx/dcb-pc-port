@@ -24,3 +24,6 @@ __pycache__/
 # Claude Code agent worktrees
 /.claude/worktrees/
 /dist/
+
+# Local PC options (created on first run; ./settings.ini is found first)
+/settings.ini

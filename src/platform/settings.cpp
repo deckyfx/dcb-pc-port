@@ -414,6 +414,7 @@ bool gamepad_axis_pressed(int16_t value, bool negative, bool is_trigger, int dea
 std::filesystem::path resolve_settings_path(const SettingsLocations& where,
                                             const std::function<bool(const std::filesystem::path&)>& exists) {
     if (!where.override_path.empty()) return where.override_path;
+    if (!where.cwd.empty() && exists && exists(where.cwd / kSettingsFileName)) return where.cwd / kSettingsFileName;
     const std::filesystem::path portable = where.exe_dir / kSettingsFileName;
     if (!where.exe_dir.empty() && exists && exists(portable)) return portable;
 
@@ -432,6 +433,8 @@ std::filesystem::path resolve_settings_path(const SettingsLocations& where,
 SettingsLocations current_settings_locations() {
     SettingsLocations where;
     where.override_path = env_path("DCB_SETTINGS");
+    std::error_code ec;
+    where.cwd = std::filesystem::current_path(ec);
     where.exe_dir = executable_dir();
 #if defined(_WIN32)
     where.windows = true;

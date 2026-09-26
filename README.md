@@ -102,6 +102,11 @@ rebuilds every CD sector on demand, so the disc image is not needed once it has 
 
 Select the target with `-DDCB_GAME_ID=SLUS-01328` (default: `SLPS-03101`).
 
+**Settings.** `settings.ini` (display, audio, key/gamepad bindings, hotkeys) is looked up in this
+order: `DCB_SETTINGS`, the current directory, next to the executable, then the per-user file in home
+(`~/.config/dcb-pc-port/` or `%APPDATA%\dcb-pc-port\`), where it is created on first run if none
+exists. Keep one in the project root (gitignored) while developing.
+
 **Input debugging.** `DCB_TRACE_PAD=<n>` logs the first *n* controller-port register accesses.
 `DCB_PAD_SCRIPT="<from>-<to>:<Button>[+<Button>],..."` holds pad buttons during those frames (names
 as in `settings.ini`; `Any` = some unbound key), e.g. `DCB_HEADLESS=1 DCB_PAD_SCRIPT=2000-2000:Any`

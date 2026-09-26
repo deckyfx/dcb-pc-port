@@ -323,7 +323,13 @@ void test_settings_path_resolution() {
     existing.insert(fs::path("/opt/dcb") / "settings.ini");
     CHECK(resolve_settings_path(linux_where, exists) == fs::path("/opt/dcb/settings.ini"));
 
-    // An explicit override (DCB_SETTINGS) wins over everything.
+    // A settings.ini in the current directory wins over the portable and per-user ones...
+    linux_where.cwd = "/work/dcb";
+    CHECK(resolve_settings_path(linux_where, exists) == fs::path("/opt/dcb/settings.ini"));  // absent: skipped
+    existing.insert(fs::path("/work/dcb") / "settings.ini");
+    CHECK(resolve_settings_path(linux_where, exists) == fs::path("/work/dcb/settings.ini"));
+
+    // ...and an explicit override (DCB_SETTINGS) wins over everything.
     linux_where.override_path = "/tmp/custom.ini";
     CHECK(resolve_settings_path(linux_where, exists) == fs::path("/tmp/custom.ini"));
 
