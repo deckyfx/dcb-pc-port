@@ -15,6 +15,7 @@
 #include <SDL3/SDL.h>
 
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <cstdio>
 #include <string>
@@ -98,6 +99,10 @@ public:
                 if (trace_input_ && !ev.key.repeat)
                     SDL_Log("dcb: key down '%s' (scancode %d)", SDL_GetScancodeName(ev.key.scancode),
                             static_cast<int>(ev.key.scancode));
+                if (ev.key.scancode < SDL_SCANCODE_COUNT) {
+                    key_held_[ev.key.scancode] = true;
+                    key_tap_frames_[ev.key.scancode] = kMinTapFrames;
+                }
                 if (ev.key.scancode == SDL_SCANCODE_ESCAPE) {
                     quit_ = true;
                 } else if (is_enter(ev.key.scancode) && (ev.key.mod & SDL_KMOD_ALT) != 0 && !ev.key.repeat) {
@@ -109,6 +114,14 @@ public:
                 } else if (!ev.key.repeat) {
                     any_press_ = true;
                 }
+                break;
+            case SDL_EVENT_KEY_UP:
+                if (trace_input_)
+                    SDL_Log("dcb: key up '%s'", SDL_GetScancodeName(ev.key.scancode));
+                if (ev.key.scancode < SDL_SCANCODE_COUNT) key_held_[ev.key.scancode] = false;
+                break;
+            case SDL_EVENT_WINDOW_FOCUS_LOST:
+                key_held_.fill(false);  // key-ups are not delivered to an unfocused window
                 break;
             case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
                 any_press_ = true;
@@ -281,20 +294,23 @@ private:
     }
 
     /// Pressed buttons (active HIGH) from the keyboard, per the [keyboard] bindings.
-    uint16_t read_keyboard() const {
-        int count = 0;
-        const bool* keys = SDL_GetKeyboardState(&count);
+    /// Pressed buttons (active HIGH) from the keyboard, per the [keyboard] bindings. Key state comes
+    /// from the key events, not SDL_GetKeyboardState (which stayed empty on some Wayland setups), and
+    /// a quick tap still counts as held for kMinTapFrames frames.
+    uint16_t read_keyboard() {
         // Alt+Enter toggles fullscreen; don't also press whatever Enter is bound to.
         const bool alt = (SDL_GetModState() & SDL_KMOD_ALT) != 0;
         uint16_t pressed = 0;
         for (size_t i = 0; i < kPadButtonCount; ++i) {
             for (const int code : settings_.keyboard[i]) {
-                if (code < 0 || code >= count || !keys[code]) continue;
+                if (code < 0 || code >= static_cast<int>(SDL_SCANCODE_COUNT)) continue;
+                if (!key_held_[static_cast<size_t>(code)] && key_tap_frames_[static_cast<size_t>(code)] == 0) continue;
                 if (alt && is_enter(static_cast<SDL_Scancode>(code))) continue;
                 pressed = static_cast<uint16_t>(pressed | kPadButtons[i].bit);
                 break;
             }
         }
+        for (uint8_t& f : key_tap_frames_) f = f > 0 ? static_cast<uint8_t>(f - 1) : f;
         return pressed;
     }
 
@@ -348,7 +364,12 @@ private:
     bool overlay_visible_ = false;
     /// DCB_TRACE_INPUT: log key presses and the pad state they produce.
     const bool trace_input_ = std::getenv("DCB_TRACE_INPUT") != nullptr;
-    bool any_press_ = false;  ///< a key / gamepad button went down since take_any_press()
+    bool any_press_ = false;
+    std::array<bool, SDL_SCANCODE_COUNT> key_held_{};    ///< keys down now (from key events)
+    /// Frames a key still counts as pressed after going down, so a tap shorter than the game's own
+    /// pad sampling interval is not lost.
+    static constexpr uint8_t kMinTapFrames = 4;
+    std::array<uint8_t, SDL_SCANCODE_COUNT> key_tap_frames_{};  ///< a key / gamepad button went down since take_any_press()
     FrameStats stats_;
     bool quit_ = false;
 };
