@@ -6,6 +6,7 @@
 #include "hw/mmio.hpp"
 #include "system.hpp"
 
+#include "first_run.hpp"
 #include "input_log.hpp"
 #include "platform.hpp"
 #include "settings.hpp"
@@ -119,6 +120,9 @@ int main(int argc, char** argv) {
     std::setvbuf(stdout, nullptr, _IOLBF, 0);
     arm_watchdog();
 
+    // dcb --import <disc.cue|disc.bin> [dest]: one-time import of the player's dump, then exit.
+    if (argc > 1 && std::string(argv[1]) == "--import") return platform::import_command(argc, argv, DCB_GAME_ID);
+
     // Usage: dcb [extracted-dir|disc.cue|disc.bin]   (a PS-EXE path is also accepted, for development)
     std::filesystem::path disc_hint, exe_override;
     if (argc > 1) {
@@ -135,7 +139,8 @@ int main(int argc, char** argv) {
         hle::System system(machine.ctx(), mmio, bios);
         bios.attach(&system);
         bios.insert_cards(std::filesystem::path("saves") / DCB_GAME_ID);
-        const auto disc_path = hle::Disc::locate(DCB_GAME_ID, disc_hint);
+        // No game data yet: the SDL build asks for the player's dump and imports it (first run).
+        const auto disc_path = platform::locate_or_import(DCB_GAME_ID, disc_hint, !std::getenv("DCB_HEADLESS"));
         // The boot executable's code is compiled in; its data comes from the disc, like everything else.
         auto disc = hle::Disc::open(disc_path);
         const std::vector<uint8_t> boot = exe_override.empty() ? disc->read_boot_exe() : std::vector<uint8_t>{};

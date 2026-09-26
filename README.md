@@ -30,7 +30,7 @@ executable: MIPS R3000A → C, with native HLE of the kernel and Psy-Q libraries
 - [ ] Remaining game modes and overlays (EVOSEG, SAISEG, SUBSEG, SUGSEG, ENDSEG)
 - [x] Memory card saves verified in game (`saves/<serial>/card1.mcd`, raw 128 KB `.mcd` image)
 - [ ] `PSX2.EXE` mode (`LoadExec`)
-- [ ] One-time asset import from the player's own dump: no disc needed afterwards, no copyrighted data in the download
+- [x] One-time asset import from the player's own dump: no disc needed afterwards, no copyrighted data in the download (`dcb --import`, or a file picker on first run)
 - [ ] Windows x64 release build tested on Windows
 - [ ] English build: JP code + English assets from the player's US dump (SLUS-01328), research in progress
 - [x] PC options: `settings.ini` (window scale, filtering, aspect, key/gamepad rebinding, volume); resizable window, picture fits it (F8: fit / integer)
@@ -53,7 +53,8 @@ executable: MIPS R3000A → C, with native HLE of the kernel and Psy-Q libraries
 ```
 disc/<serial>/          disc images (.bin/.cue), one folder per serial       [ignored]
 bios/                   retail BIOS dumps: reference and diff-testing only   [ignored]
-extracted/<serial>/     extract_disc.py output: fs/, exe/boot.*, manifest    [ignored]
+extracted/<serial>/     imported game data: layout.txt, iso_meta.bin, fs/    [ignored]
+                        (extract_disc.py adds exe/boot.*, manifest for dev)
 assets/raw|converted/   asset pipeline in/out                                [ignored]
 generated/<serial>/     MIPS→C output of tools/recomp; never hand-edited     [ignored]
 config/<serial>/        recompiler inputs: functions.json, overlays, overrides
@@ -64,7 +65,7 @@ src/runtime/            CPU context, memory bus, dispatch, GTE (the C ABI of gen
 src/hle/                kernel + Psy-Q replacements, MMIO fallback (see src/hle/README.md)
 src/platform/           host seam: SDL3 window, input, audio (+ headless)
 src/game/               entry point + hand-written overrides of recompiled functions
-tools/disc/             extract_disc.py (+ tests)
+tools/disc/             extract_disc.py (+ tests), verify_import.sh
 tools/ghidra/           setup_ghidra_mcp.sh, import_ghidra.sh
 tools/recomp/           the MIPS→C recompiler (C++ host tool)
 tools/assets/           TIM / VAB / XA / STR converters
@@ -74,7 +75,8 @@ tests/                  runtime unit tests (ctest)
 ## Workflow
 
 ```bash
-# 1. Disc → filesystem + boot EXE
+# 1. Disc → filesystem + boot EXE (dev tool: also writes exe/boot.* for Ghidra and a manifest;
+#    players use the native importer instead, see "Game data" below — same layout.txt/fs/iso_meta.bin)
 python3 tools/disc/extract_disc.py disc/SLPS-03101/dcb_jp.cue -o extracted/SLPS-03101
 
 # 2. Boot EXE → Ghidra (ghidra_psx_ldr loader + Psy-Q signatures), ~3 min
@@ -100,10 +102,36 @@ cmake --preset windows-cross && cmake --build --preset windows-cross
 ./build/linux-debug/dcb            # or ./dcb.sh
 ```
 
-**Game data.** `dcb [extracted-dir | disc.cue | disc.bin]`. Without an argument it uses, in order:
-`DCB_DISC`, `extracted/<serial>/` (native extracted data: `layout.txt` + `fs/` + `iso_meta.bin`,
-written by step 1), then a `.cue`/`.bin` in `disc/<serial>/` or the current directory. Extracted data
-rebuilds every CD sector on demand, so the disc image is not needed once it has been extracted.
+**Game data.** The program ships without any game data. The player imports a dump of their own
+disc once, natively (no Python needed):
+
+```bash
+dcb --import <disc.cue|disc.bin> [dest-dir] [--force]   # default dest-dir: ./extracted
+```
+
+This reads a raw `.cue`/`.bin` dump (Mode 2, 2352-byte sectors; a `.bin` without its `.cue` works
+too), identifies the game from `SYSTEM.CNF` and writes `extracted/<serial>/`: `layout.txt`,
+`iso_meta.bin` and `fs/` (XA/STR files as whole sectors, `*.raw2352`). The output is byte-identical
+to `tools/disc/extract_disc.py` (checked by `ctest` on a synthetic disc, and on a real dump with
+`tools/disc/verify_import.sh <disc.cue>`). The import goes to a temporary directory that is renamed
+into place only when complete, checks free space first, and rejects wrong input with a clear
+message: cooked `.iso`/`.chd`/`.pbp`, an audio track, a non-PlayStation disc, a truncated dump, or
+another game. Accepted discs: SLPS-03101 (the version this port plays) and SLUS-01328 (kept for a
+future "Japanese code + English assets" build). Other serials are refused: this build could not run
+them, so importing would only fill the disk.
+
+**First run.** When no game data is found, the SDL build explains what is needed, opens the system
+file dialog (`.cue`/`.bin`), imports with a progress window ("Importing… NN%", close it to cancel)
+and boots. Picking the US disc imports it and asks again for the Japanese one. Headless runs
+(`DCB_HEADLESS=1`) print these instructions and exit with status 1. After the import the disc image
+is no longer needed. (`DCB_IMPORT_IMAGE=<path>` skips the explanation and the dialog, for automated
+tests of the flow.)
+
+**Where data is found.** `dcb [extracted-dir | disc.cue | disc.bin]`. Without an argument it uses, in
+order: `DCB_DISC`, `extracted/<serial>/` (imported data), then a `.cue`/`.bin` in `disc/<serial>/`
+or the current directory. Extracted data rebuilds every CD sector on demand, so the game runs from
+it alone (frame-for-frame identical to the disc image), and individual files can later be replaced
+(translation, enhanced assets).
 
 Select the target with `-DDCB_GAME_ID=SLUS-01328` (default: `SLPS-03101`).
 
