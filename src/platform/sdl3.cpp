@@ -243,6 +243,7 @@ private:
         apply_env_overrides(settings_, [](const char* name) { return SDL_getenv(name); });
         for (const std::string& w : warnings) SDL_Log("dcb: %s", w.c_str());
         SDL_Log("dcb: settings %s", path.string().c_str());
+        if (trace_input_) SDL_Log("dcb: input trace on (keys, pad state, what the game reads)");
     }
 
     /// Alt+Enter: flip fullscreen and remember the choice in settings.ini.
