@@ -37,7 +37,10 @@ public:
             if (pc == skip) {
                 if (labels_.count(pc)) {
                     // Something jumps straight into a delay slot: give it a standalone copy.
-                    if (owner_falls) out_ << "    goto L_" << hexlabel(pc + 4) << ";\n";
+                    if (owner_falls) {
+                        if (fn_.instrs.count(pc + 4)) out_ << "    goto L_" << hexlabel(pc + 4) << ";\n";
+                        else out_ << "    psx_dispatch(ctx, " << hex32(pc + 4) << "); return;\n";
+                    }
                     label(pc);
                     body(seg_.instr(pc));
                     if (!fn_.instrs.count(pc + 4)) out_ << "    psx_dispatch(ctx, " << hex32(pc + 4) << "); return;\n";

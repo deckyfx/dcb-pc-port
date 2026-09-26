@@ -64,6 +64,8 @@ public:
 
     /// Guest address of the kernel TCB (what *(*0x80000108) points to).
     static constexpr uint32_t kKernelTcb = 0x80000E10u;
+    /// Kernel interrupt stack (top), in the kernel RAM area games never touch.
+    static constexpr uint32_t kKernelStack = 0x8000EFF0u;
 
 private:
     PsxContext& ctx_;

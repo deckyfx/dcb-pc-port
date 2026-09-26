@@ -75,4 +75,7 @@ RecompFunc find_function(uint32_t addr);
 uint32_t call_guest(PsxContext& ctx, uint32_t addr, uint32_t a0 = 0, uint32_t a1 = 0, uint32_t a2 = 0,
                     uint32_t a3 = 0);
 
+/// Same, on an explicit guest stack (e.g. the kernel's interrupt stack).
+uint32_t call_guest_on_stack(PsxContext& ctx, uint32_t sp, uint32_t addr, uint32_t a0 = 0);
+
 }  // namespace psx

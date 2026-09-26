@@ -141,6 +141,7 @@ void System::pace() {
 }
 
 void System::poll(PsxContext& ctx) {
+    mmio_.tick(ctx.cycles);
     const uint64_t due = ctx.cycles / cycles_per_vblank();
     if (due > vblanks_) {
         vblanks_ = due;  // coalesce: a late poll delivers one VBLANK, like a missed frame
@@ -202,6 +203,13 @@ void System::deliver(PsxContext& ctx) {
         sr = saved_sr;
         in_irq_ = false;
     }
+    // Kernel interrupt chains (libpad's VBLANK pad reader, ...), on the kernel's own stack.
+    in_irq_ = true;
+    sr &= ~kSrIrqEnable;
+    bios_.run_interrupt_chains(ctx, kKernelStack);
+    sr = saved_sr;
+    in_irq_ = false;
+
     const uint32_t hook = bios_.interrupt_hook();
     const uint32_t dispatcher = hook ? find_dispatcher(ctx, hook) : 0;
     if (!dispatcher) {

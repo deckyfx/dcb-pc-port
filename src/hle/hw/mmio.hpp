@@ -4,6 +4,8 @@
 // device behaviour (GPU drawing, SPU, CD-ROM) plugs in here as those layers are built.
 // Reference: psx-spx "I/O Map", "Interrupts", "DMA Channels", "Timers", "GPU I/O Ports".
 
+#include "cdrom/cdrom.hpp"
+#include "pad/sio.hpp"
 #include "spu/spu.hpp"
 
 #include <psx/runtime.hpp>
@@ -19,6 +21,8 @@ class System;
 
 class Mmio final : public psx::MmioHandler {
 public:
+    Mmio();
+
     uint32_t read(uint32_t phys, unsigned width) override;
     void write(uint32_t phys, uint32_t value, unsigned width) override;
 
@@ -27,6 +31,11 @@ public:
     uint32_t pending_irqs() const { return i_stat_ & i_mask_; }
 
     /// Timers read the system clock, and status reads give the system a chance to deliver IRQs.
+    void insert_disc(std::unique_ptr<Disc> disc) { cdrom_.insert(std::move(disc)); }
+    void set_pad_buttons(unsigned port, uint16_t buttons) { sio_.set_buttons(port, buttons); }
+    /// Advance time-driven devices (CD-ROM responses and sectors) to guest time `cycles`.
+    void tick(uint64_t cycles) { cdrom_.tick(cycles); }
+
     void attach(System* system, PsxContext& ctx) {
         system_ = system;
         ctx_ = &ctx;
@@ -47,6 +56,8 @@ private:
     System* system_ = nullptr;
     PsxContext* ctx_ = nullptr;  ///< guest RAM for DMA
     Spu spu_;
+    CdRom cdrom_;
+    Sio0 sio_;
     // GPU ports
     uint32_t gpuread_ = 0;
     uint32_t gp1_display_mode_ = 0;

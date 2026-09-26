@@ -35,6 +35,14 @@ static RecompFunc find_overlay_function(PsxContext* ctx, uint32_t addr) {
     return nullptr;
 }
 
+uint32_t call_guest_on_stack(PsxContext& ctx, uint32_t sp, uint32_t addr, uint32_t a0) {
+    const uint32_t old_sp = ctx.r[29];
+    ctx.r[29] = sp + 0x100;  // call_guest subtracts its frame from the current sp
+    const uint32_t result = call_guest(ctx, addr, a0);
+    ctx.r[29] = old_sp;
+    return result;
+}
+
 uint32_t call_guest(PsxContext& ctx, uint32_t addr, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3) {
     uint32_t saved[32];
     std::memcpy(saved, ctx.r, sizeof saved);

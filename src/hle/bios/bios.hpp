@@ -28,6 +28,11 @@ public:
     /// Kernel event classes/specs used when hardware sources fire (psx-spx "BIOS Events").
     void deliver_event(PsxContext& ctx, uint32_t ev_class, uint32_t spec);
 
+    /// Kernel interrupt chains (C0:02 SysEnqIntRP): run every registered handler, priority 0 first.
+    /// Each block is {next, second, first, 0}: `first` checks whether its interrupt is pending and
+    /// returns non-zero if so, then `second` is called with that value.
+    void run_interrupt_chains(PsxContext& ctx, uint32_t kernel_sp);
+
     /// Guest jmp_buf the game registered for interrupt entry (B0:19), or 0.
     uint32_t interrupt_hook() const { return hook_entry_int_; }
 

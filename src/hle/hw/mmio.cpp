@@ -3,6 +3,7 @@
 #include "system.hpp"
 
 #include <cstdio>
+#include <cstdlib>
 #include <vector>
 
 namespace hle {
@@ -28,6 +29,8 @@ uint32_t Mmio::gpustat() const {
     if (display_disabled_) s |= 1u << 23;
     return s;
 }
+
+Mmio::Mmio() : cdrom_([this] { raise_irq(2); }), sio_([this] { raise_irq(7); }) {}
 
 uint64_t Mmio::timer_clock(unsigned index) const {
     if (!system_) return 0;
@@ -121,6 +124,13 @@ void Mmio::dma_run(unsigned channel) {
                 for (uint32_t i = 0, a = madr; i < words; ++i, a += static_cast<uint32_t>(step)) psx_write32(ctx_, a, gpuread_);
             }
             return;
+        case 3: {  // CD-ROM -> RAM
+            if (std::getenv("DCB_TRACE_CD")) std::fprintf(stderr, "[cd] dma3 -> %08X (%u words, chcr %08X)\n", madr, words, chcr);
+            std::vector<uint32_t> buf(words);
+            cdrom_.dma_read(buf.data(), words);
+            for (uint32_t i = 0; i < words; ++i) psx_write32(ctx_, madr + 4 * i, buf[i]);
+            return;
+        }
         case 4: {  // SPU
             std::vector<uint32_t> buf(words);
             if (from_ram) {
@@ -161,6 +171,8 @@ uint32_t Mmio::read(uint32_t phys, unsigned width) {
         case kGp1: return gpustat();
         default: break;
     }
+    if (phys >= CdRom::kBase && phys < CdRom::kEnd) return cdrom_.read(phys);
+    if (phys >= Sio0::kBase && phys < Sio0::kEnd) return sio_.read(phys, width);
     if (phys >= Spu::kBase && phys < Spu::kEnd) {
         const uint32_t lo = spu_.read16(phys & ~1u);
         return width == 4 ? lo | static_cast<uint32_t>(spu_.read16((phys & ~1u) + 2)) << 16 : lo;
@@ -190,6 +202,14 @@ void Mmio::write(uint32_t phys, uint32_t value, unsigned width) {
         case kGp0: gp0(value); return;
         case kGp1: gp1(value); return;
         default: break;
+    }
+    if (phys >= CdRom::kBase && phys < CdRom::kEnd) {
+        cdrom_.write(phys, static_cast<uint8_t>(value));
+        return;
+    }
+    if (phys >= Sio0::kBase && phys < Sio0::kEnd) {
+        sio_.write(phys, value, width);
+        return;
     }
     if (phys >= Spu::kBase && phys < Spu::kEnd) {
         spu_.write16(phys & ~1u, static_cast<uint16_t>(value));

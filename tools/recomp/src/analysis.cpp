@@ -78,11 +78,15 @@ public:
         drain();
         reclassify();
 
-        // Weak seeds: accepted only outside known code, and only if they explore cleanly.
-        for (size_t s = 0; s < prog_.segments.size(); ++s) {
-            for (auto [addr, origin] : weak_seeds(s)) try_weak_seed(s, addr, origin);
+        // Weak seeds, repeated to a fixpoint: a function found through a code pointer can itself
+        // build pointers to more functions (task entries creating further tasks).
+        for (size_t known = 0; known != total_functions();) {
+            known = total_functions();
+            for (size_t s = 0; s < prog_.segments.size(); ++s) {
+                for (auto [addr, origin] : weak_seeds(s)) try_weak_seed(s, addr, origin);
+            }
+            drain();
         }
-        drain();
         reclassify();
         return std::move(analysis_);
     }
@@ -147,9 +151,13 @@ private:
         if (first.op == Op::Invalid) return false;
         if (first.op == Op::Addiu && first.rs == 29 && first.rt == 29 && first.simm() < 0) return true;
         if (addr == seg.code_begin) return true;
-        // Previous function ended: `jr ra` / `j` two instructions back (its delay slot is between).
-        const Instr prev = seg.instr(addr - 8);
-        return (prev.op == Op::Jr && prev.rs == 31) || prev.op == Op::J;
+        // Previous function ended just before: its `jr ra` / `j` and delay slot, possibly followed
+        // by nop padding (functions are aligned to 16 bytes).
+        auto ends_function = [](const Instr& in) { return (in.op == Op::Jr && in.rs == 31) || in.op == Op::J; };
+        uint32_t p = addr - 4;
+        for (int pad = 0; pad < 4 && p >= seg.code_begin && seg.instr(p).raw == 0; ++pad) p -= 4;
+        if (p < seg.code_begin) return false;
+        return ends_function(seg.instr(p)) || (p >= seg.code_begin + 4 && ends_function(seg.instr(p - 4)));
     }
 
     /// Explore every pending seed; newly found calls add more seeds.
@@ -300,6 +308,12 @@ private:
         return out;
     }
 
+    size_t total_functions() const {
+        size_t n = 0;
+        for (const auto& m : analysis_.functions) n += m.size();
+        return n;
+    }
+
     bool covered(size_t s, uint32_t addr) const {
         const Segment& seg = prog_.segments[s];
         return seg.contains(addr) && coverage_[s][(addr - seg.base) / 4] != 0;
@@ -307,13 +321,18 @@ private:
 
     void try_weak_seed(size_t from_seg, uint32_t addr, Origin origin) {
         const size_t s = prog_.segments[from_seg].in_code(addr) ? from_seg : 0;
-        if (is_entry(s, addr) || covered(s, addr)) return;
+        if (is_entry(s, addr)) return;
+        // Inside known code, a data pointer is usually a jump-table label; an address built in
+        // code that lands on a function start is a function pointer (task entry, callback) whose
+        // body another function also reaches through a tail jump.
+        // Every weak seed must look like a function start (prologue, or right after the previous
+        // function's jr ra / j): code pointers found in data are otherwise mostly coincidence.
+        if (!plausible_start(prog_.segments[s], addr)) return;
+        if (covered(s, addr) && origin != Origin::CodeConstant) return;
+        // Data that merely looks like a code address almost never decodes into valid control
+        // flow. Running into already-known code is fine: functions jump into shared tails.
         const Function probe = explore(s, addr, true);
         if (!probe.invalid_at.empty() || probe.instrs.empty()) return;
-        // A real function never runs into code we already know from the middle.
-        for (uint32_t pc : probe.instrs) {
-            if (covered(s, pc)) return;
-        }
         add_seed(s, addr, origin);
         drain();
     }

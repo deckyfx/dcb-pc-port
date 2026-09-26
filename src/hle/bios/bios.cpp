@@ -346,8 +346,21 @@ void Bios::b0_return_from_exception(PsxContext& ctx) {
 }
 
 void Bios::c0_sys_enq_int_rp(PsxContext& ctx) {
-    int_handlers_.push_back({ctx.r[kA0], ctx.r[kA1]});
+    // The kernel links new blocks at the head of their priority's chain.
+    int_handlers_.insert(int_handlers_.begin(), {ctx.r[kA0], ctx.r[kA1]});
     ctx.r[kV0] = 0;
+}
+
+void Bios::run_interrupt_chains(PsxContext& ctx, uint32_t kernel_sp) {
+    for (uint32_t priority = 0; priority < 4; ++priority) {
+        for (const IntHandler h : int_handlers_) {  // copy: handlers may (de)register
+            if (h.priority != priority) continue;
+            const uint32_t second = psx_read32(&ctx, h.block + 4);
+            const uint32_t first = psx_read32(&ctx, h.block + 8);
+            const uint32_t v = first ? psx::call_guest_on_stack(ctx, kernel_sp, first) : 1u;
+            if (v && second) psx::call_guest_on_stack(ctx, kernel_sp, second, v);
+        }
+    }
 }
 
 void Bios::c0_sys_deq_int_rp(PsxContext& ctx) {

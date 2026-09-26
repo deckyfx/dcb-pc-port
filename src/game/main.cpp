@@ -2,6 +2,7 @@
 // installs the HLE layer, and calls the recompiled entry function.
 
 #include "bios/bios.hpp"
+#include "cdrom/disc.hpp"
 #include "hw/mmio.hpp"
 #include "system.hpp"
 
@@ -51,6 +52,9 @@ int main(int argc, char** argv) {
         hle::System system(machine.ctx(), mmio, bios);
         bios.attach(&system);
         bios.insert_cards(std::filesystem::path("saves") / DCB_GAME_ID);
+        const auto disc_path = hle::Disc::locate(DCB_GAME_ID);
+        mmio.insert_disc(std::make_unique<hle::Disc>(disc_path));
+        std::printf("[dcb] disc %s\n", disc_path.string().c_str());
         mmio.attach(&system, machine.ctx());
         machine.set_bios_handler(&bios);
         machine.set_mmio_handler(&mmio);
