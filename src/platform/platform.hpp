@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 
 namespace platform {
@@ -60,9 +61,13 @@ public:
 std::unique_ptr<Platform> make_headless();
 
 #if defined(DCB_HAS_SDL3)
-/// SDL3 backend: window + renderer, keyboard/gamepad on port 0, audio stream.
-/// Returns nullptr (after logging) if SDL cannot initialise video.
+/// SDL3 backend: window + renderer, keyboard/gamepad on port 0, audio stream, configured from
+/// settings.ini at its default location (DCB_SETTINGS, portable next to the executable, or the
+/// per-user config directory; see settings.hpp). Returns nullptr (after logging) if SDL cannot
+/// initialise video.
 std::unique_ptr<Platform> make_sdl3(const char* title);
+/// As above with an explicit settings file (created with defaults if it does not exist).
+std::unique_ptr<Platform> make_sdl3(const char* title, const std::filesystem::path& settings_path);
 #endif
 
 /// Convert the display area to RGBA8888 (bytes R,G,B,A in memory, i.e. the uint32 value is
