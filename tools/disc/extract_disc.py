@@ -11,6 +11,8 @@ and produces::
       exe/boot.exe       the boot PS-EXE named by SYSTEM.CNF, byte-for-byte
       exe/boot.text      its load image (file offset 0x800 onward), for a raw Ghidra import
       exe/boot.json      parsed PS-EXE header
+      layout.txt         sector map for running the game from these files (see write_layout)
+      iso_meta.bin       raw directory/system-area sectors referenced by layout.txt
 
 Files whose sectors are Mode 2 Form 2 (XA-ADPCM audio, STR video) do not fit in 2048-byte
 user data. They are written as raw 2352-byte sectors with a ``.raw2352`` suffix, so that
@@ -150,7 +152,8 @@ def xa_attributes(record: bytes) -> int | None:
     return None
 
 
-def walk_filesystem(reader: SectorReader) -> list[FileEntry]:
+def walk_filesystem(reader: SectorReader, dirs: list[tuple[int, int]] | None = None) -> list[FileEntry]:
+    """Every file on the disc, sorted by LBA. Directory extents (lba, sectors) go to `dirs`."""
     pvd = reader.user(16)
     if pvd[0] != 1 or pvd[1:6] != b"CD001":
         raise DiscError("no ISO9660 primary volume descriptor at sector 16")
@@ -167,6 +170,8 @@ def walk_filesystem(reader: SectorReader) -> list[FileEntry]:
         if lba in seen:
             continue
         seen.add(lba)
+        if dirs is not None:
+            dirs.append((lba, sectors_for(size)))
         for rec in iter_records(reader.read_user(lba, sectors_for(size))):
             name_len = rec[32]
             ident = rec[33 : 33 + name_len]
@@ -285,6 +290,53 @@ def sha1_file(path: Path) -> str:
     return sha.hexdigest()
 
 
+def write_layout(reader: SectorReader, files: list[FileEntry], dirs: list[tuple[int, int]], out: Path) -> None:
+    """Write what the runtime needs to rebuild any disc sector from the extracted files:
+
+    * iso_meta.bin: raw sectors of everything no file covers (system area, volume descriptors,
+      path tables, directories, gaps, post-gap);
+    * layout.txt: one line per sector range, e.g.
+        meta <lba> <count> <index into iso_meta.bin>
+        file <lba> <sectors> <bytes> <form1|raw2352> <first subheader> <last subheader> <path>
+    Form 1 file sectors are rebuilt from 2048-byte chunks with these subheaders; raw2352 files
+    (XA/STR) are stored as whole sectors already. Needs a raw (2352-byte) image.
+    """
+    if not reader.is_raw:
+        print("warning: cooked image: no layout.txt (the runtime needs raw sectors)", file=sys.stderr)
+        return
+    # Everything no file covers: system area, descriptors, path tables, directories, gaps and the
+    # post-gap. Small (tens of sectors), and it makes rebuilt sectors match the disc exactly.
+    covered = bytearray(reader.sector_count)
+    for f in files:
+        if f.storage != "cdda":
+            covered[f.lba : f.lba + f.sectors] = b"\x01" * f.sectors
+    for lba, n in dirs:
+        covered[lba : lba + n] = b"\x00" * n
+    meta_lbas = [lba for lba in range(reader.sector_count) if not covered[lba]]
+    ranges: list[list[int]] = []
+    for lba in meta_lbas:
+        if ranges and ranges[-1][0] + ranges[-1][1] == lba:
+            ranges[-1][1] += 1
+        else:
+            ranges.append([lba, 1])
+    lines = ["# dcb extracted disc layout v1", f"sectors {reader.sector_count}"]
+    with (out / "iso_meta.bin").open("wb") as meta:
+        index = 0
+        for lba, count in ranges:
+            for i in range(count):
+                meta.write(reader.raw(lba + i))
+            lines.append(f"meta {lba} {count} {index}")
+            index += count
+    for f in files:
+        if f.storage == "cdda" or f.sectors == 0:
+            continue
+        stored = f"fs/{f.path}" + (".raw2352" if f.storage == "raw2352" else "")
+        first_sh = reader.raw(f.lba)[16:20].hex()
+        last_sh = reader.raw(f.lba + f.sectors - 1)[16:20].hex()
+        lines.append(f"file {f.lba} {f.sectors} {f.size} {f.storage} {first_sh} {last_sh} {stored}")
+    (out / "layout.txt").write_text("\n".join(lines) + "\n")
+
+
 def extract(image: Path, out: Path, force: bool) -> dict[str, object]:
     data_track, tracks = resolve_image(image)
     if out.exists():
@@ -298,12 +350,14 @@ def extract(image: Path, out: Path, force: bool) -> dict[str, object]:
         pvd = reader.user(16)
         (out / "system_area.bin").write_bytes(reader.read_user(0, 16))
 
-        files = walk_filesystem(reader)
+        dirs: list[tuple[int, int]] = []
+        files = walk_filesystem(reader, dirs)
         by_upper = {f.path.upper(): f for f in files}
         for entry in files:
             classify(reader, entry)
             if entry.storage != "cdda":
                 extract_file(reader, entry, out / "fs" / entry.path)
+        write_layout(reader, files, dirs, out)
 
         cnf_entry = by_upper.get("SYSTEM.CNF")
         cnf = parse_system_cnf((out / "fs" / cnf_entry.path).read_text(errors="replace")) if cnf_entry else {}

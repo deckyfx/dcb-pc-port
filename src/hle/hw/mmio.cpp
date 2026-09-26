@@ -2,6 +2,7 @@
 
 #include "system.hpp"
 
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
@@ -23,12 +24,13 @@ constexpr unsigned kLogLimit = 4;
 
 }  // namespace
 
-Mmio::Mmio() : cdrom_([this] { raise_irq(2); }), sio_([this] { raise_irq(7); }) {
+Mmio::Mmio() : cdrom_([this] { raise_irq(2); }), sio_([this] { raise_irq(7); }, [this] { return system_ ? system_->cpu_cycles() : uint64_t{0}; }) {
     cdrom_.on_cd_audio([this](const int16_t* pcm, size_t frames) { spu_.push_cd_audio(pcm, frames); });
 }
 
 void Mmio::tick(uint64_t cycles) {
     cdrom_.tick(cycles);
+    sio_.tick(cycles);
     // The SPU runs at 44100 Hz = one sample per 768 CPU cycles: produce what guest time owes.
     constexpr uint64_t kCyclesPerSample = 768;
     const uint64_t due = cycles / kCyclesPerSample;
@@ -118,10 +120,20 @@ void Mmio::dma_run(unsigned channel) {
         case 1: {  // MDEC -> RAM (decoded pixels)
             std::vector<uint32_t> buf(words);
             mdec_.dma_read(buf.data(), words);
+            ++mdec_transfers_;
             for (uint32_t i = 0, a = madr; i < words; ++i, a += static_cast<uint32_t>(step)) psx_write32(ctx_, a, buf[i]);
             return;
         }
-        case 2:  // GPU
+        case 2: {  // GPU
+            const auto t0 = std::chrono::steady_clock::now();
+            struct GpuTimer {  // time spent rasterizing, for the overlay
+                std::chrono::steady_clock::time_point start;
+                uint64_t& total;
+                ~GpuTimer() {
+                    total += static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                                       std::chrono::steady_clock::now() - start).count());
+                }
+            } gpu_timer{t0, gpu_ns_};
             if (sync == 2) {
                 dma_gpu_linked_list(madr);
             } else if (from_ram) {
@@ -130,6 +142,7 @@ void Mmio::dma_run(unsigned channel) {
                 for (uint32_t i = 0, a = madr; i < words; ++i, a += static_cast<uint32_t>(step)) psx_write32(ctx_, a, gpu_.gpuread());
             }
             return;
+        }
         case 3: {  // CD-ROM -> RAM
             if (std::getenv("DCB_TRACE_CD")) std::fprintf(stderr, "[cd] dma3 -> %08X (%u words, chcr %08X)\n", madr, words, chcr);
             std::vector<uint32_t> buf(words);
@@ -234,7 +247,10 @@ void Mmio::write(uint32_t phys, uint32_t value, unsigned width) {
         case kIStat: i_stat_ &= value; return;  // writing 0 acknowledges
         case kIMask: i_mask_ = value & 0x7FFu; return;
         case kGp0: gp0(value); return;
-        case kGp1: gpu_.gp1(value); return;
+        case kGp1:
+            if ((value >> 24) == 0x05) ++display_flips_;  // display start: the game shows a new frame
+            gpu_.gp1(value);
+            return;
         case kMdecData: mdec_.write_command(value); return;
         case kMdecControl: mdec_.write_control(value); return;
         default: break;

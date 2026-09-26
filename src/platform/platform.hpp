@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 
 namespace platform {
@@ -43,6 +44,14 @@ enum Button : uint16_t {
     Square = 1u << 15,
 };
 
+/// Performance numbers measured by the host loop, averaged over about a second.
+struct FrameStats {
+    double fps = 0;        ///< frames presented per second
+    double game_fps = 0;   ///< frames the game finished per second (display flips)
+    double cpu_pct = 0;    ///< share of wall time spent running the game (not sleeping/drawing)
+    double gpu_pct = 0;    ///< share of wall time spent in the software rasterizer
+};
+
 class Platform {
 public:
     virtual ~Platform() = default;
@@ -54,15 +63,23 @@ public:
     virtual void present(const uint16_t* vram, const DisplayArea& area) = 0;
     /// Queue `frames` interleaved stereo s16 frames at kAudioRate. Latency is kept bounded.
     virtual void queue_audio(const int16_t* stereo, size_t frames) = 0;
+    /// Latest performance numbers, for the on-screen overlay (ignored by backends without one).
+    virtual void set_stats(const FrameStats& stats) { (void)stats; }
+    /// Whether any key or gamepad button went down since the last call (window hotkeys excluded).
+    virtual bool take_any_press() { return false; }
 };
 
 /// Headless backend: no window, no audio, nothing pressed (tests / CI / batch runs).
 std::unique_ptr<Platform> make_headless();
 
 #if defined(DCB_HAS_SDL3)
-/// SDL3 backend: window + renderer, keyboard/gamepad on port 0, audio stream.
-/// Returns nullptr (after logging) if SDL cannot initialise video.
+/// SDL3 backend: window + renderer, keyboard/gamepad on port 0, audio stream, configured from
+/// settings.ini at its default location (DCB_SETTINGS, portable next to the executable, or the
+/// per-user config directory; see settings.hpp). Returns nullptr (after logging) if SDL cannot
+/// initialise video.
 std::unique_ptr<Platform> make_sdl3(const char* title);
+/// As above with an explicit settings file (created with defaults if it does not exist).
+std::unique_ptr<Platform> make_sdl3(const char* title, const std::filesystem::path& settings_path);
 #endif
 
 /// Convert the display area to RGBA8888 (bytes R,G,B,A in memory, i.e. the uint32 value is

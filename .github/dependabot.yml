@@ -1,0 +1,10 @@
+# Keep the pinned GitHub Actions (checkout, cache, upload-artifact) on current major versions.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]

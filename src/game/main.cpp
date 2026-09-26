@@ -7,15 +7,19 @@
 #include "system.hpp"
 
 #include "platform.hpp"
+#include "settings.hpp"
 
 #include <psx/runtime.hpp>
 
+#include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
+#include <string>
 #include <vector>
 
 #ifndef _WIN32
@@ -27,6 +31,38 @@ namespace {
 /// DCB_WATCHDOG=<seconds>: abort after that long, so a debugger stops inside whatever loop the
 /// game is spinning in (the call stack names the guest functions).
 /// DCB_SNAPSHOT=<dir>: save the displayed image every 30 frames as <dir>/frame_NNNNN.ppm.
+/// DCB_PAD_SCRIPT="<from>-<to>:<Button>[+<Button>],...": hold pad buttons during those VBLANK
+/// frames (names as in settings.ini), e.g. "600-610:Start" - scripted input for headless runs.
+/// The pseudo-button "Any" stands for pressing some unbound key (sets `*any` on its first frame).
+uint16_t scripted_pad(uint64_t frame, bool* any) {
+    static const char* script = std::getenv("DCB_PAD_SCRIPT");
+    if (!script) return 0xFFFF;
+    uint16_t pad = 0xFFFF;
+    const std::string text(script);
+    size_t pos = 0;
+    while (pos < text.size()) {
+        size_t end = text.find(',', pos);
+        if (end == std::string::npos) end = text.size();
+        const std::string item = text.substr(pos, end - pos);
+        pos = end + 1;
+        unsigned long long from = 0, to = 0;
+        const size_t colon = item.find(':');
+        if (colon == std::string::npos || std::sscanf(item.c_str(), "%llu-%llu", &from, &to) != 2) continue;
+        if (frame < from || frame > to) continue;
+        size_t b = colon + 1;
+        while (b < item.size()) {
+            size_t e = item.find('+', b);
+            if (e == std::string::npos) e = item.size();
+            const std::string name = item.substr(b, e - b);
+            if (name == "Any" && frame == from) *any = true;
+            for (const platform::PadButtonInfo& info : platform::kPadButtons)
+                if (name == info.name) pad = static_cast<uint16_t>(pad & ~info.bit);
+            b = e + 1;
+        }
+    }
+    return pad;
+}
+
 void snapshot(const uint16_t* vram, const platform::DisplayArea& area, uint64_t frame) {
     static const char* dir = std::getenv("DCB_SNAPSHOT");
     if (!dir || frame % 30 != 0 || area.width <= 0 || area.height <= 0) return;
@@ -80,7 +116,7 @@ int main(int argc, char** argv) {
     std::setvbuf(stdout, nullptr, _IOLBF, 0);
     arm_watchdog();
 
-    // Usage: dcb [disc.cue|disc.bin]   (a PS-EXE path is also accepted, for development)
+    // Usage: dcb [extracted-dir|disc.cue|disc.bin]   (a PS-EXE path is also accepted, for development)
     std::filesystem::path disc_hint, exe_override;
     if (argc > 1) {
         const std::filesystem::path arg = argv[1];
@@ -98,9 +134,10 @@ int main(int argc, char** argv) {
         bios.insert_cards(std::filesystem::path("saves") / DCB_GAME_ID);
         const auto disc_path = hle::Disc::locate(DCB_GAME_ID, disc_hint);
         // The boot executable's code is compiled in; its data comes from the disc, like everything else.
-        const std::vector<uint8_t> boot = exe_override.empty() ? hle::Disc(disc_path).read_boot_exe() : std::vector<uint8_t>{};
-        mmio.insert_disc(std::make_unique<hle::Disc>(disc_path));
-        std::printf("[dcb] disc %s\n", disc_path.string().c_str());
+        auto disc = hle::Disc::open(disc_path);
+        const std::vector<uint8_t> boot = exe_override.empty() ? disc->read_boot_exe() : std::vector<uint8_t>{};
+        std::printf("[dcb] game data: %s\n", disc->describe().c_str());
+        mmio.insert_disc(std::move(disc));
         mmio.attach(&system, machine.ctx());
         machine.set_bios_handler(&bios);
         machine.set_mmio_handler(&mmio);
@@ -117,7 +154,19 @@ int main(int argc, char** argv) {
                 std::printf("[dcb] window closed\n");
                 std::exit(0);
             }
-            mmio.set_pad_buttons(0, host->pad_buttons(0));
+            // Input. While a movie plays (the MDEC is busy), any key or button skips it: the game
+            // itself only accepts Start, so a press becomes a short Start tap.
+            static uint64_t pad_frame = 0, mdec_seen = 0, movie_until = 0, skip_until = 0;
+            bool any_press = host->take_any_press();
+            uint16_t pad = static_cast<uint16_t>(host->pad_buttons(0) & scripted_pad(pad_frame, &any_press));
+            if (mmio.mdec_transfers() != mdec_seen) {
+                mdec_seen = mmio.mdec_transfers();
+                movie_until = pad_frame + 15;
+            }
+            if (any_press && pad_frame < movie_until) skip_until = pad_frame + 6;
+            if (pad_frame < skip_until) pad = static_cast<uint16_t>(pad & ~platform::Start);
+            mmio.set_pad_buttons(0, pad);
+            ++pad_frame;
             const hle::Gpu::Display d = mmio.gpu().display();
             platform::DisplayArea area;
             area.x = d.x;
@@ -126,7 +175,32 @@ int main(int argc, char** argv) {
             area.height = d.height;
             area.rgb24 = d.rgb24;
             area.enabled = d.enabled;
+            const auto present_start = std::chrono::steady_clock::now();
             host->present(mmio.gpu().vram(), area);
+            // Performance overlay: once per second, turn the counters into rates and shares.
+            static auto window_start = std::chrono::steady_clock::now();
+            static uint64_t frames = 0, flips0 = mmio.display_flips(), gpu0 = mmio.gpu_ns(), sleep0 = system.sleep_ns();
+            static uint64_t present_ns = 0;
+            const auto now = std::chrono::steady_clock::now();
+            present_ns += static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(now - present_start).count());
+            ++frames;
+            const double wall_ns = static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(now - window_start).count());
+            if (wall_ns >= 1e9) {
+                const double gpu_ns = static_cast<double>(mmio.gpu_ns() - gpu0);
+                const double sleep_ns = static_cast<double>(system.sleep_ns() - sleep0);
+                platform::FrameStats st;
+                st.fps = static_cast<double>(frames) * 1e9 / wall_ns;
+                st.game_fps = static_cast<double>(mmio.display_flips() - flips0) * 1e9 / wall_ns;
+                st.gpu_pct = 100.0 * gpu_ns / wall_ns;
+                st.cpu_pct = std::max(0.0, 100.0 * (wall_ns - sleep_ns - gpu_ns - static_cast<double>(present_ns)) / wall_ns);
+                host->set_stats(st);
+                window_start = now;
+                frames = 0;
+                present_ns = 0;
+                flips0 = mmio.display_flips();
+                gpu0 = mmio.gpu_ns();
+                sleep0 = system.sleep_ns();
+            }
             const std::vector<int16_t>& audio = mmio.take_audio();
             if (!audio.empty()) host->queue_audio(audio.data(), audio.size() / 2);
             // DCB_AUDIO_DUMP=<file>: raw s16le stereo 44100 Hz of everything played (ffmpeg -f s16le -ar 44100 -ac 2).

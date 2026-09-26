@@ -1,0 +1,136 @@
+# Build + test CI. Game data (disc images, generated recompiled C) is never in the repo, so
+# every build here links the empty function table (src/runtime/stub). The `recompile` target
+# and the game itself are never run.
+name: CI
+
+# Manual only for now (Actions tab > CI > Run workflow, or `gh workflow run CI --ref <branch>`).
+# Restore `pull_request:` and `push: branches: [main]` to run it automatically again.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  # CMake >= 3.17 picks these up as the default compiler launcher for every configure.
+  CMAKE_C_COMPILER_LAUNCHER: ccache
+  CMAKE_CXX_COMPILER_LAUNCHER: ccache
+  CCACHE_DIR: ${{ github.workspace }}/.ccache
+  CCACHE_BASEDIR: ${{ github.workspace }}
+  CCACHE_COMPRESS: "true"
+  CCACHE_MAXSIZE: 400M
+
+jobs:
+  linux:
+    name: linux-debug (build + ctest)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      PRESET: linux-debug
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ninja-build cmake g++ python3 genisoimage ccache \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev libxss-dev \
+            libwayland-dev libxkbcommon-dev libegl1-mesa-dev libgl-dev wayland-protocols \
+            libdecor-0-dev libasound2-dev libpulse-dev libudev-dev libdbus-1-dev
+
+      # FetchContent sources + download stamps (nlohmann/json, SDL3). Restoring these lets
+      # configure skip the downloads; object files are covered by ccache instead.
+      - name: Cache FetchContent sources
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/${{ env.PRESET }}/_deps/*-src
+            build/${{ env.PRESET }}/_deps/*-subbuild
+          key: deps-${{ env.PRESET }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**') }}
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: .ccache
+          key: ccache-${{ env.PRESET }}-${{ github.run_id }}
+          restore-keys: ccache-${{ env.PRESET }}-
+
+      - name: Configure
+        run: cmake --preset "$PRESET" -DDCB_USE_SDL3=ON
+
+      - name: Build
+        run: cmake --build --preset "$PRESET"
+
+      - name: Test
+        run: ctest --preset "$PRESET" --output-on-failure
+
+      - name: ccache stats
+        if: always()
+        run: ccache --show-stats
+
+  windows-cross:
+    name: windows-cross (MinGW-w64 .exe)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      PRESET: windows-cross
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install MinGW-w64 toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build cmake ccache g++-mingw-w64-x86-64
+          # Use the posix thread model (std::thread & co. via winpthread, linked statically by -static).
+          sudo update-alternatives --set x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-posix
+          sudo update-alternatives --set x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-posix
+
+      - name: Cache FetchContent sources
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/${{ env.PRESET }}/_deps/*-src
+            build/${{ env.PRESET }}/_deps/*-subbuild
+          key: deps-${{ env.PRESET }}-${{ hashFiles('CMakeLists.txt', 'CMakePresets.json', 'cmake/**') }}
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: .ccache
+          key: ccache-${{ env.PRESET }}-${{ github.run_id }}
+          restore-keys: ccache-${{ env.PRESET }}-
+
+      - name: Configure
+        run: cmake --preset "$PRESET" -DDCB_USE_SDL3=ON
+
+      - name: Build
+        run: cmake --build --preset "$PRESET"
+
+      - name: Verify dcb.exe is self-contained
+        run: |
+          exe="build/$PRESET/dcb.exe"
+          test -f "$exe" || { echo "::error::$exe was not produced"; exit 1; }
+          dlls=$(x86_64-w64-mingw32-objdump -p "$exe" | sed -n 's/^[[:space:]]*DLL Name: //p')
+          echo "Imported DLLs:"; echo "$dlls" | sed 's/^/  /'
+          bad=$(echo "$dlls" | grep -iE '^(SDL3|libstdc\+\+|libgcc|libwinpthread)' || true)
+          if [ -n "$bad" ]; then
+            echo "::error::dcb.exe imports non-system DLLs: $(echo $bad)"
+            exit 1
+          fi
+
+      - name: Upload dcb.exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: dcb-windows-x64
+          path: build/windows-cross/dcb.exe
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: ccache stats
+        if: always()
+        run: ccache --show-stats

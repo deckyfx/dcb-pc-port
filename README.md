@@ -22,18 +22,22 @@ executable: MIPS R3000A → C, with native HLE of the kernel and Psy-Q libraries
 - [x] Render boot FMV (MDEC, 24-bit)
 - [x] Title screen (GPU renderer, SDL3 window)
 - [x] Sound: SPU music and effects, XA-ADPCM movie audio
-- [ ] Input map (keyboard and gamepad → PS1 pad)
+- [x] Runs from the disc image alone (no BIOS, no extracted files)
+- [x] Runs from extracted game data alone (sectors rebuilt from files; verified identical to the disc)
+- [x] Input: keyboard and gamepad → PS1 digital pad (timed SIO0 model); any key skips movies
 - [ ] Main menu and navigation
 - [ ] Card battles (KAWSEG overlay)
 - [ ] Remaining game modes and overlays (EVOSEG, SAISEG, SUBSEG, SUGSEG, ENDSEG)
-- [ ] GTE commands (geometry for 3D effects)
-- [ ] Memory card saves (BIOS file API, `bu00:`)
+- [ ] Memory card saves verified in game
 - [ ] `PSX2.EXE` mode (`LoadExec`)
-- [x] Runs from the disc image alone (no BIOS, no extracted files)
 - [ ] One-time asset import from the player's own dump: no disc needed afterwards, no copyrighted data in the download
 - [ ] Windows x64 release build tested on Windows
 - [ ] US version (SLUS-01328, Digimon Digital Card Battle)
-- [ ] PC options: resolution scaling, filtering, key rebinding
+- [x] PC options: `settings.ini` (window scale, filtering, aspect, key/gamepad rebinding, volume)
+- [x] Performance overlay (FPS, game FPS, CPU/GPU load, audio queue): F3
+- [x] GTE commands implemented (unit-tested; awaiting in-game use)
+- [x] Memory card file API (`bu00:`) implemented (unit-tested; awaiting in-game use)
+- [x] CI: Linux tests + Windows .exe (manual trigger for now)
 - [ ] Enhance / upscale assets
 - [ ] Enhancements: widescreen, translation
 - [ ] Network Battle
@@ -88,10 +92,20 @@ cmake --preset linux-debug && cmake --build --preset linux-debug --target recomp
 # 6. Build: native dev loop, or a Windows x64 .exe cross-compiled from Linux
 cmake --preset linux-debug   && cmake --build --preset linux-debug && ctest --preset linux-debug
 cmake --preset windows-cross && cmake --build --preset windows-cross
-./build/linux-debug/dcb extracted/SLPS-03101/exe/boot.exe
+./build/linux-debug/dcb            # or ./dcb.sh
 ```
 
+**Game data.** `dcb [extracted-dir | disc.cue | disc.bin]`. Without an argument it uses, in order:
+`DCB_DISC`, `extracted/<serial>/` (native extracted data: `layout.txt` + `fs/` + `iso_meta.bin`,
+written by step 1), then a `.cue`/`.bin` in `disc/<serial>/` or the current directory. Extracted data
+rebuilds every CD sector on demand, so the disc image is not needed once it has been extracted.
+
 Select the target with `-DDCB_GAME_ID=SLUS-01328` (default: `SLPS-03101`).
+
+**Input debugging.** `DCB_TRACE_PAD=<n>` logs the first *n* controller-port register accesses.
+`DCB_PAD_SCRIPT="<from>-<to>:<Button>[+<Button>],..."` holds pad buttons during those frames (names
+as in `settings.ini`; `Any` = some unbound key), e.g. `DCB_HEADLESS=1 DCB_PAD_SCRIPT=2000-2000:Any`
+skips the opening movie in a headless run.
 
 ## Ghidra MCP
 
