@@ -43,9 +43,10 @@ void snapshot(const uint16_t* vram, const platform::DisplayArea& area, uint64_t 
         }
         std::fclose(f);
     }
-    // The whole 1024x512 VRAM as well: shows off-screen buffers, textures and uploaded frames.
+    // DCB_SNAPSHOT_VRAM=1: the whole 1024x512 VRAM as well (off-screen buffers, textures). 1.5 MB each.
+    static const bool with_vram = std::getenv("DCB_SNAPSHOT_VRAM") != nullptr;
     std::snprintf(name, sizeof name, "%s/vram_%05llu.ppm", dir, static_cast<unsigned long long>(frame));
-    if (FILE* f = std::fopen(name, "wb")) {
+    if (FILE* f = with_vram ? std::fopen(name, "wb") : nullptr) {
         std::fprintf(f, "P6\n1024 512\n255\n");
         for (int i = 0; i < 1024 * 512; ++i) {
             const uint16_t p = vram[i];
