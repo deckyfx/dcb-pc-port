@@ -17,6 +17,12 @@ namespace hle {
 
 namespace {
 
+/// DCB_LOG_HD=1: log each replacement, and each known texture kept as it was (with the reason).
+bool log_hd() {
+    static const bool on = std::getenv("DCB_LOG_HD") != nullptr;
+    return on;
+}
+
 // The ripper writes exactly this shape (whitespace-tolerant, no escapes needed
 // since paths are plain ASCII). A hand-rolled reader keeps psx_hle
 // dependency-free (nlohmann_json is host-tools-only in this repo's CMake).
@@ -486,6 +492,9 @@ const std::vector<uint16_t>* HdTextures::maybe_replace(int x, int y, int w, int 
             return nullptr;
         }
         // Right shape, no live palette: keep the original bytes (never guess).
+        if (log_hd())
+            std::printf("[hd] kept %s: %zu palette variants, none matches the last palette uploaded\n",
+                        it->second.front().path.c_str(), it->second.size());
         ++miss_palette_not_live_;
         ++misses_;
         return nullptr;
@@ -612,6 +621,7 @@ const std::vector<uint16_t>* HdTextures::replace(const Candidate& pick, size_t u
         // CLUT has been sniffed at any point. The fit key uses the same hash
         // so each palette gets its own correct indices.
         if (!pick.has_clut) {
+            if (log_hd()) std::printf("[hd] kept %s: no palette in the manifest\n", pick.path.c_str());
             ++miss_no_palette_;
             ++misses_;
             return nullptr;
@@ -619,6 +629,7 @@ const std::vector<uint16_t>* HdTextures::replace(const Candidate& pick, size_t u
         key.clut = pick.clut;
         const auto cache = clut_cache_.find(pick.clut);
         if (cache == clut_cache_.end()) {
+            if (log_hd()) std::printf("[hd] kept %s: its palette has not been uploaded yet\n", pick.path.c_str());
             ++miss_palette_not_live_;
             ++misses_;
             return nullptr;
@@ -627,6 +638,9 @@ const std::vector<uint16_t>* HdTextures::replace(const Candidate& pick, size_t u
         per = pick.bpp == 4 ? 16 : 256;  // entries per palette row
         // NOTE: only single-row palettes are handled (see below).
         if (pal_ptr->size() != per) {
+            if (log_hd())
+                std::printf("[hd] kept %s: palette upload has %zu entries, a %d-bit image uses %zu per row\n",
+                            pick.path.c_str(), pal_ptr->size(), pick.bpp, per);
             ++miss_palette_shape_;
             ++misses_;
             return nullptr;
@@ -704,9 +718,8 @@ const std::vector<uint16_t>* HdTextures::replace(const Candidate& pick, size_t u
         }
     }
     ++hits_;
-    // DCB_LOG_HD=1: log every fresh replacement (repeats come from the fit cache and stay quiet).
-    static const bool log_hd = std::getenv("DCB_LOG_HD") != nullptr;
-    if (log_hd)
+    // Fresh replacements only: repeats come from the fit cache and stay quiet.
+    if (log_hd())
         std::printf("[hd] replaced %s (%dx%d, %d-bit, from a %dx%d PNG)\n", pick.path.c_str(), pick.w, pick.h,
                     pick.bpp, png_w, png_h);
     // Cache the fitted result; return the cached copy so the pointer stays
