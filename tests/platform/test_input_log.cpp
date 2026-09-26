@@ -175,6 +175,51 @@ void test_session_replay_then_host() {
     fs::remove(path);
 }
 
+void test_rewind_after_state_load() {
+    // A save state loaded at frame 8 takes the game back to frame 3: the recording forgets
+    // frames 3..7 and continues from 3; a finished replay resumes when 3 is inside it again.
+    const InputRecording rec = must_parse("DCB-INPUT 1 SLPS-03101\n0 FFFF\n2 FFF7\n4 FFFF A\nend 5\n");
+    const fs::path path = temp_file("rewind.txt");
+    {
+        InputLog log(rec, std::make_unique<InputRecorder>(path, kGame), false);
+        const auto run = [&](uint64_t from, uint64_t to, uint16_t host) {
+            for (uint64_t f = from; f < to; ++f) {
+                uint16_t pad = host;
+                bool any = false;
+                log.apply(f, pad, any);
+            }
+        };
+        run(0, 8, pressed(Circle));  // replay 0-4, then host input (Circle) 5-7
+        CHECK(!log.replaying());
+        log.rewind(3);
+        CHECK(log.replaying());  // frames 3 and 4 come from the replay again
+        run(3, 7, pressed(Cross));
+    }
+    const InputRecording again = must_parse(read_file(path));
+    CHECK(again.end_frame() == 7);
+    CHECK(again.at(1)->pad == 0xFFFF);
+    CHECK(again.at(3)->pad == pressed(Start));
+    CHECK(again.at(4) == (InputState{0xFFFF, true}));
+    CHECK(again.at(5)->pad == pressed(Cross));  // not the Circle of the abandoned timeline
+    CHECK(again.at(6)->pad == pressed(Cross));
+    fs::remove(path);
+
+    // Rewinding before anything was recorded starts the log over; rewinding forward is a no-op.
+    const fs::path path2 = temp_file("rewind0.txt");
+    {
+        InputRecorder r(path2, kGame);
+        r.record(0, InputState{pressed(Square), false});
+        r.record(1, InputState{0xFFFF, false});
+        r.rewind(5);
+        r.rewind(0);
+        CHECK(r.events_written() == 0);
+        r.record(0, InputState{pressed(Up), false});
+    }
+    const InputRecording fresh = must_parse(read_file(path2));
+    CHECK(fresh.events().size() == 1 && fresh.at(0)->pad == pressed(Up));
+    fs::remove(path2);
+}
+
 }  // namespace
 
 int main() {
@@ -184,6 +229,7 @@ int main() {
     test_truncated_log();
     test_rejects_bad_files();
     test_session_replay_then_host();
+    test_rewind_after_state_load();
     std::printf("input_log: all tests passed\n");
     return 0;
 }

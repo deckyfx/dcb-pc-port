@@ -9,6 +9,7 @@
 #include "first_run.hpp"
 #include "input_log.hpp"
 #include "platform.hpp"
+#include "save_states.hpp"
 #include "settings.hpp"
 #include "trainer.hpp"
 
@@ -166,10 +167,20 @@ int main(int argc, char** argv) {
         // Host work after each game frame (the game is suspended at its VBLANK): input for the
         // next frame, present, audio, overlay numbers, debug dumps.
         platform::DisplayArea area;
+        const auto read_display = [&] {
+            const hle::Gpu::Display d = mmio.gpu().display();
+            area.x = d.x;
+            area.y = d.y;
+            area.width = d.width;
+            area.height = d.height;
+            area.rgb24 = d.rgb24;
+            area.enabled = d.enabled;
+        };
+        dcb::HostFrameState frame_state;  // guest-visible host values: part of every save state
         const auto guest_frame = [&] {
             // Input. While a movie plays (the MDEC is busy), any key or button skips it: the game
             // itself only accepts Start, so a press becomes a short Start tap.
-            static uint64_t pad_frame = 0, mdec_seen = 0, movie_until = 0, skip_until = 0;
+            auto& [pad_frame, mdec_seen, movie_until, skip_until] = frame_state;
             bool any_press = host->take_any_press();
             uint16_t pad = static_cast<uint16_t>(host->pad_buttons(0) & scripted_pad(pad_frame, &any_press));
             if (mmio.mdec_transfers() != mdec_seen) {
@@ -189,13 +200,7 @@ int main(int argc, char** argv) {
                              static_cast<unsigned long long>(pad_frame), sent_seen);
             }
             ++pad_frame;
-            const hle::Gpu::Display d = mmio.gpu().display();
-            area.x = d.x;
-            area.y = d.y;
-            area.width = d.width;
-            area.height = d.height;
-            area.rgb24 = d.rgb24;
-            area.enabled = d.enabled;
+            read_display();
             const auto present_start = std::chrono::steady_clock::now();
             host->present(mmio.gpu().vram(), area);
             // Performance overlay: once per second, turn the counters into rates and shares.
@@ -243,6 +248,7 @@ int main(int argc, char** argv) {
         // The host loop: the game runs on its own fibers, one frame per resume_guest(), and this
         // thread owns everything in between (docs/HOST_MAIN_LOOP.md).
         system.start(exe.pc0);
+        dcb::SaveStates states({machine, mmio, bios, system}, frame_state, input_log, *host);
         bool paused = false, frozen = false;  // frozen: the host held the game (pause, trainer panel)
         for (;;) {
             if (!host->pump_events()) {
@@ -250,6 +256,10 @@ int main(int argc, char** argv) {
                 break;
             }
             const uint32_t commands = host->take_commands();
+            if (states.handle(commands)) {  // save states: between frames, also while paused
+                read_display();
+                host->present(mmio.gpu().vram(), area);
+            }
             if (commands & platform::kTogglePause) {
                 paused = !paused;
                 host->set_paused(paused);
@@ -267,6 +277,11 @@ int main(int argc, char** argv) {
                 break;
             }
             guest_frame();
+            states.frame_done();
+            if (states.exit_requested()) {
+                std::printf("[dcb] DCB_EXIT_AT: stopping after %s frames\n", std::getenv("DCB_EXIT_AT"));
+                break;
+            }
             // After a hold or while unthrottled, line the clocks up instead of sleeping off the time
             // gained or rushing to make up the time lost.
             if (paused || frozen || host->fast_forward()) system.resync_pacing();

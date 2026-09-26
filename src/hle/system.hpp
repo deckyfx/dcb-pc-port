@@ -56,8 +56,9 @@ public:
     const std::string& error() const { return error_; }
     /// Wait at a frame boundary so the game runs at 59.94 fps (no-op with DCB_FAST=1). Host side.
     void pace();
-    /// Line the pacing clock up with the game's clock, after running unthrottled (fast-forward) or
-    /// paused, so pace() neither sleeps off the time gained nor rushes to make up a gap.
+    /// Line the pacing clock up with the game's clock, after running unthrottled (fast-forward),
+    /// paused, or when guest time jumped (a state was loaded), so pace() neither sleeps off the
+    /// time gained nor rushes to make up a gap.
     void resync_pacing();
 
     /// Whether a save state can be taken now: the game is suspended at a frame boundary, every
@@ -68,11 +69,9 @@ public:
     /// registers). Host side, at a frame boundary only (chunk "SYS ").
     void save_state(psx::StateWriter& w) const;
     /// Replace the tasks with the saved ones: their fibers resume on the same stack addresses.
-    /// The whole chunk is read and checked before anything changes. Call reset_pacing() once
+    /// The whole chunk is read and checked before anything changes. Call resync_pacing() once
     /// the CPU state (guest time) is loaded too (hle::load_guest does).
     void load_state(psx::StateReader& r);
-    /// Guest time jumped (a state was loaded): pace from here instead of catching up or sleeping.
-    void reset_pacing();
     /// The live tasks' cookies, e.g. "3 tasks: DCB00000 DCB00004* DCB00007" (* = running), for logs.
     std::string describe_tasks() const;
 

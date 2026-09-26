@@ -123,6 +123,8 @@ public:
                     // held state is read from key_held_ by fast_forward()
                 } else if (!ev.key.repeat && bound(settings_.scale_mode_keys, ev.key.scancode)) {
                     toggle_scale_mode();
+                } else if (const uint32_t state = state_command(ev.key.scancode)) {
+                    if (!ev.key.repeat) commands_ |= state;
                 } else if (!ev.key.repeat) {
                     any_press_ = true;
                 }
@@ -188,6 +190,7 @@ public:
         }
         if (paused_) draw_label("PAUSED");
         else if (fast_forward()) draw_label("FF >>");
+        draw_message();
         if (overlay_visible_) draw_overlay();
         if (trainer_ != nullptr && trainer_->is_open()) trainer_draw(renderer_, *trainer_);
         SDL_RenderPresent(renderer_);
@@ -262,6 +265,50 @@ public:
     static bool bound(const std::vector<int>& keys, SDL_Scancode sc) {
         return std::find(keys.begin(), keys.end(), static_cast<int>(sc)) != keys.end();
     }
+
+    // ---- Save states: hotkeys and the on-screen notice ------------------------------------------
+
+    /// HostCommand bit for a save-state hotkey, or 0.
+    uint32_t state_command(SDL_Scancode sc) const {
+        if (bound(settings_.save_state_keys, sc)) return kSaveState;
+        if (bound(settings_.load_state_keys, sc)) return kLoadState;
+        if (bound(settings_.state_slot_keys, sc)) return kNextStateSlot;
+        return 0;
+    }
+
+    void show_message(const std::string& text) override {
+        message_ = text;
+        message_until_ = SDL_GetTicks() + kMessageMs;
+    }
+
+    void clear_audio() override {
+        if (audio_ != nullptr) SDL_ClearAudioStream(audio_);
+    }
+
+    /// The last notice, below the PAUSED label, drawn the same way, until it expires.
+    void draw_message() {
+        if (message_.empty()) return;
+        if (SDL_GetTicks() >= message_until_) {
+            message_.clear();
+            return;
+        }
+        int ww = 0, wh = 0;
+        SDL_GetRenderOutputSize(renderer_, &ww, &wh);
+        const float scale = std::max(1.0f, static_cast<float>(wh) / 240.0f);
+        SDL_SetRenderScale(renderer_, scale, scale);
+        SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 170);
+        const float y = paused_ ? 24.0f : 4.0f;
+        const SDL_FRect panel{4.0f, y, 8.0f * static_cast<float>(message_.size()) + 8.0f, 16.0f};
+        SDL_RenderFillRect(renderer_, &panel);
+        SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 255);
+        SDL_RenderDebugText(renderer_, 8.0f, y + 4.0f, message_.c_str());
+        SDL_SetRenderScale(renderer_, 1.0f, 1.0f);
+    }
+
+    static constexpr uint64_t kMessageMs = 2000;
+    std::string message_;
+    uint64_t message_until_ = 0;
 
     void draw_loading() {
         if (++blank_frames_ < 30) return;

@@ -498,9 +498,4 @@ std::string System::describe_tasks() const {
     return s;
 }
 
-void System::reset_pacing() {
-    const auto guest = std::chrono::duration<double>(static_cast<double>(ctx_.cycles) / kCpuHz);
-    start_ = std::chrono::steady_clock::now() - std::chrono::duration_cast<std::chrono::steady_clock::duration>(guest);
-}
-
 }  // namespace hle

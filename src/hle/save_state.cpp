@@ -69,10 +69,10 @@ void load_guest(const Guest& g, std::span<const uint8_t> state, const std::funct
             std::fprintf(stderr, "[state] cannot restore the machine after a failed load (%s): %s\n", e.what(), e2.what());
             std::abort();
         }
-        g.system.reset_pacing();
+        g.system.resync_pacing();
         throw psx::StateError(e.what());
     }
-    g.system.reset_pacing();
+    g.system.resync_pacing();
 }
 
 }  // namespace hle

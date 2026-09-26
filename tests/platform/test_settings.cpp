@@ -202,6 +202,18 @@ void test_hotkeys() {
     CHECK(s.pause_keys == std::vector<int>{'Q' - 'A'});
     CHECK(s.frame_advance_keys == std::vector<int>{'N' - 'A'});
     CHECK(warnings.size() == 1 && warnings[0].find("frame_advance") != std::string::npos);
+
+    // Save-state keys: F5/F7/F6 by default (unknown to the fake resolver: unbound), configurable.
+    warnings.clear();
+    s = parse_settings(IniDocument::parse("[hotkeys]\nsave_state = S\nload_state = L\nstate_slot = K\n"), r, warnings);
+    CHECK(warnings.empty());
+    CHECK(s.save_state_keys == std::vector<int>{'S' - 'A'});
+    CHECK(s.load_state_keys == std::vector<int>{'L' - 'A'});
+    CHECK(s.state_slot_keys == std::vector<int>{'K' - 'A'});
+    const IniDocument defaults = default_settings_ini();
+    CHECK(defaults.get("hotkeys", "save_state") == std::optional<std::string>("F5"));
+    CHECK(defaults.get("hotkeys", "load_state") == std::optional<std::string>("F7"));
+    CHECK(defaults.get("hotkeys", "state_slot") == std::optional<std::string>("F6"));
 }
 
 void test_binding_lists() {
