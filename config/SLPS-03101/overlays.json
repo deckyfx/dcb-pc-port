@@ -1,0 +1,48 @@
+{
+  "container": "P.DRV",
+  "load_address": "0x801E0B30",
+  "segments": [
+    {
+      "name": "ENDSEG",
+      "file_offset": "0x800",
+      "size": "0x346C",
+      "built": "2000-11-12"
+    },
+    {
+      "name": "EVOSEG",
+      "file_offset": "0x4000",
+      "size": "0x17914",
+      "built": "2000-11-12"
+    },
+    {
+      "name": "KAWSEG",
+      "file_offset": "0x1C000",
+      "size": "0x1EC90",
+      "built": "2000-11-12"
+    },
+    {
+      "name": "OPENSEG",
+      "file_offset": "0x3B000",
+      "size": "0x1D7B8",
+      "built": "2000-11-12"
+    },
+    {
+      "name": "SAISEG",
+      "file_offset": "0x58800",
+      "size": "0x17F80",
+      "built": "2000-11-12"
+    },
+    {
+      "name": "SUBSEG",
+      "file_offset": "0x70800",
+      "size": "0x17618",
+      "built": "2000-11-12"
+    },
+    {
+      "name": "SUGSEG",
+      "file_offset": "0x88000",
+      "size": "0x11AF0",
+      "built": "2000-11-12"
+    }
+  ]
+}

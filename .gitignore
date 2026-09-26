@@ -1,0 +1,21 @@
+# Copyrighted inputs and everything derived from them: never commit.
+/disc/
+/bios/
+/extracted/
+/assets/raw/*
+/assets/converted/*
+/generated/*
+!**/.gitkeep
+
+# Ghidra databases (share symbols via ghidra/symbols exports instead)
+/ghidra/project/*
+*.lock
+*.lock~
+
+# Build
+/build/
+/out/
+compile_commands.json
+.cache/
+__pycache__/
+/logs/
