@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <string>
+#include <vector>
 
 namespace hle {
 
@@ -20,8 +22,14 @@ public:
     uint32_t sector_count() const { return sectors_; }
     const std::filesystem::path& path() const { return bin_; }
 
-    /// Find a disc image for a serial: DCB_DISC, else the first .cue/.bin under disc/<serial>/.
-    static std::filesystem::path locate(const std::string& serial);
+    /// Read a file from the disc's root directory (ISO9660 name without ";1"); empty if absent.
+    std::vector<uint8_t> read_root_file(const std::string& name);
+    /// The boot executable named by SYSTEM.CNF (BOOT = cdrom:\\NAME;1), read from the disc.
+    std::vector<uint8_t> read_boot_exe();
+
+    /// Find a disc image: `hint` (a .cue/.bin given on the command line), DCB_DISC, the first
+    /// .cue/.bin under disc/<serial>/, then the first .cue/.bin in the current directory.
+    static std::filesystem::path locate(const std::string& serial, const std::filesystem::path& hint = {});
 
 private:
     std::filesystem::path bin_;

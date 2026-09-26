@@ -10,6 +10,7 @@
 
 #include <psx/runtime.hpp>
 
+#include <cctype>
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
@@ -78,8 +79,14 @@ int main(int argc, char** argv) {
     std::setvbuf(stdout, nullptr, _IOLBF, 0);
     arm_watchdog();
 
-    const std::filesystem::path exe_path =
-        argc > 1 ? argv[1] : std::filesystem::path("extracted") / DCB_GAME_ID / "exe" / "boot.exe";
+    // Usage: dcb [disc.cue|disc.bin]   (a PS-EXE path is also accepted, for development)
+    std::filesystem::path disc_hint, exe_override;
+    if (argc > 1) {
+        const std::filesystem::path arg = argv[1];
+        std::string ext = arg.extension().string();
+        for (char& ch : ext) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        (ext == ".exe" || arg.filename().string().find("SLPS_") == 0 ? exe_override : disc_hint) = arg;
+    }
 
     try {
         static psx::Machine machine;  // 2 MiB of guest RAM lives on the heap; the machine is long-lived
@@ -88,7 +95,9 @@ int main(int argc, char** argv) {
         hle::System system(machine.ctx(), mmio, bios);
         bios.attach(&system);
         bios.insert_cards(std::filesystem::path("saves") / DCB_GAME_ID);
-        const auto disc_path = hle::Disc::locate(DCB_GAME_ID);
+        const auto disc_path = hle::Disc::locate(DCB_GAME_ID, disc_hint);
+        // The boot executable's code is compiled in; its data comes from the disc, like everything else.
+        const std::vector<uint8_t> boot = exe_override.empty() ? hle::Disc(disc_path).read_boot_exe() : std::vector<uint8_t>{};
         mmio.insert_disc(std::make_unique<hle::Disc>(disc_path));
         std::printf("[dcb] disc %s\n", disc_path.string().c_str());
         mmio.attach(&system, machine.ctx());
@@ -126,7 +135,7 @@ int main(int argc, char** argv) {
             snapshot(mmio.gpu().vram(), area, frame++);
         });
 
-        const psx::ExeInfo exe = machine.load_exe(exe_path);
+        const psx::ExeInfo exe = exe_override.empty() ? machine.load_exe(boot) : machine.load_exe(exe_override);
         std::printf("[dcb] %s: text %08X+%X, entry %08X, %u recompiled functions\n", DCB_GAME_ID, exe.t_addr,
                     exe.t_size, exe.pc0, recomp_function_count);
 

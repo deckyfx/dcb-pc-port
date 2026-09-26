@@ -26,8 +26,8 @@ while getopts "rtgbws:h" opt; do
     esac
 done
 
-[[ -f "extracted/$SERIAL/exe/boot.exe" ]] || {
-    echo "error: extracted/$SERIAL missing. Run: python3 tools/disc/extract_disc.py <cue> -o extracted/$SERIAL" >&2
+[[ -d "disc/$SERIAL" ]] || {
+    echo "error: put the disc image (.cue + .bin) in disc/$SERIAL/" >&2
     exit 1
 }
 
@@ -47,11 +47,11 @@ fi
 (( TRACE )) && export DCB_TRACE_BIOS=1
 mkdir -p logs
 if (( GDB )); then
-    exec gdb -q -ex run -ex bt --args ./build/linux-debug/dcb "extracted/$SERIAL/exe/boot.exe"
+    exec gdb -q -ex run -ex bt --args ./build/linux-debug/dcb
 fi
 # Keep a copy of every run in logs/run.log while still printing to the terminal.
 set +e
-./build/linux-debug/dcb "extracted/$SERIAL/exe/boot.exe" 2>&1 | tee logs/run.log
+./build/linux-debug/dcb 2>&1 | tee logs/run.log
 status=${PIPESTATUS[0]}
 (( status == 134 )) && echo "-- stopped at an unimplemented feature (see last lines above) --"
 exit "$status"

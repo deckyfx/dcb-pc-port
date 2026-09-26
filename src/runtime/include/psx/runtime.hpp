@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace psx {
 
@@ -47,6 +48,8 @@ public:
 
     /// Copy a PS-EXE's load image into RAM, clear BSS, and seed pc/gp/sp. Throws on malformed input.
     ExeInfo load_exe(const std::filesystem::path& path);
+    /// Same, from a PS-EXE image already in memory (e.g. read straight from the disc).
+    ExeInfo load_exe(const std::vector<uint8_t>& data);
 
     void set_mmio_handler(MmioHandler* handler) { mmio_ = handler; }
     void set_bios_handler(BiosHandler* handler) { bios_ = handler; }

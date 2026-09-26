@@ -40,7 +40,7 @@
     {
       "label": "dcb: run",
       "type": "shell",
-      "command": "./build/linux-debug/dcb extracted/SLPS-03101/exe/boot.exe",
+      "command": "./build/linux-debug/dcb",
       "dependsOn": "dcb: build",
       "problemMatcher": []
     },

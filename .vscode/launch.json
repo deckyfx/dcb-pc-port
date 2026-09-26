@@ -10,7 +10,7 @@
       "type": "lldb",
       "request": "launch",
       "program": "${workspaceFolder}/build/linux-debug/dcb",
-      "args": ["extracted/SLPS-03101/exe/boot.exe"],
+      "args": [],
       "cwd": "${workspaceFolder}",
       "preLaunchTask": "dcb: build",
       "initCommands": [

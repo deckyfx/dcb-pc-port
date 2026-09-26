@@ -29,6 +29,8 @@ executable: MIPS R3000A → C, with native HLE of the kernel and Psy-Q libraries
 - [ ] GTE commands (geometry for 3D effects)
 - [ ] Memory card saves (BIOS file API, `bu00:`)
 - [ ] `PSX2.EXE` mode (`LoadExec`)
+- [x] Runs from the disc image alone (no BIOS, no extracted files)
+- [ ] One-time asset import from the player's own dump: no disc needed afterwards, no copyrighted data in the download
 - [ ] Windows x64 release build tested on Windows
 - [ ] US version (SLUS-01328, Digimon Digital Card Battle)
 - [ ] PC options: resolution scaling, filtering, key rebinding
