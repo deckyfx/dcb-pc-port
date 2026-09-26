@@ -146,6 +146,8 @@ void System::poll(PsxContext& ctx) {
     if (due > vblanks_) {
         vblanks_ = due;  // coalesce: a late poll delivers one VBLANK, like a missed frame
         mmio_.raise_irq(0);
+        mmio_.vblank();
+        if (on_vblank_) on_vblank_();
         pace();
     }
     deliver(ctx);

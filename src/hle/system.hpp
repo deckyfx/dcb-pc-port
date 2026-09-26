@@ -9,6 +9,7 @@
 #include <chrono>
 #include <csetjmp>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <memory>
 
@@ -35,6 +36,9 @@ public:
 
     /// A native wait (no guest code runs): fast-forward guest time to the next VBLANK and poll.
     void idle(PsxContext& ctx);
+
+    /// Host work once per guest frame (present, input), run at each VBLANK before pacing.
+    void on_vblank(std::function<void()> fn) { on_vblank_ = std::move(fn); }
 
     /// B0:17: leave the interrupt handler and resume the interrupted code.
     [[noreturn]] void return_from_exception();
@@ -99,6 +103,7 @@ private:
     static void task_main(void* arg);
 
     bool pacing_ = true;  ///< DCB_FAST=1 runs unthrottled
+    std::function<void()> on_vblank_;
 
     uint64_t cycles_per_vblank() const { return static_cast<uint64_t>(kCpuHz / kVblankHz); }
     void pace();

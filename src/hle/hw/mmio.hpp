@@ -5,6 +5,8 @@
 // Reference: psx-spx "I/O Map", "Interrupts", "DMA Channels", "Timers", "GPU I/O Ports".
 
 #include "cdrom/cdrom.hpp"
+#include "gpu/gpu.hpp"
+#include "mdec/mdec.hpp"
 #include "pad/sio.hpp"
 #include "spu/spu.hpp"
 
@@ -35,6 +37,10 @@ public:
     void set_pad_buttons(unsigned port, uint16_t buttons) { sio_.set_buttons(port, buttons); }
     /// Advance time-driven devices (CD-ROM responses and sectors) to guest time `cycles`.
     void tick(uint64_t cycles) { cdrom_.tick(cycles); }
+    /// Once per frame: the GPU's interlace field flips.
+    void vblank() { gpu_.vblank(); }
+
+    const Gpu& gpu() const { return gpu_; }
 
     void attach(System* system, PsxContext& ctx) {
         system_ = system;
@@ -58,20 +64,16 @@ private:
     Spu spu_;
     CdRom cdrom_;
     Sio0 sio_;
-    // GPU ports
-    uint32_t gpuread_ = 0;
-    uint32_t gp1_display_mode_ = 0;
-    bool display_disabled_ = true;
+    Gpu gpu_;
+    Mdec mdec_;
     // Everything else: plain storage so read-after-write works
     std::map<uint32_t, uint32_t> misc_;
     // Log each unhandled (address, direction) only a few times
     std::map<std::pair<uint32_t, bool>, unsigned> logged_;
 
-    uint32_t gpustat() const;
     uint64_t timer_clock(unsigned index) const;
     uint32_t timer_counter(unsigned index) const;
     void gp0(uint32_t word);
-    void gp1(uint32_t word);
     void dma_write(unsigned channel, unsigned reg, uint32_t value);
     void dma_run(unsigned channel);
     void dma_gpu_linked_list(uint32_t addr);

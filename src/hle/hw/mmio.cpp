@@ -14,6 +14,7 @@ constexpr uint32_t kIStat = 0x1F801070, kIMask = 0x1F801074;
 constexpr uint32_t kDmaBase = 0x1F801080, kDpcr = 0x1F8010F0, kDicr = 0x1F8010F4;
 constexpr uint32_t kTimerBase = 0x1F801100;
 constexpr uint32_t kGp0 = 0x1F801810, kGp1 = 0x1F801814;
+constexpr uint32_t kMdecData = 0x1F801820, kMdecControl = 0x1F801824;
 
 constexpr uint32_t kChcrBusy = 1u << 24;        // start/busy
 constexpr uint32_t kChcrTrigger = 1u << 28;     // manual trigger (cleared when the transfer starts)
@@ -21,14 +22,6 @@ constexpr uint32_t kChcrTrigger = 1u << 28;     // manual trigger (cleared when 
 constexpr unsigned kLogLimit = 4;
 
 }  // namespace
-
-uint32_t Mmio::gpustat() const {
-    // Always ready: bit 26 cmd word, 27 VRAM->CPU, 28 DMA block. Display-enable is bit 23 (1 = off).
-    uint32_t s = (1u << 26) | (1u << 27) | (1u << 28);
-    s |= gp1_display_mode_;  // stored already in GPUSTAT bit positions (16-22)
-    if (display_disabled_) s |= 1u << 23;
-    return s;
-}
 
 Mmio::Mmio() : cdrom_([this] { raise_irq(2); }), sio_([this] { raise_irq(7); }) {}
 
@@ -51,30 +44,8 @@ uint32_t Mmio::timer_counter(unsigned index) const {
 }
 
 void Mmio::gp0(uint32_t word) {
-    (void)word;  // Drawing commands go to the GPU layer once it exists.
-}
-
-void Mmio::gp1(uint32_t word) {
-    const uint32_t cmd = word >> 24;
-    switch (cmd) {
-        case 0x00:  // reset GPU
-            display_disabled_ = true;
-            gp1_display_mode_ = 0;
-            break;
-        case 0x03:  // display enable (bit 0: 1 = off)
-            display_disabled_ = word & 1u;
-            break;
-        case 0x08:  // display mode
-            gp1_display_mode_ = (word & 0x3Fu) << 17 | (word & 0x40u) << 10;
-            break;
-        case 0x10: case 0x11: case 0x12: case 0x13: case 0x14: case 0x15: case 0x16: case 0x17:
-        case 0x18: case 0x19: case 0x1A: case 0x1B: case 0x1C: case 0x1D: case 0x1E: case 0x1F:
-            // GPU info: index 7 = GPU version (2 on the retail GPUs Psy-Q targets).
-            gpuread_ = (word & 7u) == 7u ? 2u : 0u;
-            break;
-        default:
-            break;
-    }
+    gpu_.gp0(word);
+    if (gpu_.irq_pending()) raise_irq(1);  // GP0(1Fh); acknowledged through GP1(02h)
 }
 
 void Mmio::dma_write(unsigned channel, unsigned reg, uint32_t value) {
@@ -115,13 +86,25 @@ void Mmio::dma_run(unsigned channel) {
                                : (bcr & 0xFFFFu) * (bcr >> 16);
 
     switch (channel) {
+        case 0: {  // RAM -> MDEC (compressed macroblocks)
+            std::vector<uint32_t> buf(words);
+            for (uint32_t i = 0, a = madr; i < words; ++i, a += static_cast<uint32_t>(step)) buf[i] = psx_read32(ctx_, a);
+            mdec_.dma_write(buf.data(), words);
+            return;
+        }
+        case 1: {  // MDEC -> RAM (decoded pixels)
+            std::vector<uint32_t> buf(words);
+            mdec_.dma_read(buf.data(), words);
+            for (uint32_t i = 0, a = madr; i < words; ++i, a += static_cast<uint32_t>(step)) psx_write32(ctx_, a, buf[i]);
+            return;
+        }
         case 2:  // GPU
             if (sync == 2) {
                 dma_gpu_linked_list(madr);
             } else if (from_ram) {
                 for (uint32_t i = 0, a = madr; i < words; ++i, a += static_cast<uint32_t>(step)) gp0(psx_read32(ctx_, a));
             } else {
-                for (uint32_t i = 0, a = madr; i < words; ++i, a += static_cast<uint32_t>(step)) psx_write32(ctx_, a, gpuread_);
+                for (uint32_t i = 0, a = madr; i < words; ++i, a += static_cast<uint32_t>(step)) psx_write32(ctx_, a, gpu_.gpuread());
             }
             return;
         case 3: {  // CD-ROM -> RAM
@@ -167,8 +150,10 @@ uint32_t Mmio::read(uint32_t phys, unsigned width) {
         case kIMask: return i_mask_;
         case kDpcr: return dpcr_;
         case kDicr: return dicr_;
-        case kGp0: return gpuread_;
-        case kGp1: return gpustat();
+        case kGp0: return gpu_.gpuread();
+        case kGp1: return gpu_.gpustat();
+        case kMdecData: return mdec_.read_data();
+        case kMdecControl: return mdec_.status();
         default: break;
     }
     if (phys >= CdRom::kBase && phys < CdRom::kEnd) return cdrom_.read(phys);
@@ -200,7 +185,9 @@ void Mmio::write(uint32_t phys, uint32_t value, unsigned width) {
             dicr_ = (dicr_ & 0x7F000000u & ~value) | (value & 0x00FF803Fu);
             return;
         case kGp0: gp0(value); return;
-        case kGp1: gp1(value); return;
+        case kGp1: gpu_.gp1(value); return;
+        case kMdecData: mdec_.write_command(value); return;
+        case kMdecControl: mdec_.write_control(value); return;
         default: break;
     }
     if (phys >= CdRom::kBase && phys < CdRom::kEnd) {
