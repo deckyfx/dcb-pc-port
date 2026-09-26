@@ -37,7 +37,7 @@ executable: MIPS R3000A → C, with native HLE of the kernel and Psy-Q libraries
 - [x] Performance overlay (FPS, game FPS, CPU/GPU load, audio queue): F3
 - [x] GTE commands implemented (unit-tested; awaiting in-game use)
 - [x] Memory card file API (`bu00:`) implemented (unit-tested; awaiting in-game use)
-- [x] CI: Linux tests + Windows .exe on every PR
+- [x] CI: Linux tests + Windows .exe (manual trigger for now)
 - [ ] Enhance / upscale assets
 - [ ] Enhancements: widescreen, translation
 - [ ] Network Battle
