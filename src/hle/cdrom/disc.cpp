@@ -1,5 +1,7 @@
 #include "cdrom/disc.hpp"
 
+#include "cdrom/importer.hpp"
+
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
@@ -94,7 +96,7 @@ std::unique_ptr<Disc> Disc::open(const fs::path& path) {
     return std::make_unique<ImageDisc>(path);
 }
 
-fs::path Disc::locate(const std::string& serial, const fs::path& hint) {
+fs::path Disc::find(const std::string& serial, const fs::path& hint) {
     if (!hint.empty()) return hint;
     if (const char* env = std::getenv("DCB_DISC")) return env;
     std::error_code ec;
@@ -103,29 +105,25 @@ fs::path Disc::locate(const std::string& serial, const fs::path& hint) {
     for (const fs::path& dir : {fs::path("disc") / serial, fs::current_path()}) {
         if (fs::path image = find_image(dir); !image.empty()) return image;
     }
-    throw std::runtime_error("no game data found: extract your dump into extracted/" + serial +
-                             "/ (tools/disc/extract_disc.py), pass the .cue/.bin as the first argument, put it in disc/" +
-                             serial + "/ or next to the program, or set DCB_DISC");
+    return {};
+}
+
+fs::path Disc::locate(const std::string& serial, const fs::path& hint) {
+    if (fs::path found = find(serial, hint); !found.empty()) return found;
+    throw std::runtime_error("no game data found. This program needs a dump of your own disc (" + serial +
+                             ") as .cue/.bin (raw, 2352 bytes per sector). Import it once with\n"
+                             "    dcb --import <disc.cue|disc.bin>\n"
+                             "which writes extracted/" + serial +
+                             "/ in the current directory (the image is not needed afterwards). "
+                             "Alternatively pass the .cue/.bin as the first argument, put it in disc/" + serial +
+                             "/ or next to the program, or set DCB_DISC");
 }
 
 // ---------------------------------------------------------------------------------------------
 // ImageDisc
 
 ImageDisc::ImageDisc(const fs::path& image) {
-    bin_ = image;
-    if (image.extension() == ".cue" || image.extension() == ".CUE") {
-        // First FILE entry is the data track for single-track PS1 games.
-        std::ifstream cue(image);
-        std::string line;
-        while (std::getline(cue, line)) {
-            const auto q1 = line.find('"');
-            if (line.find("FILE") != std::string::npos && q1 != std::string::npos) {
-                const auto q2 = line.find('"', q1 + 1);
-                bin_ = image.parent_path() / line.substr(q1 + 1, q2 - q1 - 1);
-                break;
-            }
-        }
-    }
+    bin_ = import::resolve_data_track(image);  // a .cue's first data track, or the image itself
     file_.open(bin_, std::ios::binary);
     if (!file_) throw std::runtime_error("cannot open disc image " + bin_.string());
     sectors_ = static_cast<uint32_t>(fs::file_size(bin_) / kRawSector);
@@ -143,7 +141,7 @@ bool ImageDisc::read(uint32_t lba, uint8_t* out) {
 
 ExtractedDisc::ExtractedDisc(const fs::path& dir) : dir_(dir) {
     std::ifstream layout(dir / "layout.txt");
-    if (!layout) throw std::runtime_error("no layout.txt in " + dir.string() + " (re-run tools/disc/extract_disc.py)");
+    if (!layout) throw std::runtime_error("no layout.txt in " + dir.string() + " (re-import the disc: dcb --import <disc.cue>)");
     std::string line;
     while (std::getline(layout, line)) {
         if (line.empty() || line[0] == '#') continue;

@@ -20,6 +20,12 @@ subheaders (channel, submode) survive for the asset tools. Tools that read only 
 per sector (bchunk, 7z, most ISO mounters) silently corrupt these files.
 
 Uses only the Python standard library.
+
+This is the developer tool. Players import their dump with the native importer instead
+(``dcb --import`` or the first-run file picker, src/hle/cdrom/importer.cpp), which writes the same
+layout.txt, iso_meta.bin and fs/ byte for byte. Keep walk_filesystem / classify / extract_file /
+write_layout in step with it (tests/import checks the parity on a synthetic disc,
+tools/disc/verify_import.sh on a real dump).
 """
 from __future__ import annotations
 
