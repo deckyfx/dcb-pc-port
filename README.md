@@ -32,7 +32,7 @@ executable: MIPS R3000A → C, with native HLE of the kernel and Psy-Q libraries
 - [ ] `PSX2.EXE` mode (`LoadExec`)
 - [x] One-time asset import from the player's own dump: no disc needed afterwards, no copyrighted data in the download (`dcb --import`, or a file picker on first run)
 - [ ] Windows x64 release build tested on Windows
-- [ ] English build: JP code + English assets from the player's US dump (SLUS-01328), research in progress
+- [ ] English build: JP code + English assets from the player's US dump (SLUS-01328) ([research and plan](docs/HYBRID_EN_ASSETS.md))
 - [x] PC options: `settings.ini` (window scale, filtering, aspect, key/gamepad rebinding, volume); resizable window, picture fits it (F8: fit / integer)
 - [x] Performance overlay (FPS, game FPS, CPU/GPU load, audio queue): F3
 - [x] Host-driven main loop: the game runs on fibers; pause (P), frame advance (N), fast-forward (hold Tab) ([design](docs/HOST_MAIN_LOOP.md))
