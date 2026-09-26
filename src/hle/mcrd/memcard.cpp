@@ -68,6 +68,18 @@ bool MemoryCard::write_frame(uint32_t frame, const uint8_t* in) {
     return true;
 }
 
+bool MemoryCard::write_frames(uint32_t first, uint32_t count, const uint8_t* in) {
+    if (first >= kFrames || count > kFrames - first) return false;
+    std::memcpy(data_.data() + first * kFrameSize, in, size_t{count} * kFrameSize);
+    save();
+    return true;
+}
+
+void MemoryCard::reformat() {
+    format();
+    save();
+}
+
 void MemoryCard::save() const {
     std::error_code ec;
     std::filesystem::create_directories(path_.parent_path(), ec);
