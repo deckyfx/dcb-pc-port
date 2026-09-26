@@ -10,7 +10,8 @@
 //   done   B0:17 ReturnFromException (-> System, leaves the native interrupt delivery)
 //   todo   B0:12 InitPAD  B0:13 StartPAD  B0:15 OutdatedPadInitAndStart
 //   part   B0:35 write (TTY fds 0/1 -> host stdout)
-//   todo   B0:32 open  B0:33 lseek  B0:34 read  B0:36 close  B0:42 firstfile  B0:43 nextfile
+//   done   B0:32 open  B0:33 lseek  B0:34 read  B0:36 close  B0:41 format  B0:42 firstfile
+//          B0:43 nextfile  B0:44 rename  B0:45 erase  B0:54/55 GetLastError   (hle::CardFs on bu00:/bu10:)
 //   done   A0:70 _bu_init  A0:AB _card_info  A0:AC _card_load  B0:4A InitCard  B0:4B StartCard
 //          B0:4C StopCard  B0:4E write_card_sector  B0:4F read_card_sector  B0:50 allow_new_card
 //          B0:5C get_card_status                   (raw .mcd images in saves/<serial>/)
@@ -73,6 +74,17 @@ Bios::Bios() {
         {key(0xB0, 0x17), &Bios::b0_return_from_exception},
         {key(0xB0, 0x5B), &Bios::b0_change_clear_pad},
         {key(0xB0, 0x35), &Bios::b0_write},
+        {key(0xB0, 0x32), &Bios::b0_open},
+        {key(0xB0, 0x33), &Bios::b0_lseek},
+        {key(0xB0, 0x34), &Bios::b0_read},
+        {key(0xB0, 0x36), &Bios::b0_close},
+        {key(0xB0, 0x41), &Bios::b0_format},
+        {key(0xB0, 0x42), &Bios::b0_firstfile},
+        {key(0xB0, 0x43), &Bios::b0_nextfile},
+        {key(0xB0, 0x44), &Bios::b0_rename},
+        {key(0xB0, 0x45), &Bios::b0_erase},
+        {key(0xB0, 0x54), &Bios::b0_get_last_error},
+        {key(0xB0, 0x55), &Bios::b0_get_last_file_error},
         {key(0xB0, 0x56), &Bios::b0_get_c0_table},
         {key(0xB0, 0x57), &Bios::b0_get_b0_table},
         {key(0xC0, 0x02), &Bios::c0_sys_enq_int_rp},
@@ -172,9 +184,13 @@ void Bios::b0_get_b0_table(PsxContext& ctx) { ctx.r[kV0] = 0x00000874u; }
 
 void Bios::b0_write(PsxContext& ctx) {
     const uint32_t fd = ctx.r[kA0], buf = ctx.r[kA1], len = ctx.r[kA2];
-    if (fd > 1) {
-        std::fprintf(stderr, "[bios] write(fd=%u) to a file is not implemented yet (ra=%08X)\n", fd, ctx.r[kRa]);
-        std::abort();
+    if (fd > 1) {  // a memory-card file
+        std::vector<uint8_t> data(len);
+        for (uint32_t i = 0; i < len; ++i) data[i] = psx_read8(&ctx, buf + i);
+        const int n = card_fs_.write(static_cast<int>(fd), data.data(), len);
+        ctx.r[kV0] = static_cast<uint32_t>(n);
+        file_async_event(ctx);
+        return;
     }
     std::string text(len, '\0');
     for (uint32_t i = 0; i < len; ++i) text[i] = static_cast<char>(psx_read8(&ctx, buf + i));
@@ -196,7 +212,79 @@ constexpr uint32_t kCardDone = 0x0004u, kCardTimeout = 0x0100u, kCardError = 0x8
 void Bios::insert_cards(const std::filesystem::path& save_dir) {
     cards_[0] = std::make_unique<MemoryCard>(save_dir / "card1.mcd");
     cards_[1].reset();
+    card_fs_.set_slot(0, cards_[0].get());
+    card_fs_.set_slot(1, nullptr);
 }
+
+// ---------------------------------------------------------------------------------------------
+// Memory-card files (bu00:/bu10:) through hle::CardFs. Guest strings and buffers are copied in and
+// out; FASYNC operations also deliver a HwCARD completion event.
+
+namespace {
+std::string guest_string(PsxContext& ctx, uint32_t addr, size_t max = 128) {
+    std::string out;
+    for (size_t i = 0; i < max; ++i) {
+        const char ch = static_cast<char>(psx_read8(&ctx, addr + static_cast<uint32_t>(i)));
+        if (!ch) break;
+        out.push_back(ch);
+    }
+    return out;
+}
+void put_dirent(PsxContext& ctx, uint32_t addr, const CardFs::DirEntry& e) {
+    const auto* bytes = reinterpret_cast<const uint8_t*>(&e);
+    for (uint32_t i = 0; i < sizeof e; ++i) psx_write8(&ctx, addr + i, bytes[i]);
+}
+}  // namespace
+
+void Bios::file_async_event(PsxContext& ctx) {
+    if (card_fs_.last_was_async()) deliver_event(ctx, kHwCard, card_fs_.async_spec());
+}
+
+void Bios::b0_open(PsxContext& ctx) {
+    ctx.r[kV0] = static_cast<uint32_t>(card_fs_.open(guest_string(ctx, ctx.r[kA0]), ctx.r[kA1]));
+}
+
+void Bios::b0_lseek(PsxContext& ctx) {
+    ctx.r[kV0] = static_cast<uint32_t>(
+        card_fs_.lseek(static_cast<int>(ctx.r[kA0]), static_cast<int32_t>(ctx.r[kA1]), static_cast<int>(ctx.r[kA2])));
+}
+
+void Bios::b0_read(PsxContext& ctx) {
+    const uint32_t len = ctx.r[kA2];
+    std::vector<uint8_t> data(len);
+    const int n = card_fs_.read(static_cast<int>(ctx.r[kA0]), data.data(), len);
+    for (int i = 0; i < n; ++i) psx_write8(&ctx, ctx.r[kA1] + static_cast<uint32_t>(i), data[static_cast<size_t>(i)]);
+    ctx.r[kV0] = static_cast<uint32_t>(n);
+    file_async_event(ctx);
+}
+
+void Bios::b0_close(PsxContext& ctx) { ctx.r[kV0] = static_cast<uint32_t>(card_fs_.close(static_cast<int>(ctx.r[kA0]))); }
+
+void Bios::b0_format(PsxContext& ctx) { ctx.r[kV0] = card_fs_.format(guest_string(ctx, ctx.r[kA0])) ? 1 : 0; }
+
+void Bios::b0_firstfile(PsxContext& ctx) {
+    CardFs::DirEntry e{};
+    const bool ok = card_fs_.firstfile(guest_string(ctx, ctx.r[kA0]), e);
+    if (ok) put_dirent(ctx, ctx.r[kA1], e);
+    ctx.r[kV0] = ok ? ctx.r[kA1] : 0;
+}
+
+void Bios::b0_nextfile(PsxContext& ctx) {
+    CardFs::DirEntry e{};
+    const bool ok = card_fs_.nextfile(e);
+    if (ok) put_dirent(ctx, ctx.r[kA0], e);
+    ctx.r[kV0] = ok ? ctx.r[kA0] : 0;
+}
+
+void Bios::b0_rename(PsxContext& ctx) {
+    ctx.r[kV0] = card_fs_.rename(guest_string(ctx, ctx.r[kA0]), guest_string(ctx, ctx.r[kA1])) ? 1 : 0;
+}
+
+void Bios::b0_erase(PsxContext& ctx) { ctx.r[kV0] = card_fs_.erase(guest_string(ctx, ctx.r[kA0])) ? 1 : 0; }
+
+void Bios::b0_get_last_error(PsxContext& ctx) { ctx.r[kV0] = card_fs_.last_error(); }
+
+void Bios::b0_get_last_file_error(PsxContext& ctx) { ctx.r[kV0] = card_fs_.file_error(static_cast<int>(ctx.r[kA0])); }
 
 MemoryCard* Bios::card(uint32_t port) { return cards_[(port >> 4) & 1u].get(); }
 

@@ -5,6 +5,7 @@
 // The game's full BIOS surface (40 functions, found by scanning its call stubs) is listed at the
 // top of bios.cpp with its implementation status.
 
+#include "mcrd/card_fs.hpp"
 #include "mcrd/memcard.hpp"
 
 #include <psx/runtime.hpp>
@@ -74,6 +75,7 @@ private:
     bool trace_ = false;
     System* system_ = nullptr;
     std::array<std::unique_ptr<MemoryCard>, 2> cards_;
+    CardFs card_fs_{{nullptr, nullptr}};  ///< BIOS file API on bu00:/bu10:
 
     Event* event(uint32_t handle);
     MemoryCard* card(uint32_t port);  ///< port: 0x00 slot 1, 0x10 slot 2
@@ -112,6 +114,18 @@ private:
     void b0_start_card(PsxContext& ctx);
     void b0_stop_card(PsxContext& ctx);
     void b0_write_card_sector(PsxContext& ctx);
+    void b0_open(PsxContext& ctx);
+    void b0_lseek(PsxContext& ctx);
+    void b0_read(PsxContext& ctx);
+    void b0_close(PsxContext& ctx);
+    void b0_format(PsxContext& ctx);
+    void b0_firstfile(PsxContext& ctx);
+    void b0_nextfile(PsxContext& ctx);
+    void b0_rename(PsxContext& ctx);
+    void b0_erase(PsxContext& ctx);
+    void b0_get_last_error(PsxContext& ctx);
+    void b0_get_last_file_error(PsxContext& ctx);
+    void file_async_event(PsxContext& ctx);
     void b0_read_card_sector(PsxContext& ctx);
     void b0_allow_new_card(PsxContext& ctx);
     void b0_get_card_status(PsxContext& ctx);
