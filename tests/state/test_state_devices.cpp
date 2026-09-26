@@ -89,7 +89,7 @@ void test_gpu() {
 
     // A chunk from a newer build, and one that lost its last byte, are refused.
     std::vector<uint8_t> newer = state;
-    newer[4] = 2;  // version field
+    newer[4] = static_cast<uint8_t>(newer[4] + 1);  // version field: one past the current
     CHECK(rejected([&] { load(b, newer); }));
     std::vector<uint8_t> shorter = state;
     shorter.pop_back();
