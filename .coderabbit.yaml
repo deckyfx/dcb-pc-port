@@ -1,0 +1,67 @@
+# CodeRabbit review settings. Schema: https://coderabbit.ai/integrations/schema.v2.json
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: en-US
+
+reviews:
+  # Comment on likely bugs and risky changes, not only clear-cut problems.
+  profile: assertive
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  auto_review:
+    enabled: true
+    drafts: false
+
+  # Copyrighted game data and recompiler output never belong in the repo; don't review them if
+  # they ever show up in a diff.
+  path_filters:
+    - "!disc/**"
+    - "!bios/**"
+    - "!extracted/**"
+    - "!saves/**"
+    - "!generated/**"
+    - "!assets/raw/**"
+    - "!assets/converted/**"
+    - "!ghidra/project/**"
+
+  path_instructions:
+    - path: "tools/recomp/**"
+      instructions: |
+        MIPS R3000A -> C static recompiler. Check MIPS semantics exactly: branch delay slots
+        (the slot runs before the branch takes effect, and a load in the slot of a jr/jalr must
+        not clobber the target), sign vs zero extension (lb/lh vs lbu/lhu, addi/slti immediates
+        are sign-extended, andi/ori/xori are zero-extended), arithmetic overflow exceptions
+        (add/addi/sub) vs addu/addiu/subu, and $zero never written. Watch function discovery:
+        a false function start or a missed jump-table target silently breaks the game.
+        Generated code must stay C17 and warning-free.
+    - path: "src/hle/**"
+      instructions: |
+        High-level emulation of the PS1 kernel (BIOS calls, events, interrupts, task switching)
+        and hardware (CD-ROM, GPU, SPU, MDEC, DMA, timers, SIO0 pad). Compare behaviour against
+        psx-spx (https://psx-spx.consoledev.net): register layouts, status bits, event
+        classes/specs, timing. Flag state that is not reset on reset, missing byte-lane handling
+        for 8/16-bit register access, and anything that depends on host timing instead of guest
+        cycles (ctx.cycles), which breaks determinism.
+    - path: "src/runtime/**"
+      instructions: |
+        Runtime shared with the generated C: guest memory access, dispatch, fibers, GTE. The C
+        header (recomp.h) must stay valid C17 and C++. Fibers use ucontext on Linux and Win32
+        Fibers on Windows; check both paths. GTE math must match hardware (fixed-point
+        shifts, saturation and FLAG bits).
+    - path: "src/platform/**"
+      instructions: |
+        Host layer: SDL3 window, input, audio, settings.ini. Must build on Linux (Wayland/X11)
+        and Windows (MinGW cross and MSVC). Never block the game loop; keep settings parsing
+        forgiving (invalid values fall back to defaults with a warning).
+    - path: "src/game/**"
+      instructions: |
+        Native entry point and C overrides of recompiled game functions. Overrides must keep
+        the guest calling convention (arguments in a0-a3, result in v0/v1, callee-saved
+        registers preserved).
+    - path: "tests/**"
+      instructions: |
+        Unit tests use a tiny CHECK macro, no framework. Expected values should come from
+        psx-spx or hardware tests, not from the implementation under test.
+    - path: "**/*.md"
+      instructions: |
+        Project docs. Check that commands, env vars (DCB_*), paths and hotkeys match the code.

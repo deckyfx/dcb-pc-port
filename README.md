@@ -40,13 +40,13 @@ executable: MIPS R3000A → C, with native HLE of the kernel and Psy-Q libraries
 - [x] CI: Linux tests + Windows .exe (manual trigger for now)
 - [ ] Enhance / upscale assets
 - [ ] Enhancements: widescreen, translation
-- [ ] Network Battle
-- [ ] Rust port of the game logic
 - [ ] Host-driven main loop (game on a fiber): pause, frame advance, fast-forward ([plan](docs/HOST_MAIN_LOOP.md))
-- [ ] Input record / replay (reproducible bug reports)
 - [ ] Save states (within a run)
 - [ ] Trainer: cheat codes, memory search
+- [ ] Network Battle
 - [ ] Custom Battle mode: pick the opponent and the arena
+- [ ] Rust port of the game logic
+- [ ] Input record / replay (reproducible bug reports)
 
 ## Layout
 
