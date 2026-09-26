@@ -37,7 +37,21 @@ python3 tools/disc/extract_disc.py disc/SLPS-03101/dcb_jp.cue -o extracted/SLPS-
 # 2. Boot EXE → Ghidra (ghidra_psx_ldr loader + Psy-Q signatures), ~3 min
 tools/ghidra/import_ghidra.sh SLPS-03101
 
-# 3. Build: native dev loop, or a Windows x64 .exe cross-compiled from Linux
+# 3. Overlay table (P.DRV) → config/<serial>/overlays.json
+python3 tools/disc/pdrv_segments.py SLPS-03101
+
+# 4. Recompile MIPS → C into generated/SLPS-03101/ (+ discovered.json), then build.
+#    Discovery: entry + Ghidra functions + every call (EXE and overlays) + data pointers + lui/addiu
+#    constants, followed by control flow; jump tables are sized from their sltiu bounds check.
+cmake --preset linux-debug && cmake --build --preset linux-debug --target recompile
+
+# 5. Mirror the discovery into Ghidra (new functions + overlay blocks such as KAWSEG::801E2A6C):
+#    GUI: Script Manager > DCB > ApplyDiscovered.java (or via MCP run_ghidra_script), or headless
+#    with Ghidra closed:
+../ghidra_12.1.2_PUBLIC/support/analyzeHeadless ghidra/project DCB/SLPS-03101 -process SLPS_031.01 \
+    -noanalysis -scriptPath ghidra/scripts -postScript ApplyDiscovered.java "$PWD"
+
+# 6. Build: native dev loop, or a Windows x64 .exe cross-compiled from Linux
 cmake --preset linux-debug   && cmake --build --preset linux-debug && ctest --preset linux-debug
 cmake --preset windows-cross && cmake --build --preset windows-cross
 ./build/linux-debug/dcb extracted/SLPS-03101/exe/boot.exe
@@ -48,7 +62,10 @@ Select the target with `-DDCB_GAME_ID=SLUS-01328` (default: `SLPS-03101`).
 ## Ghidra MCP
 
 `.mcp.json` registers the `ghidra` server (bethington/ghidra-mcp 6.0.0, built for Ghidra 12.1.2).
-Install or reinstall it with `tools/ghidra/setup_ghidra_mcp.sh`. Then in Ghidra:
+Install or reinstall it with `tools/ghidra/setup_ghidra_mcp.sh`. Start Ghidra with
+`tools/ghidra/ghidra_gui.sh`: it launches through PyGhidra (so `.py` scripts work in the GUI) and sets
+`GHIDRA_MCP_ALLOW_SCRIPTS=1` (so MCP can run repo scripts; this allows arbitrary Java in Ghidra,
+loopback only). Then in Ghidra:
 enable **GhidraMCP** under *File → Configure → Configure All Plugins* (once), open the program, and choose
 *Tools → GhidraMCP → Start MCP Server*.
 

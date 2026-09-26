@@ -18,3 +18,8 @@ does below library level lands in `hw/`, where it gets logged until it's handled
 
 GTE (COP2) is **not** here. Its opcodes are inlined into game code by libgte macros, so it lives in
 `src/runtime` as an instruction-level implementation that generated code calls directly.
+
+Kernel patches: `libpad`/`libetc` copy small code templates into BIOS kernel RAM (below
+0x80010000) to hook the exception handler. The recompiler finds these templates (e.g.
+`f_8006B504` jumps to 0xA000DFAC) but they never run here. The native replacements for the
+functions that install them skip that step.

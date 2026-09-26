@@ -85,6 +85,8 @@ if(NOT DCB_GENERATED_SOURCES)
 endif()
 add_library(dcb_recompiled STATIC ${DCB_GENERATED_SOURCES})
 target_link_libraries(dcb_recompiled PRIVATE psx_runtime dcb::generated_code)
+# Debug builds trap any `jr ra` that does not return to where its caller expects.
+target_compile_definitions(dcb_recompiled PRIVATE $<$<CONFIG:Debug>:PSX_CHECK_RA>)
 
 # ---------------------------------------------------------------------------
 # dcb — the game executable. src/game holds hand-written overrides that
@@ -102,9 +104,27 @@ endif()
 # Host tools: must run on the build machine, so skip them in cross builds.
 # ---------------------------------------------------------------------------
 if(DCB_BUILD_TOOLS AND NOT CMAKE_CROSSCOMPILING)
-    file(GLOB_RECURSE DCB_RECOMP_SOURCES CONFIGURE_DEPENDS tools/recomp/src/*.cpp)
-    add_executable(dcb_recompiler ${DCB_RECOMP_SOURCES})
-    target_link_libraries(dcb_recompiler PRIVATE dcb::warnings)
+    include(FetchContent)
+    FetchContent_Declare(nlohmann_json
+        URL      https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz
+        URL_HASH SHA256=42f6e95cad6ec532fd372391373363b62a14af6d771056dbfc86160e6dfff7aa
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+    FetchContent_MakeAvailable(nlohmann_json)
+
+    file(GLOB DCB_RECOMP_CORE_SOURCES CONFIGURE_DEPENDS tools/recomp/src/*.cpp)
+    list(REMOVE_ITEM DCB_RECOMP_CORE_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/tools/recomp/src/main.cpp)
+    add_library(dcb_recomp_core STATIC ${DCB_RECOMP_CORE_SOURCES})
+    target_include_directories(dcb_recomp_core PUBLIC tools/recomp/src)
+    target_link_libraries(dcb_recomp_core PUBLIC nlohmann_json::nlohmann_json PRIVATE dcb::warnings)
+
+    add_executable(dcb_recompiler tools/recomp/src/main.cpp)
+    target_link_libraries(dcb_recompiler PRIVATE dcb_recomp_core dcb::warnings)
+
+    # `cmake --build --preset linux-debug --target recompile` regenerates generated/<id>/.
+    add_custom_target(recompile
+        COMMAND dcb_recompiler ${CMAKE_CURRENT_SOURCE_DIR} ${DCB_GAME_ID}
+        COMMENT "Recompiling ${DCB_GAME_ID} into generated/${DCB_GAME_ID}"
+        VERBATIM)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -115,6 +135,12 @@ if(DCB_BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
     add_executable(test_runtime_memory tests/runtime/test_memory.cpp)
     target_link_libraries(test_runtime_memory PRIVATE psx_runtime dcb::warnings)
     add_test(NAME runtime.memory COMMAND test_runtime_memory)
+
+    if(TARGET dcb_recomp_core)
+        add_executable(test_recomp_decoder tests/recomp/test_decoder.cpp)
+        target_link_libraries(test_recomp_decoder PRIVATE dcb_recomp_core dcb::warnings)
+        add_test(NAME recomp.decoder COMMAND test_recomp_decoder)
+    endif()
 
     find_package(Python3 COMPONENTS Interpreter)
     if(Python3_FOUND)

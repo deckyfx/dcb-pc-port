@@ -1,10 +1,12 @@
-// Indirect control flow: jr/jalr targets, BIOS function tables, syscall/break.
+// Indirect control flow: jr/jalr targets, calls into the overlay window, BIOS function tables,
+// syscall/break, and the traps generated code raises.
 
 #include <psx/runtime.hpp>
 
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 
 namespace psx {
 
@@ -14,6 +16,23 @@ RecompFunc find_function(uint32_t addr) {
     const auto* it = std::lower_bound(begin, end, addr,
                                       [](const RecompFunctionEntry& e, uint32_t a) { return e.addr < a; });
     return (it != end && it->addr == addr) ? it->fn : nullptr;
+}
+
+/// Find the overlay function at `addr` whose code matches what is in RAM right now.
+static RecompFunc find_overlay_function(PsxContext* ctx, uint32_t addr) {
+    const int32_t off = psx_ram_offset(addr);
+    if (off < 0 || static_cast<uint32_t>(off) + 16 > PSX_RAM_SIZE) return nullptr;
+    for (uint32_t i = 0; i < recomp_overlay_count; ++i) {
+        const RecompOverlay& ov = recomp_overlays[i];
+        if (addr < ov.base || addr >= ov.base + ov.size) continue;
+        const auto* begin = ov.entries;
+        const auto* end = ov.entries + ov.count;
+        const auto* it = std::lower_bound(begin, end, addr,
+                                          [](const RecompOverlayEntry& e, uint32_t a) { return e.addr < a; });
+        if (it != end && it->addr == addr && std::memcmp(ctx->ram + off, it->check, sizeof it->check) == 0)
+            return it->fn;
+    }
+    return nullptr;
 }
 
 }  // namespace psx
@@ -39,18 +58,33 @@ void psx_dispatch(PsxContext* ctx, uint32_t target) {
         fn(ctx);
         return;
     }
-    std::fprintf(stderr, "[dispatch] no recompiled function at %08X (ra=%08X); add it to the function list\n",
-                 target, ctx->r[31]);
+    if (RecompFunc fn = psx::find_overlay_function(ctx, canonical)) {
+        fn(ctx);
+        return;
+    }
+    std::fprintf(stderr, "[dispatch] no recompiled function at %08X (ra=%08X); add it as a seed\n", target,
+                 ctx->r[31]);
     std::abort();
 }
 
 void psx_syscall(PsxContext* ctx, uint32_t code) {
     // SYSCALL with $a0: 1 = EnterCriticalSection, 2 = ExitCriticalSection, 3 = ChangeThread.
-    std::fprintf(stderr, "[syscall] code=%X a0=%X (not yet implemented)\n", code, ctx->r[4]);
+    std::fprintf(stderr, "[syscall] code=%X a0=%X at %08X (not yet implemented)\n", code, ctx->r[4], ctx->pc);
 }
 
 void psx_break(PsxContext* ctx, uint32_t code) {
-    std::fprintf(stderr, "[break] code=%X pc~%08X\n", code, ctx->pc);
+    std::fprintf(stderr, "[break] code=%X at %08X\n", code, ctx->pc);
+    std::abort();
+}
+
+void psx_invalid(PsxContext* ctx, uint32_t pc) {
+    std::fprintf(stderr, "[trap] reached undecodable code at %08X (ra=%08X)\n", pc, ctx->r[31]);
+    std::abort();
+}
+
+void psx_bad_return(PsxContext* ctx, uint32_t expected_ra) {
+    std::fprintf(stderr, "[trap] jr ra to %08X, but the caller expects a return to %08X (longjmp/thread switch?)\n",
+                 ctx->r[31], expected_ra);
     std::abort();
 }
 
