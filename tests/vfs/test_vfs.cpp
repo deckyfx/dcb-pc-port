@@ -6,6 +6,7 @@
 #include "vfs/image.hpp"
 #include "vfs/pak.hpp"
 #include "vfs/tim.hpp"
+#include "vfs/toc.hpp"
 #include "vfs/vab.hpp"
 #include "vfs/vfs.hpp"
 
@@ -84,6 +85,93 @@ void test_tim4() {
     // Transparent CLUT entry stays transparent.
     CHECK(vfs::rgba_to_psx15(1, 2, 3, 0) == 0);
     CHECK(vfs::rgba_to_psx15(255, 0, 0, 255) == 0x001F);
+    // STP round-trips through the alpha channel: 254 sets bit 15.
+    CHECK(vfs::rgba_to_psx15(0, 0, 0, 254) == 0x8000);
+    CHECK(vfs::rgba_to_psx15(255, 0, 0, 254) == 0x801F);
+    CHECK(vfs::rgba_to_psx15(0, 0, 0, 255) == 0x0000);  // plain black is transparent-black
+}
+
+void test_tim_stp() {
+    // 16-bit TIM with transparent / opaque-black / semi-transparent texels.
+    std::vector<uint8_t> t;
+    auto u32 = [&](uint32_t v) {
+        for (int i = 0; i < 4; ++i) t.push_back(static_cast<uint8_t>(v >> (8 * i)));
+    };
+    auto u16 = [&](uint16_t v) {
+        t.push_back(static_cast<uint8_t>(v));
+        t.push_back(static_cast<uint8_t>(v >> 8));
+    };
+    u32(0x10);
+    u32(0x02);  // 16-bit direct, no CLUT
+    u32(12 + 4 * 2);
+    u16(0);
+    u16(0);
+    u16(4);
+    u16(1);
+    u16(0x0000);  // transparent
+    u16(0x8000);  // opaque black (STP set, RGB 0)
+    u16(0x801F);  // semi-transparent red
+    u16(0x001F);  // opaque red
+    vfs::Tim tim;
+    CHECK(vfs::parse_tim(t.data(), t.size(), tim) == t.size());
+    std::vector<uint8_t> rgba;
+    CHECK(vfs::tim_to_rgba(tim, 0, rgba));
+    CHECK(rgba[3] == 0);                                        // 0x0000 -> alpha 0
+    CHECK(rgba[4] == 0 && rgba[5] == 0 && rgba[6] == 0);        // black survives
+    CHECK(rgba[7] == vfs::kStpAlpha);                           // 0x8000 -> alpha 254
+    CHECK(rgba[11] == vfs::kStpAlpha && rgba[8] == 255);        // 0x801F -> red + 254
+    CHECK(rgba[15] == 255 && rgba[12] == 255);                  // 0x001F -> red + 255
+    // Identity round-trip: every texel must come back bit-for-bit
+    // (pixels start at byte 8 + 12).
+    for (int i = 0; i < 4; ++i) {
+        const uint16_t want =
+            static_cast<uint16_t>(t[8 + 12 + i * 2] | (t[8 + 12 + i * 2 + 1] << 8));
+        const uint16_t got = vfs::rgba_to_psx15(rgba[i * 4], rgba[i * 4 + 1], rgba[i * 4 + 2], rgba[i * 4 + 3]);
+        CHECK(got == want);
+    }
+}
+
+void test_toc_shapes() {
+    // One data entry + one group marker + zero terminator; then garbage that
+    // must stop the parse without being consumed.
+    std::vector<uint8_t> blob(5 * 32, 0);
+    auto entry = [&](size_t i, uint8_t kind, uint32_t sector, uint32_t size, const char* name) {
+        uint8_t* e = blob.data() + i * 32;
+        e[0] = kind;
+        e[1] = kind == 0x01 ? 'P' : 0;
+        e[2] = kind == 0x01 ? 'A' : 0;
+        e[3] = kind == 0x01 ? 'K' : 0;
+        for (int b = 0; b < 4; ++b) e[4 + b] = static_cast<uint8_t>(sector >> (8 * b));
+        for (int b = 0; b < 4; ++b) e[8 + b] = static_cast<uint8_t>(size >> (8 * b));
+        std::strncpy(reinterpret_cast<char*>(e + 16), name, 16);
+    };
+    entry(0, 0x01, 12, 22804, "516");
+    entry(1, 0x80, 24, 0, "CARD");
+    // entry 2 is all zeros -> terminator; entries 3-4 are garbage past it.
+    blob[3 * 32] = 0x01;
+    const auto toc = vfs::parse_toc(blob.data(), blob.size(), 0);
+    CHECK(toc.size() == 2);
+    CHECK(toc[0].name == "516" && toc[0].sector == 12 && toc[0].size == 22804 && !toc[0].is_group);
+    CHECK(toc[1].name == "CARD" && toc[1].is_group);
+    // No cap: 700 valid records all parse (E.DRV ~763, Z.DRV ~765).
+    std::vector<uint8_t> big(700 * 32 + 32, 0);
+    for (size_t i = 0; i < 700; ++i) {
+        uint8_t* e = big.data() + i * 32;
+        e[0] = 0x01;
+        e[1] = 'P';
+        e[2] = 'A';
+        e[3] = 'K';
+        e[4] = static_cast<uint8_t>(i + 1);
+        e[8] = 0x10;
+        char name[16];
+        std::snprintf(name, sizeof name, "F%03zu", i);
+        std::strncpy(reinterpret_cast<char*>(e + 16), name, 16);
+    }
+    CHECK(vfs::parse_toc(big.data(), big.size(), 0).size() == 700);
+    // Unknown kind stops the parse; truncated tails are ignored.
+    big[5 * 32] = 0x7F;
+    CHECK(vfs::parse_toc(big.data(), big.size(), 0).size() == 5);
+    CHECK(vfs::parse_toc(big.data(), 32 + 10, 0).size() == 1);
 }
 
 void test_tim_scan() {
@@ -187,14 +275,16 @@ void test_hd_replace() {
     CHECK(std::fwrite(png, 1, sizeof png, f) == sizeof png);
     std::fclose(f);
 
-    // Manifest for a 1x1 16-bit upload of PSX15 red (bytes 1F 00).
+    // Manifest for a 1x1 16-bit upload of PSX15 red (bytes 1F 00), shaped like
+    // the ripper's own output (provenance keys the game must tolerate).
     const uint8_t upload[2] = {0x1F, 0x00};
     const uint64_t img = vfs::fnv1a64(upload, 2);
-    char manifest[256];
-    std::snprintf(
-        manifest, sizeof manifest,
-        "{\"version\":1,\"game\":\"TEST\",\"entries\":[{\"img\":\"%s\",\"w\":1,\"h\":1,\"bpp\":16,\"path\":\"r.png\"}]}",
-        vfs::to_hex16(img).c_str());
+    char manifest[512];
+    std::snprintf(manifest, sizeof manifest,
+                  "{\"version\":1,\"game\":\"TEST\",\"entries\":[{\"img\":\"%s\",\"w\":1,\"h\":1,\"bpp\":16,"
+                  "\"path\":\"r.png\",\"drv\":\"T.DRV\",\"drv_offset\":2048,\"drv_size\":2,\"lba\":99,"
+                  "\"alt\":\"T_SOME_off00000800\"}]}",
+                  vfs::to_hex16(img).c_str());
     const std::string man_path = (dir / "m.json").string();
     f = std::fopen(man_path.c_str(), "wb");
     CHECK(f);
@@ -226,6 +316,87 @@ void test_hd_replace() {
     hle::HdTextures bad;
     CHECK(!bad.load((dir / "missing.json").string(), ""));
     CHECK(!bad.enabled());
+    // Second call for the same upload must come from the fit cache (no re-decode).
+    const uint64_t fits_before = hd.fit_hits();
+    const std::vector<uint16_t>* hit2 = hd.maybe_replace(0, 0, 1, 1, staged, 1);
+    CHECK(hit2 && hit2->size() == 1 && (*hit2)[0] == want);
+    CHECK(hd.fit_hits() == fits_before + 1);
+    // Save/load round-trips runtime state; reset drops it but keeps the mounts.
+    hle::HdTextures::Snapshot snap = hd.save();
+    CHECK(snap.hits == hd.hits() && snap.fit_hits == hd.fit_hits());
+    hle::HdTextures hd2;
+    CHECK(hd2.load(man_path, (dir / "art").string()));
+    hd2.load_snapshot(snap);
+    CHECK(hd2.hits() == hd.hits() && hd2.fit_hits() == hd.fit_hits());
+    CHECK(hd2.fit_bytes() == 0);  // fits are never serialized; they re-derive
+    const std::vector<uint16_t>* hit3 = hd2.maybe_replace(0, 0, 1, 1, staged, 1);
+    CHECK(hit3 && (*hit3)[0] == want);
+    hd2.reset_runtime();
+    CHECK(hd2.hits() == 0 && hd2.fit_hits() == 0 && hd2.fit_bytes() == 0);
+    CHECK(hd2.enabled());  // mounts survive the reset
+}
+
+// Identity pack: a ripped-then-replayed 4-bit TIM with STP-set outline must
+// come back bit-for-bit (the title-screen black-outline scenario).
+void test_hd_identity_stp() {
+    // 4-bit 8x1 TIM, one 16-entry palette: idx0 transparent, idx1 = opaque
+    // black 0x8000 (STP set, the outline), idx2 = semi-transparent red 0x801F.
+    std::vector<uint8_t> t;
+    auto u32 = [&](uint32_t v) {
+        for (int i = 0; i < 4; ++i) t.push_back(static_cast<uint8_t>(v >> (8 * i)));
+    };
+    auto u16 = [&](uint16_t v) {
+        t.push_back(static_cast<uint8_t>(v));
+        t.push_back(static_cast<uint8_t>(v >> 8));
+    };
+    u32(0x10);
+    u32(0x08);
+    u32(12 + 32);
+    u16(0);
+    u16(0);
+    u16(16);
+    u16(1);
+    u16(0x0000);
+    u16(0x8000);
+    u16(0x801F);
+    for (int i = 3; i < 16; ++i) u16(0x001F);
+    u32(12 + 2 * 1 * 2);  // img_w=2 words (8 px), h=1
+    u16(0);
+    u16(0);
+    u16(2);
+    u16(1);
+    t.push_back(0x11);
+    t.push_back(0x22);
+    t.push_back(0x11);
+    t.push_back(0x22);
+    vfs::Tim tim;
+    CHECK(vfs::parse_tim(t.data(), t.size(), tim) == t.size());
+    // Ripper path: resolve palette 0 -> RGBA (this is what the PNG stores).
+    std::vector<uint8_t> rgba;
+    CHECK(vfs::tim_to_rgba(tim, 0, rgba));
+    CHECK(rgba.size() == 8 * 4);
+    // Pixels are 1,1,2,2,1,1,2,2 (nibbles little-first).
+    CHECK(rgba[0] == 0 && rgba[1] == 0 && rgba[2] == 0);  // idx1: black...
+    CHECK(rgba[3] == vfs::kStpAlpha);                     // ...opaque, STP set
+    CHECK(rgba[8] == 255 && rgba[9] == 0 && rgba[10] == 0);  // idx2: red...
+    CHECK(rgba[11] == vfs::kStpAlpha);                       // ...STP set
+    // Runtime path: exact-match re-quantization against the same palette must
+    // return the original indices (1,2 pattern), preserving STP.
+    const uint16_t* pal = tim.clut.entries.data();
+    for (int i = 0; i < 8; ++i) {
+        const uint16_t want = vfs::rgba_to_psx15(rgba[i * 4], rgba[i * 4 + 1], rgba[i * 4 + 2],
+                                                 rgba[i * 4 + 3] >= 254 ? vfs::kStpAlpha : 255);
+        bool found = false;
+        for (size_t k = 0; k < 16; ++k) {
+            if (pal[k] == want) {
+                const unsigned orig = ((i / 2) & 1) ? 2 : 1;  // pixels are 1,1,2,2,...
+                CHECK(k == orig);
+                found = true;
+                break;
+            }
+        }
+        CHECK(found);
+    }
 }
 
 // --- VAB / BRR ---------------------------------------------------------------
@@ -340,11 +511,14 @@ struct Case {
 };
 constexpr Case kCases[] = {
     {"tim4", test_tim4},
+    {"tim_stp", test_tim_stp},
+    {"toc_shapes", test_toc_shapes},
     {"tim_scan", test_tim_scan},
     {"fnv", test_fnv},
     {"pak_roundtrip", test_pak_roundtrip},
     {"vfs_mounts", test_vfs_mounts},
     {"hd_replace", test_hd_replace},
+    {"hd_identity_stp", test_hd_identity_stp},
     {"brr_block", test_brr_block},
     {"vab_parse", test_vab_parse},
     {"vab_decode", test_vab_decode},

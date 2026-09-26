@@ -92,15 +92,17 @@ bool parse_entry(const char*& p, const char* end, ManifestEntry& e) {
             if (key == "w") e.w = static_cast<int>(num);
             else if (key == "h") e.h = static_cast<int>(num);
             else e.bpp = static_cast<int>(num);
-        } else if (key == "drv" || key == "drv_offset" || key == "drv_size" || key == "lba") {
-            // Provenance for humans/debuggers; skipped at runtime.
-            if (key == "drv") {
+        } else {
+            // Provenance for humans/debuggers ("drv", "drv_offset", "drv_size",
+            // "lba", "alt", ...) skipped generically so the ripper can grow
+            // new fields without breaking older game builds. Values are
+            // string/int only — anything else is a schema error.
+            p = skip_ws(p, end);
+            if (p < end && *p == '"') {
                 if (!parse_string(p, end, str)) return false;
             } else {
                 if (!parse_int(p, end, num)) return false;
             }
-        } else {
-            return false;  // unknown key: fail loudly rather than misread the schema
         }
         p = skip_ws(p, end);
         if (p < end && *p == ',') {
@@ -148,7 +150,7 @@ bool parse_manifest(const std::vector<uint8_t>& blob, std::vector<ManifestEntry>
         } else if (key == "game") {
             if (!parse_string(p, end, str)) return false;  // informational only
         } else {
-            return false;
+            return false;  // top-level shape is fixed; entries carry provenance
         }
         p = skip_ws(p, end);
         if (p >= end) return false;
@@ -174,10 +176,13 @@ bool HdTextures::load(const std::string& manifest_path, const std::string& art_p
     clut_hashes_.clear();
     clut_cache_.clear();
     clut_lru_.clear();
+    fit_cache_.clear();
+    fit_lru_.clear();
+    fit_bytes_ = 0;
     vfs_.reset();
     have_clut_ = false;
     entry_total_ = 0;
-    hits_ = misses_ = 0;
+    hits_ = misses_ = fit_hits_ = 0;
 
     if (!manifest_path.empty()) {
         FILE* f = std::fopen(manifest_path.c_str(), "rb");
@@ -328,7 +333,106 @@ const std::vector<uint16_t>* HdTextures::maybe_replace(int x, int y, int w, int 
     return nullptr;
 }
 
+const std::vector<uint16_t>* HdTextures::cached_fit(const FitKey& key, size_t units) {
+    auto it = fit_cache_.find(key);
+    if (it == fit_cache_.end()) return nullptr;
+    if (it->second.pixels.size() != units) return nullptr;  // shape changed: refit
+    fit_lru_.splice(fit_lru_.end(), fit_lru_, it->second.lru);
+    ++fit_hits_;
+    ++hits_;
+    return &it->second.pixels;
+}
+
+void HdTextures::store_fit(FitKey key, std::vector<uint16_t> pixels) {
+    fit_bytes_ += pixels.size() * sizeof(uint16_t);
+    fit_lru_.push_back(key);
+    FitEntry entry{std::move(pixels), std::prev(fit_lru_.end())};
+    // Replace-in-place keeps the LRU position of an existing key.
+    auto it = fit_cache_.find(key);
+    if (it != fit_cache_.end()) {
+        fit_bytes_ -= it->second.pixels.size() * sizeof(uint16_t);
+        fit_lru_.erase(it->second.lru);
+        it->second = std::move(entry);
+    } else {
+        fit_cache_.emplace(std::move(key), std::move(entry));
+    }
+    while (fit_bytes_ > kMaxFitBytes && !fit_lru_.empty()) {
+        const FitKey& old = fit_lru_.front();
+        auto oit = fit_cache_.find(old);
+        if (oit != fit_cache_.end()) {
+            fit_bytes_ -= oit->second.pixels.size() * sizeof(uint16_t);
+            fit_cache_.erase(oit);
+        }
+        fit_lru_.pop_front();
+    }
+}
+
+HdTextures::Snapshot HdTextures::save() const {
+    Snapshot snap;
+    snap.last_clut = last_clut_;
+    snap.have_clut = have_clut_;
+    snap.clut_cache = clut_cache_;
+    snap.hits = hits_;
+    snap.misses = misses_;
+    snap.fit_hits = fit_hits_;
+    return snap;
+}
+
+void HdTextures::load_snapshot(const Snapshot& snap) {
+    last_clut_ = snap.last_clut;
+    have_clut_ = snap.have_clut;
+    clut_cache_ = snap.clut_cache;
+    clut_lru_.clear();
+    for (const auto& [hash, _] : clut_cache_) {
+        clut_lru_.push_back(hash);
+        if (clut_lru_.size() >= kMaxCachedCluts) break;
+    }
+    hits_ = snap.hits;
+    misses_ = snap.misses;
+    fit_hits_ = snap.fit_hits;
+    fit_cache_.clear();  // fits re-derive deterministically from palette + PNG
+    fit_lru_.clear();
+    fit_bytes_ = 0;
+}
+
+void HdTextures::reset_runtime() {
+    last_clut_ = 0;
+    have_clut_ = false;
+    clut_cache_.clear();
+    clut_lru_.clear();
+    fit_cache_.clear();
+    fit_lru_.clear();
+    fit_bytes_ = 0;
+    hits_ = misses_ = fit_hits_ = 0;
+}
+
 const std::vector<uint16_t>* HdTextures::replace(const Candidate& pick, size_t units) {
+    // Indexed art re-quantizes against the live palette: key the fit on it so a
+    // palette change refits instead of serving stale indices.
+    FitKey key{pick.path, 0};
+    const std::vector<uint16_t>* pal_ptr = nullptr;
+    size_t per = 0;
+    if (pick.bpp != 16) {
+        if (!pick.has_clut || !have_clut_) {
+            ++misses_;  // no live palette: keep the original bytes (never guess)
+            return nullptr;
+        }
+        key.clut = last_clut_;
+        const auto cache = clut_cache_.find(pick.clut);
+        if (cache == clut_cache_.end() || cache->first != last_clut_) {
+            ++misses_;
+            return nullptr;
+        }
+        pal_ptr = &cache->second;
+        per = pick.bpp == 4 ? 16 : 256;  // entries per palette row
+        // NOTE: only single-row palettes are handled (see below).
+        if (pal_ptr->size() != per) {
+            ++misses_;
+            return nullptr;
+        }
+    }
+    if (const std::vector<uint16_t>* hit = cached_fit(key, units)) return hit;
+
     int png_w = 0, png_h = 0;
     std::vector<uint8_t> rgba;
     if (!vfs::load_rgba(*vfs_, pick.path, png_w, png_h, rgba)) {
@@ -350,48 +454,51 @@ const std::vector<uint16_t>* HdTextures::replace(const Candidate& pick, size_t u
             scratch_[i] = vfs::rgba_to_psx15(fit[i * 4], fit[i * 4 + 1], fit[i * 4 + 2], fit[i * 4 + 3]);
         }
     } else {
-        // Re-quantize to the live palette row: same shape the game uploaded (packed
-        // indices), but sampled from fitted HD pixels. The pick already guarantees
-        // its CLUT hash equals the remembered upload; without cached *contents*,
-        // fall back to the original bytes — never guess colors.
+        // Re-quantize to the live palette row (hoisted above): same shape the game
+        // uploaded (packed indices), but sampled from fitted HD pixels.
         // NOTE: only single-row palettes (clut.w == 16/256, one row) are handled:
         // multi-row strips share one upload but select rows per-primitive via the
         // CLUT id, which we don't track yet. Those fall back until row tracking lands.
-        const auto cache = clut_cache_.find(pick.clut);
-        if (cache == clut_cache_.end()) {
-            ++misses_;
-            return nullptr;
-        }
-        const std::vector<uint16_t>& pal = cache->second;
-        const size_t per = pick.bpp == 4 ? 16 : 256;  // entries per palette row
-        if (pal.size() != per) {
-            ++misses_;
-            return nullptr;
-        }
         const size_t pixels = static_cast<size_t>(pick.w) * static_cast<size_t>(pick.h);
         std::vector<uint8_t> indices(pixels);
         for (size_t i = 0; i < pixels; ++i) {
             const uint8_t r = fit[i * 4], g = fit[i * 4 + 1], b = fit[i * 4 + 2], a = fit[i * 4 + 3];
             unsigned best = 0;
             if (a >= 128) {
-                // Nearest palette RGB; index 0 conventionally transparent.
-                unsigned best_d = 0xFFFFFFFFu;
+                // Exact 16-bit palette match first (RGB *and* STP): identity art
+                // round-trips bit-for-bit, and artist edits that reuse exact
+                // palette colors keep their STP. Nearest RGB only as fallback.
+                const uint16_t want =
+                    vfs::rgba_to_psx15(r, g, b, a >= 254 ? vfs::kStpAlpha : 255);
+                const std::vector<uint16_t>& pal = *pal_ptr;
+                bool exact = false;
                 for (size_t k = 0; k < per; ++k) {
-                    const uint16_t e = pal[k];
-                    if (e == 0) continue;
-                    const int dr = static_cast<int>(r) - vfs::expand5(static_cast<uint16_t>(e & 0x1F));
-                    const int dg = static_cast<int>(g) - vfs::expand5(static_cast<uint16_t>((e >> 5) & 0x1F));
-                    const int db = static_cast<int>(b) - vfs::expand5(static_cast<uint16_t>((e >> 10) & 0x1F));
-                    const unsigned d =
-                        static_cast<unsigned>(dr * dr + dg * dg + db * db);
-                    if (d < best_d) {
-                        best_d = d;
+                    if (pal[k] == want) {
                         best = static_cast<unsigned>(k);
+                        exact = true;
+                        break;
                     }
                 }
-                // If the best match is worse than pure black-is-zero... keep it:
-                // entry 0 is transparent so a black HD pixel maps to the nearest
-                // non-zero dark entry, same as the artist's TIM would.
+                if (!exact) {
+                    // Nearest palette RGB; index 0 conventionally transparent.
+                    unsigned best_d = 0xFFFFFFFFu;
+                    for (size_t k = 0; k < per; ++k) {
+                        const uint16_t e = pal[k];
+                        if (e == 0) continue;
+                        const int dr = static_cast<int>(r) - vfs::expand5(static_cast<uint16_t>(e & 0x1F));
+                        const int dg = static_cast<int>(g) - vfs::expand5(static_cast<uint16_t>((e >> 5) & 0x1F));
+                        const int db = static_cast<int>(b) - vfs::expand5(static_cast<uint16_t>((e >> 10) & 0x1F));
+                        const unsigned d =
+                            static_cast<unsigned>(dr * dr + dg * dg + db * db);
+                        if (d < best_d) {
+                            best_d = d;
+                            best = static_cast<unsigned>(k);
+                        }
+                    }
+                    // If the best match is worse than pure black-is-zero... keep it:
+                    // entry 0 is transparent so a black HD pixel maps to the nearest
+                    // non-zero dark entry, same as the artist's TIM would.
+                }
             }
             indices[i] = static_cast<uint8_t>(best);
         }
@@ -407,7 +514,11 @@ const std::vector<uint16_t>* HdTextures::replace(const Candidate& pick, size_t u
         }
     }
     ++hits_;
-    return &scratch_;
+    // Cache the fitted result; return the cached copy so the pointer stays
+    // valid across later replacements reusing scratch_.
+    store_fit(key, scratch_);
+    auto it = fit_cache_.find(key);
+    return it != fit_cache_.end() ? &it->second.pixels : &scratch_;
 }
 
 }  // namespace hle

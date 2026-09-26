@@ -25,8 +25,23 @@
 //     "entries": [ { "img": "<16 hex>", "w": <pixel width>, "h": <height>,
 //                    "bpp": 4|8|16, "path": "textures/....png",
 //                    "clut": "<16 hex>", "drv": "B.DRV", "drv_offset": N,
-//                    "drv_size": M, "lba": L }, ... ] }
-// Only "img", "w", "h", "bpp", "path" are load-bearing; the rest is provenance.
+//                    "drv_size": M, "lba": L, "alt": "B_BG_off...." }, ... ] }
+// Only "img", "w", "h", "bpp", "path" are load-bearing; unknown entry keys are
+// skipped generically so the ripper can grow provenance without breaking older
+// game builds. One manifest per game serial (assets/converted/<id>/); content
+// hashes make packs non-portable across serials by construction.
+//
+// STP convention (shared with vfs/tim.hpp): PNG alpha 0 = texel 0x0000,
+// 255 = opaque, 254 = STP bit set. Identity packs round-trip bit-for-bit.
+//
+// Save states: the index/mounts are load-time configuration; the CLUT sniffer
+// cache, fitted-art cache and counters are runtime state — see save(),
+// load_snapshot(), reset_runtime(). Fits are never serialized (they re-derive
+// deterministically from PNG + palette).
+//
+// Future hardware renderer: the manifest/hash/.pak design carries over —
+// draw-time replacement keys on the same image hashes; only the VRAM-upload
+// hook (maybe_replace) gets replaced by texture-cache injection.
 
 #include <cstddef>
 #include <cstdint>
@@ -57,6 +72,8 @@ public:
     size_t entry_count() const { return entry_total_; }
     uint64_t hits() const { return hits_; }
     uint64_t misses() const { return misses_; }
+    uint64_t fit_hits() const { return fit_hits_; }  ///< replacements served from the fit cache
+    size_t fit_bytes() const { return fit_bytes_; }
 
     /// Called by Gpu after staging a GP0(A0h) upload, before committing to VRAM.
     /// `staged` holds the raw upload words (ceil(w*h/2)) in VRAM order, low half
@@ -89,6 +106,54 @@ private:
     void note_clut(uint64_t hash, const uint32_t* staged, size_t staged_words);
     /// Substitute PNG art for an image hit; nullptr on any failure (miss counted).
     const std::vector<uint16_t>* replace(const Candidate& pick, size_t units);
+
+    /// Fitted (decoded + downsampled to TIM size) art cache, keyed by manifest
+    /// path. Indexed art additionally keys on the live palette hash, since the
+    /// same PNG re-quantizes differently per palette. LRU, bounded by bytes so
+    /// a texture-heavy scene cannot grow it without limit.
+    struct FitKey {
+        std::string path;
+        uint64_t clut = 0;  ///< live palette hash, or 0 for 16-bit direct art
+        bool operator==(const FitKey& o) const { return path == o.path && clut == o.clut; }
+    };
+    struct FitKeyHash {
+        size_t operator()(const FitKey& k) const {
+            size_t h = std::hash<std::string>{}(k.path);
+            h ^= std::hash<uint64_t>{}(k.clut) + 0x9E3779B9u + (h << 6) + (h >> 2);
+            return h;
+        }
+    };
+    struct FitEntry {
+        std::vector<uint16_t> pixels;  ///< final VRAM-ready words (PSX15 or packed indices)
+        std::list<FitKey>::iterator lru;
+    };
+    static constexpr size_t kMaxFitBytes = 64u << 20;  ///< 64 MiB of fitted art
+    std::unordered_map<FitKey, FitEntry, FitKeyHash> fit_cache_;
+    std::list<FitKey> fit_lru_;
+    size_t fit_bytes_ = 0;
+    uint64_t fit_hits_ = 0;  ///< cache hits (subset of hits_)
+
+    const std::vector<uint16_t>* cached_fit(const FitKey& key, size_t units);
+    void store_fit(FitKey key, std::vector<uint16_t> pixels);
+
+public:
+    /// Save-state isolation: the CLUT/palette sniffer state plus cache stats.
+    /// VRAM-affecting state only (index_/vfs_ are load-time configuration).
+    struct Snapshot {
+        uint64_t last_clut = 0;
+        bool have_clut = false;
+        std::unordered_map<uint64_t, std::vector<uint16_t>> clut_cache;
+        uint64_t hits = 0, misses = 0, fit_hits = 0;
+    };
+    /// Capture the runtime state (re-sniffs naturally on load if dropped).
+    Snapshot save() const;
+    /// Restore it; clears the fitted-art cache (fits re-derive deterministically).
+    void load_snapshot(const Snapshot& snap);
+    /// Drop all runtime state (CLUT cache, fits, counters) without unloading
+    /// the manifest/art mounts. Called on state load when no snapshot exists.
+    void reset_runtime();
+
+private:
 
     std::unique_ptr<vfs::Vfs> vfs_;
     std::vector<uint16_t> scratch_;  ///< replacement pixels

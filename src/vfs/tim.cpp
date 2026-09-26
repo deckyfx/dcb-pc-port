@@ -115,7 +115,7 @@ bool tim_to_rgba(const Tim& tim, unsigned palette, std::vector<uint8_t>& rgba) {
                 dst[0] = expand5(static_cast<uint16_t>(px & 0x1F));
                 dst[1] = expand5(static_cast<uint16_t>((px >> 5) & 0x1F));
                 dst[2] = expand5(static_cast<uint16_t>((px >> 10) & 0x1F));
-                dst[3] = 255;
+                dst[3] = (px & 0x8000u) ? kStpAlpha : 255;
             }
         }
         return true;
@@ -146,7 +146,7 @@ bool tim_to_rgba(const Tim& tim, unsigned palette, std::vector<uint8_t>& rgba) {
             dst[0] = expand5(static_cast<uint16_t>(entry & 0x1F));
             dst[1] = expand5(static_cast<uint16_t>((entry >> 5) & 0x1F));
             dst[2] = expand5(static_cast<uint16_t>((entry >> 10) & 0x1F));
-            dst[3] = 255;
+            dst[3] = (entry & 0x8000u) ? kStpAlpha : 255;
         }
     }
     return true;
@@ -154,7 +154,12 @@ bool tim_to_rgba(const Tim& tim, unsigned palette, std::vector<uint8_t>& rgba) {
 
 uint16_t rgba_to_psx15(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
     if (a < 128) return 0;
-    return static_cast<uint16_t>(((r >> 3) & 0x1F) | (((g >> 3) & 0x1F) << 5) | (((b >> 3) & 0x1F) << 10));
+    const uint16_t px =
+        static_cast<uint16_t>(((r >> 3) & 0x1F) | (((g >> 3) & 0x1F) << 5) | (((b >> 3) & 0x1F) << 10));
+    // 254 marks STP-set pixels (from tim_to_rgba or artist-authored HD art).
+    // RGB 0,0,0 with alpha 255 stays STP-clear (plain opaque black 0x0000 would
+    // be transparent, so black art uses STP-set 0x8000 — as the originals do).
+    return a == kStpAlpha ? static_cast<uint16_t>(px | 0x8000u) : px;
 }
 
 }  // namespace vfs

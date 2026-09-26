@@ -24,6 +24,7 @@
 #include "vfs/hash.hpp"
 #include "vfs/pak.hpp"
 #include "vfs/tim.hpp"
+#include "vfs/toc.hpp"
 #include "vfs/vab.hpp"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -44,12 +45,6 @@ namespace fs = std::filesystem;
 namespace {
 
 constexpr uint32_t kSector = 2048;
-
-uint32_t load32le(const uint8_t* p) {
-    uint32_t v = 0;
-    std::memcpy(&v, p, sizeof v);
-    return v;
-}
 
 bool read_file(const fs::path& path, std::vector<uint8_t>& out) {
     FILE* f = std::fopen(path.string().c_str(), "rb");
@@ -106,53 +101,10 @@ void json_escape(std::string& out, const std::string& s) {
 }
 
 // ---------------------------------------------------------------------------
-// DRV container table
+// DRV container table (vfs::parse_toc in dcb_vfs; unit-tested there).
 // ---------------------------------------------------------------------------
 
-struct TocEntry {
-    std::string magic;  // 4 raw bytes
-    uint32_t sector = 0;
-    uint32_t size = 0;
-    std::string name;
-    bool is_group = false;  // \x80 marker: sector points at a sub-TOC, size is 0
-};
-
-bool looks_like_name(const uint8_t* p) {
-    // 16 bytes: printable ASCII (or NUL padding), at least one alnum.
-    bool alnum = false;
-    for (int i = 0; i < 16; ++i) {
-        const uint8_t c = p[i];
-        if (c == 0) continue;
-        if (c < 0x20 || c > 0x7E) return false;
-        if (std::isalnum(c)) alnum = true;
-    }
-    return alnum;
-}
-
-std::vector<TocEntry> parse_toc(const std::vector<uint8_t>& blob, size_t base, size_t max_entries = 512) {
-    std::vector<TocEntry> out;
-    for (size_t i = 0; i < max_entries; ++i) {
-        const size_t off = base + i * 32;
-        if (off + 32 > blob.size()) break;
-        const uint8_t* e = blob.data() + off;
-        if (std::memcmp(e, "\0\0\0\0", 4) == 0) break;  // zero entry ends the table
-        const uint8_t kind = e[0];
-        // Known entry kinds: 0x01??? containers and 0x80???? group markers.
-        if (kind != 0x01 && kind != 0x80) break;
-        if (!looks_like_name(e + 16)) break;
-        TocEntry t;
-        t.magic.assign(reinterpret_cast<const char*>(e), 4);
-        t.sector = load32le(e + 4);
-        t.size = load32le(e + 8);
-        t.name.assign(reinterpret_cast<const char*>(e + 16), strnlen(reinterpret_cast<const char*>(e + 16), 16));
-        t.is_group = (kind == 0x80);
-        // Sanity: sectors must land inside any plausible DRV (< 2^21 sectors = 4 GiB).
-        if (t.sector >= (1u << 21)) break;
-        if (!t.is_group && t.size > (1u << 31)) break;
-        out.push_back(std::move(t));
-    }
-    return out;
-}
+using vfs::TocEntry;
 
 // ---------------------------------------------------------------------------
 // Manifest
@@ -302,7 +254,7 @@ void rip_toc_level(Ripper& r, const std::vector<uint8_t>& drv, const std::vector
         const uint32_t off = static_cast<uint32_t>(off64);
         if (t.is_group || t.size == 0) {
             // Sub-TOC of the same 32-byte shape (B.DRV CARD/FONT/..., A.DRV BGM, ...).
-            for (const TocEntry& sub : parse_toc(drv, off)) {
+            for (const TocEntry& sub : vfs::parse_toc(drv.data(), drv.size(), off)) {
                 const uint64_t soff64 = static_cast<uint64_t>(sub.sector) * kSector;
                 if (soff64 > drv.size() || sub.is_group || sub.size == 0) continue;
                 rip_payload(r, drv, static_cast<uint32_t>(soff64), sub.size, drv_name,
@@ -322,7 +274,7 @@ bool rip_drv(Ripper& r, const fs::path& drv_path) {
         return false;
     }
     const std::string drv_name = drv_path.filename().string();
-    const std::vector<TocEntry> toc = parse_toc(drv, 0);
+    const std::vector<TocEntry> toc = vfs::parse_toc(drv.data(), drv.size(), 0);
     if (toc.empty()) {
         // No container table (e.g. MMM.DAT, SLPS_031.01): still scan for TIMs.
         std::fprintf(stderr, "[ripper] %s: no TOC, raw TIM scan\n", drv_name.c_str());
