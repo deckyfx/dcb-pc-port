@@ -60,6 +60,11 @@ private:
 };
 
 /// Sectors rebuilt from extracted files (see importer.hpp / tools/disc/extract_disc.py write_layout()).
+///
+/// File overrides: a file at `<dir>/overrides/<name>` (the name as under fs/) replaces that disc
+/// file, provided it is exactly the same size; anything else is refused and logged. Raw 2352-byte
+/// files (movies) get each sector header re-stamped with the position it is served at, so a file
+/// taken from another pressing (e.g. the US movie) reads as if it were on this disc.
 class ExtractedDisc final : public Disc {
 public:
     explicit ExtractedDisc(const std::filesystem::path& dir);
@@ -75,6 +80,7 @@ private:
         uint32_t bytes = 0;            ///< Form1: file size
         uint8_t first_sh[4] = {}, last_sh[4] = {};  ///< Form1: subheaders (last one marks EOF)
         std::filesystem::path path;
+        bool overridden = false;       ///< served from overrides/ (Raw: headers re-stamped)
     };
 
     std::filesystem::path dir_;
@@ -83,6 +89,8 @@ private:
     std::map<std::string, std::ifstream> open_;
 
     std::ifstream& stream(const std::filesystem::path& path);
+    /// Point `r` at overrides/<name> when a same-size replacement exists (see the class comment).
+    void apply_override(Range& r, const std::string& rel);
 };
 
 }  // namespace hle
