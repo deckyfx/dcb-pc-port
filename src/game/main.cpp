@@ -117,6 +117,11 @@ int main(int argc, char** argv) {
             area.rgb24 = d.rgb24;
             area.enabled = d.enabled;
             host->present(mmio.gpu().vram(), area);
+            const std::vector<int16_t>& audio = mmio.take_audio();
+            if (!audio.empty()) host->queue_audio(audio.data(), audio.size() / 2);
+            // DCB_AUDIO_DUMP=<file>: raw s16le stereo 44100 Hz of everything played (ffmpeg -f s16le -ar 44100 -ac 2).
+            static FILE* dump = std::getenv("DCB_AUDIO_DUMP") ? std::fopen(std::getenv("DCB_AUDIO_DUMP"), "wb") : nullptr;
+            if (dump && !audio.empty()) std::fwrite(audio.data(), sizeof(int16_t), audio.size(), dump);
             static uint64_t frame = 0;
             snapshot(mmio.gpu().vram(), area, frame++);
         });

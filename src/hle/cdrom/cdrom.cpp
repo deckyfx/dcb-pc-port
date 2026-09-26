@@ -1,5 +1,6 @@
 #include "cdrom/cdrom.hpp"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -24,6 +25,10 @@ uint32_t from_bcd(uint8_t v) { return (v >> 4) * 10u + (v & 0xFu); }
 
 CdRom::CdRom(std::function<void()> raise_irq2)
     : raise_irq2_(std::move(raise_irq2)), trace_(std::getenv("DCB_TRACE_CD") != nullptr) {}
+
+void CdRom::reset_xa() {
+    xa_.reset();
+}
 
 uint64_t CdRom::sector_period() const { return kCpuHz / ((mode_ & kModeDoubleSpeed) ? 150 : 75); }
 
@@ -68,8 +73,16 @@ void CdRom::read_sector() {
     const uint8_t file = sector_[16], channel = sector_[17], submode = sector_[18];
     const bool xa_audio = (submode & 0x04) && (submode & 0x20);
     if ((mode_ & kModeXaAdpcm) && xa_audio) {
-        const bool match = !(mode_ & kModeXaFilter) || (file == filter_file_ && channel == filter_channel_);
-        (void)match;  // XA-ADPCM playback lands with the audio layer
+        const bool match = !(mode_ & kModeXaFilter) || (file == filter_file_ && (channel & 0x1F) == filter_channel_);
+        if (match && cd_audio_) {
+            // Keep decoding while muted so the ADPCM filter history stays continuous.
+            xa_pcm_.clear();
+            if (xa_.decode(sector_.data(), xa_pcm_) && !xa_pcm_.empty()) {
+                const size_t frames = xa_pcm_.size() / 2;
+                apply_cd_volume(xa_pcm_.data(), frames, atv_[0], atv_[1], atv_[3], atv_[2], muted_ || xa_muted_);
+                cd_audio_(xa_pcm_.data(), frames);
+            }
+        }
         return;
     }
     queue_.push_back({1, {stat_}, now_, true});
@@ -100,6 +113,7 @@ void CdRom::command(uint8_t cmd) {
         case 0x02:  // Setloc amm ass asect (BCD)
             setloc_lba_ = (from_bcd(param(0)) * 60 + from_bcd(param(1))) * 75 + from_bcd(param(2)) - 150;
             setloc_pending_ = true;
+            reset_xa();
             push(3, {stat_}, kAckDelay);
             break;
         case 0x06: case 0x1B:  // ReadN / ReadS
@@ -123,6 +137,7 @@ void CdRom::command(uint8_t cmd) {
             break;
         case 0x08:  // Stop
             reading_ = false;
+            reset_xa();
             push(3, {stat_}, kAckDelay);
             stat_ = 0;
             push(2, {stat_}, kCompleteDelay);
@@ -137,13 +152,16 @@ void CdRom::command(uint8_t cmd) {
             break;
         case 0x0A:  // Init
             mode_ = 0;
+            muted_ = false;
+            reset_xa();
             reading_ = false;
             stat_ = kStatMotor;
             queue_.clear();
             push(3, {stat_}, kAckDelay);
             push(2, {stat_}, kCompleteDelay);
             break;
-        case 0x0B: case 0x0C:  // Mute / Demute
+        case 0x0B: case 0x0C:  // Mute / Demute (CD audio output)
+            muted_ = cmd == 0x0B;
             push(3, {stat_}, kAckDelay);
             break;
         case 0x0D:  // Setfilter file, channel
@@ -273,7 +291,16 @@ void CdRom::write(uint32_t phys, uint8_t value) {
             if (!(irq_flags_ & 7u)) response_.clear();
             deliver_due();
             break;
-        default:  // audio volume / sound map registers: accepted, audio comes later
+        // CD audio volume matrix (psx-spx "CDROM Audio Volume"): latched, applied by ADPCTL bit 5.
+        case (2 << 2 | 2): atv_pending_[0] = value; break;     // L -> L
+        case (3 << 2 | 2): atv_pending_[1] = value; break;     // L -> R
+        case (1 << 2 | 3): atv_pending_[2] = value; break;     // R -> R
+        case (2 << 2 | 3): atv_pending_[3] = value; break;     // R -> L
+        case (3 << 2 | 3):                                     // ADPCTL
+            xa_muted_ = value & 0x01u;
+            if (value & 0x20u) std::copy(std::begin(atv_pending_), std::end(atv_pending_), std::begin(atv_));
+            break;
+        default:  // sound map (XA from the CPU): unused by this game
             break;
     }
 }

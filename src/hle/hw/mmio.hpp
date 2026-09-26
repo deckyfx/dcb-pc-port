@@ -15,6 +15,7 @@
 #include <array>
 #include <cstdint>
 #include <map>
+#include <vector>
 #include <utility>
 
 namespace hle {
@@ -35,8 +36,12 @@ public:
     /// Timers read the system clock, and status reads give the system a chance to deliver IRQs.
     void insert_disc(std::unique_ptr<Disc> disc) { cdrom_.insert(std::move(disc)); }
     void set_pad_buttons(unsigned port, uint16_t buttons) { sio_.set_buttons(port, buttons); }
-    /// Advance time-driven devices (CD-ROM responses and sectors) to guest time `cycles`.
-    void tick(uint64_t cycles) { cdrom_.tick(cycles); }
+    /// Advance time-driven devices to guest time `cycles`: CD-ROM responses and sectors, and the
+    /// SPU (one sample per 768 cycles; output collects until take_audio()).
+    void tick(uint64_t cycles);
+
+    /// Audio produced since the last call: interleaved stereo s16 at 44100 Hz.
+    const std::vector<int16_t>& take_audio();
     /// Once per frame: the GPU's interlace field flips.
     void vblank() { gpu_.vblank(); }
 
@@ -62,6 +67,8 @@ private:
     System* system_ = nullptr;
     PsxContext* ctx_ = nullptr;  ///< guest RAM for DMA
     Spu spu_;
+    uint64_t spu_samples_ = 0;            ///< SPU samples produced so far (guest time / 768)
+    std::vector<int16_t> audio_, audio_out_;
     CdRom cdrom_;
     Sio0 sio_;
     Gpu gpu_;

@@ -8,13 +8,13 @@ with native HLE of the kernel and Psy-Q libraries. It needs **no BIOS and no emu
 ## Layout
 
 ```
-disc/<serial>/          disc images (.bin/.cue), one folder per serial      [ignored]
+disc/<serial>/          disc images (.bin/.cue), one folder per serial       [ignored]
 bios/                   retail BIOS dumps: reference and diff-testing only   [ignored]
 extracted/<serial>/     extract_disc.py output: fs/, exe/boot.*, manifest    [ignored]
 assets/raw|converted/   asset pipeline in/out                                [ignored]
 generated/<serial>/     MIPS→C output of tools/recomp; never hand-edited     [ignored]
 config/<serial>/        recompiler inputs: functions.json, overlays, overrides
-ghidra/project/         Ghidra DB (DCB.gpr; one folder per serial)          [ignored]
+ghidra/project/         Ghidra DB (DCB.gpr; one folder per serial)           [ignored]
 ghidra/scripts/         Ghidra scripts (export_functions.py → config/)
 ghidra/symbols/         exported, reviewable symbol maps
 src/runtime/            CPU context, memory bus, dispatch, GTE (the C ABI of generated code)

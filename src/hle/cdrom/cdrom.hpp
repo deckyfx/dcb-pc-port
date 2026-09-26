@@ -7,6 +7,7 @@
 // "CDROM - Response/Data Queueing".
 
 #include "cdrom/disc.hpp"
+#include "spu/xa_adpcm.hpp"
 
 #include <array>
 #include <cstdint>
@@ -25,6 +26,9 @@ public:
     explicit CdRom(std::function<void()> raise_irq2);
 
     void insert(std::unique_ptr<Disc> disc) { disc_ = std::move(disc); }
+
+    /// Where decoded XA audio goes (the SPU's CD input): stereo s16 frames at 44100 Hz.
+    void on_cd_audio(std::function<void(const int16_t*, size_t)> sink) { cd_audio_ = std::move(sink); }
 
     uint8_t read(uint32_t phys);
     uint8_t read_reg(uint32_t phys);
@@ -72,6 +76,15 @@ private:
     uint64_t next_sector_ = 0;
 
     std::deque<Response> queue_;          // responses waiting for delivery (and for IRQ ack)
+
+    // XA-ADPCM playback: decoder, CD volume matrix (ATV0-3, applied on ADPCTL bit 5), mute.
+    std::function<void(const int16_t*, size_t)> cd_audio_;
+    XaDecoder xa_;
+    std::vector<int16_t> xa_pcm_;
+    uint8_t atv_pending_[4] = {0x80, 0x00, 0x80, 0x00};  // L->L, L->R, R->R, R->L
+    uint8_t atv_[4] = {0x80, 0x00, 0x80, 0x00};
+    bool muted_ = false, xa_muted_ = false;
+    void reset_xa();
 
     void command(uint8_t cmd);
     void push(uint8_t irq, std::vector<uint8_t> bytes, uint64_t delay);

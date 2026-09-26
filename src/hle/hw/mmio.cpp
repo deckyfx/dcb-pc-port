@@ -23,7 +23,30 @@ constexpr unsigned kLogLimit = 4;
 
 }  // namespace
 
-Mmio::Mmio() : cdrom_([this] { raise_irq(2); }), sio_([this] { raise_irq(7); }) {}
+Mmio::Mmio() : cdrom_([this] { raise_irq(2); }), sio_([this] { raise_irq(7); }) {
+    cdrom_.on_cd_audio([this](const int16_t* pcm, size_t frames) { spu_.push_cd_audio(pcm, frames); });
+}
+
+void Mmio::tick(uint64_t cycles) {
+    cdrom_.tick(cycles);
+    // The SPU runs at 44100 Hz = one sample per 768 CPU cycles: produce what guest time owes.
+    constexpr uint64_t kCyclesPerSample = 768;
+    const uint64_t due = cycles / kCyclesPerSample;
+    if (due <= spu_samples_) return;
+    uint64_t owed = due - spu_samples_;
+    if (owed > Spu::kSampleRate) owed = Spu::kSampleRate;  // a long native wait: don't build a backlog
+    spu_samples_ = due;
+    const size_t old = audio_.size();
+    audio_.resize(old + static_cast<size_t>(owed) * 2);
+    spu_.mix(audio_.data() + old, static_cast<size_t>(owed));
+    if (spu_.take_irq()) raise_irq(9);
+}
+
+const std::vector<int16_t>& Mmio::take_audio() {
+    audio_out_.swap(audio_);
+    audio_.clear();
+    return audio_out_;
+}
 
 uint64_t Mmio::timer_clock(unsigned index) const {
     if (!system_) return 0;
@@ -123,6 +146,7 @@ void Mmio::dma_run(unsigned channel) {
                 spu_.dma_read(buf.data(), words);
                 for (uint32_t i = 0; i < words; ++i) psx_write32(ctx_, madr + 4 * i, buf[i]);
             }
+            if (spu_.take_irq()) raise_irq(9);  // IRQ address hit by the transfer
             return;
         }
         case 6:  // OTC: build an empty ordering table backwards; the last entry ends the list
