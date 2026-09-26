@@ -77,6 +77,8 @@ public:
     virtual uint32_t take_commands() { return 0; }
     /// Whether the game is paused (the backend shows it).
     virtual void set_paused(bool paused) { (void)paused; }
+    /// Whether the fast-forward hotkey is held (the game should run unthrottled).
+    virtual bool fast_forward() const { return false; }
 };
 
 /// Headless backend: no window, no audio, nothing pressed (tests / CI / batch runs).

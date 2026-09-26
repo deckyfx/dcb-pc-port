@@ -55,6 +55,9 @@ public:
     const std::string& error() const { return error_; }
     /// Wait at a frame boundary so the game runs at 59.94 fps (no-op with DCB_FAST=1). Host side.
     void pace();
+    /// Line the pacing clock up with the game's clock, after running unthrottled (fast-forward) or
+    /// paused, so pace() neither sleeps off the time gained nor rushes to make up a gap.
+    void resync_pacing();
 
     /// B0:17: leave the interrupt handler and resume the interrupted code.
     [[noreturn]] void return_from_exception();

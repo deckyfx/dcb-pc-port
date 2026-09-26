@@ -194,6 +194,11 @@ void System::pace() {
     }
 }
 
+void System::resync_pacing() {
+    const auto guest = std::chrono::duration<double>(static_cast<double>(ctx_.cycles) / kCpuHz);
+    start_ = std::chrono::steady_clock::now() - std::chrono::duration_cast<std::chrono::steady_clock::duration>(guest);
+}
+
 void System::poll(PsxContext& ctx) {
     mmio_.tick(ctx.cycles);
     const uint64_t due = ctx.cycles / cycles_per_vblank();

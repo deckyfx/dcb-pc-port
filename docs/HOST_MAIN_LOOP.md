@@ -1,7 +1,7 @@
 # Host-driven main loop (game on a fiber)
 
-Status: **implemented**: the host loop, pause and frame advance, and input record/replay.
-Save states, fast-forward, trainer and custom menus are still planned. "Today" below describes
+Status: **implemented**: the host loop, pause, frame advance, fast-forward and input record/replay.
+Save states, trainer and custom menus are still planned. "Today" below describes
 the design *before* this change; "The change" is what the code does now.
 
 Move the game's main code path onto a fiber so the PC side owns the frame loop. The game then
@@ -106,7 +106,7 @@ clean point. None of them has to cope with the game being halfway through a fram
 |---|---|---|
 | **Pause** | The host stops calling `resume_guest()`; the window keeps presenting and taking input. | `P`, `Pause` (`[hotkeys] pause`) |
 | **Frame advance** | While paused, resume for exactly one frame (hold to step). | `N` (`[hotkeys] frame_advance`) |
-| **Fast-forward** | Skip pacing (today's `DCB_FAST=1`, but toggled live). | hold `Tab` |
+| **Fast-forward** | Skip pacing while held (like `DCB_FAST=1`); the pacing clock is resynced afterwards so nothing is slept off or rushed. | hold `Tab` (`[hotkeys] fast_forward`) |
 | **Input record / replay** | Log pad state per frame; feed it back. Guest time is virtual, so a replay reproduces a run exactly, headless and across rebuilds. | `DCB_RECORD=run.inp`, `DCB_REPLAY=run.inp` |
 | **Save states** (same run) | Copy out guest RAM, scratchpad, VRAM, SPU RAM, device and BIOS state, the task list, and the game fiber stacks; copy back to load. Valid within one process. | `F5` save, `F7` load, slots `1`–`4` |
 | **Trainer / cheats** | Write guest RAM every frame (GameShark-style codes), or override recompiled functions in C for behaviour cheats. | `[cheats]` in `settings.ini` |

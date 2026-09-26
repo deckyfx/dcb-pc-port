@@ -127,7 +127,7 @@ void test_defaults() {
     CHECK(text.front() == ';');
     CHECK(doc.get("display", "scale") == "3");
     CHECK(doc.get("display", "fullscreen") == "false");
-    CHECK(doc.get("display", "scale_mode") == "integer");
+    CHECK(doc.get("display", "scale_mode") == "fit");
     CHECK(doc.get("display", "filter") == "nearest");
     CHECK(doc.get("display", "aspect") == "4:3");
     CHECK(doc.get("audio", "volume") == "100");
@@ -142,7 +142,7 @@ void test_defaults() {
     const Settings s = parse_settings(IniDocument::parse(text), accepting_resolvers(), warnings);
     CHECK(warnings.empty());
     CHECK(s.display.scale == 3 && !s.display.fullscreen);
-    CHECK(s.display.scale_mode == ScaleMode::Integer && s.display.filter == FilterMode::Nearest);
+    CHECK(s.display.scale_mode == ScaleMode::Fit && s.display.filter == FilterMode::Nearest);
     CHECK(s.display.aspect == AspectMode::Ratio4x3);
     CHECK(s.volume == 100 && s.stick_deadzone == 50);
     CHECK(s.keyboard[index_of("Select")].size() == 2);  // "Backspace, Right Shift"
@@ -308,15 +308,15 @@ void test_env_overrides() {
         return it == env.end() ? nullptr : it->second;
     };
     apply_env_overrides(s, lookup);
-    CHECK(s.display.filter == FilterMode::Nearest && s.display.scale_mode == ScaleMode::Integer);
+    CHECK(s.display.filter == FilterMode::Nearest && s.display.scale_mode == ScaleMode::Fit);
     env["DCB_FILTER"] = "LINEAR";
-    env["DCB_SCALE"] = "fit";
+    env["DCB_SCALE"] = "integer";
     apply_env_overrides(s, lookup);
-    CHECK(s.display.filter == FilterMode::Linear && s.display.scale_mode == ScaleMode::Fit);
+    CHECK(s.display.filter == FilterMode::Linear && s.display.scale_mode == ScaleMode::Integer);
     env["DCB_FILTER"] = "nearest";
     env["DCB_SCALE"] = "bogus";  // unknown values leave the file's choice alone
     apply_env_overrides(s, lookup);
-    CHECK(s.display.filter == FilterMode::Nearest && s.display.scale_mode == ScaleMode::Fit);
+    CHECK(s.display.filter == FilterMode::Nearest && s.display.scale_mode == ScaleMode::Integer);
     apply_env_overrides(s, EnvLookup{});
 }
 

@@ -102,7 +102,7 @@ inline constexpr int kDeadzoneDefault = 50;  ///< percent of full stick travel
 struct DisplaySettings {
     int scale = kScaleDefault;            ///< initial window size = 320x240 * scale
     bool fullscreen = false;
-    ScaleMode scale_mode = ScaleMode::Integer;
+    ScaleMode scale_mode = ScaleMode::Fit;
     FilterMode filter = FilterMode::Nearest;
     AspectMode aspect = AspectMode::Ratio4x3;
 };
@@ -116,6 +116,8 @@ struct Settings {
     std::vector<int> overlay_keys;        ///< [hotkeys] overlay: toggles the performance overlay
     std::vector<int> pause_keys;          ///< [hotkeys] pause: freezes / resumes the game
     std::vector<int> frame_advance_keys;  ///< [hotkeys] frame_advance: while paused, run one frame
+    std::vector<int> fast_forward_keys;   ///< [hotkeys] fast_forward: held, the game runs unthrottled
+    std::vector<int> scale_mode_keys;     ///< [hotkeys] scale_mode: switches fit / integer scaling
 };
 
 /// Maps one binding name to an input code, or nullopt if the name is unknown.

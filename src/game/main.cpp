@@ -244,6 +244,7 @@ int main(int argc, char** argv) {
             if (commands & platform::kTogglePause) {
                 paused = !paused;
                 host->set_paused(paused);
+                if (!paused) system.resync_pacing();  // don't rush to make up the paused time
             }
             if (paused && !(commands & platform::kFrameAdvance)) {
                 host->present(mmio.gpu().vram(), area);  // the frozen picture (window resizes, overlay)
@@ -256,7 +257,8 @@ int main(int argc, char** argv) {
                 break;
             }
             guest_frame();
-            if (!paused) system.pace();
+            if (paused || host->fast_forward()) system.resync_pacing();  // unthrottled; no catch-up later
+            else system.pace();
         }
     } catch (const std::exception& e) {
         std::fprintf(stderr, "[dcb] fatal: %s\n", e.what());

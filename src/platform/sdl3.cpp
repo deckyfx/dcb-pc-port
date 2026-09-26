@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdlib>
+#include <cstring>
 #include <cstdio>
 #include <string>
 #include <system_error>
@@ -113,6 +114,10 @@ public:
                     commands_ |= kTogglePause;
                 } else if (bound(settings_.frame_advance_keys, ev.key.scancode)) {
                     commands_ |= kFrameAdvance;  // key repeat steps frame by frame while held
+                } else if (bound(settings_.fast_forward_keys, ev.key.scancode)) {
+                    // held state is read from key_held_ by fast_forward()
+                } else if (!ev.key.repeat && bound(settings_.scale_mode_keys, ev.key.scancode)) {
+                    toggle_scale_mode();
                 } else if (!ev.key.repeat) {
                     any_press_ = true;
                 }
@@ -176,7 +181,8 @@ public:
         } else if (!paused_) {
             draw_loading();
         }
-        if (paused_) draw_paused();
+        if (paused_) draw_label("PAUSED");
+        else if (fast_forward()) draw_label("FF >>");
         if (overlay_visible_) draw_overlay();
         SDL_RenderPresent(renderer_);
     }
@@ -190,6 +196,12 @@ public:
     }
 
     void set_paused(bool paused) override { paused_ = paused; }
+
+    bool fast_forward() const override {
+        for (const int code : settings_.fast_forward_keys)
+            if (code >= 0 && code < static_cast<int>(SDL_SCANCODE_COUNT) && key_held_[static_cast<size_t>(code)]) return true;
+        return false;
+    }
 
     bool take_any_press() override {
         const bool pressed = any_press_;
@@ -225,18 +237,18 @@ public:
     /// While the game keeps its display off (boot, loading between scenes), show an animated
     /// "Loading..." after half a second so a black window doesn't look like a hang. Host-side
     /// only: the game's picture is never touched.
-    /// "PAUSED" in the top-left corner while the host holds the game.
-    void draw_paused() {
+    /// A short status label ("PAUSED", "FF >>") in the top-left corner.
+    void draw_label(const char* text) {
         int ww = 0, wh = 0;
         SDL_GetRenderOutputSize(renderer_, &ww, &wh);
         const float scale = std::max(1.0f, static_cast<float>(wh) / 240.0f);
         SDL_SetRenderScale(renderer_, scale, scale);
         SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
         SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 170);
-        const SDL_FRect panel{4.0f, 4.0f, 8.0f * 6.0f + 8.0f, 16.0f};
+        const SDL_FRect panel{4.0f, 4.0f, 8.0f * static_cast<float>(std::strlen(text)) + 8.0f, 16.0f};
         SDL_RenderFillRect(renderer_, &panel);
         SDL_SetRenderDrawColor(renderer_, 255, 220, 120, 255);
-        SDL_RenderDebugText(renderer_, 8.0f, 8.0f, "PAUSED");
+        SDL_RenderDebugText(renderer_, 8.0f, 8.0f, text);
         SDL_SetRenderScale(renderer_, 1.0f, 1.0f);
     }
 
@@ -287,6 +299,14 @@ private:
         for (const std::string& w : warnings) SDL_Log("dcb: %s", w.c_str());
         SDL_Log("dcb: settings %s", path.string().c_str());
         if (trace_input_) SDL_Log("dcb: input trace on (keys, pad state, what the game reads)");
+    }
+
+    /// scale_mode hotkey: switch fit / integer scaling and remember the choice in settings.ini.
+    void toggle_scale_mode() {
+        const bool fit = settings_.display.scale_mode != ScaleMode::Fit;
+        settings_.display.scale_mode = fit ? ScaleMode::Fit : ScaleMode::Integer;
+        if (!settings_file_.set_and_save("display", "scale_mode", fit ? "fit" : "integer"))
+            SDL_Log("dcb: cannot save %s", settings_file_.path().string().c_str());
     }
 
     /// Alt+Enter: flip fullscreen and remember the choice in settings.ini.

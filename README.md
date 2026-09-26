@@ -33,16 +33,15 @@ executable: MIPS R3000A → C, with native HLE of the kernel and Psy-Q libraries
 - [ ] One-time asset import from the player's own dump: no disc needed afterwards, no copyrighted data in the download
 - [ ] Windows x64 release build tested on Windows
 - [ ] US version (SLUS-01328, Digimon Digital Card Battle)
-- [x] PC options: `settings.ini` (window scale, filtering, aspect, key/gamepad rebinding, volume)
+- [x] PC options: `settings.ini` (window scale, filtering, aspect, key/gamepad rebinding, volume); resizable window, picture fits it (F8: fit / integer)
 - [x] Performance overlay (FPS, game FPS, CPU/GPU load, audio queue): F3
-- [x] Host-driven main loop: the game runs on fibers; pause (P), frame advance (N) ([design](docs/HOST_MAIN_LOOP.md))
+- [x] Host-driven main loop: the game runs on fibers; pause (P), frame advance (N), fast-forward (hold Tab) ([design](docs/HOST_MAIN_LOOP.md))
 - [x] Input record / replay (`DCB_RECORD`, `DCB_REPLAY`): reproducible runs, bit-identical frames
 - [x] GTE commands implemented (unit-tested; awaiting in-game use)
 - [x] Memory card file API (`bu00:`) implemented and used by the game's saves
 - [x] CI: Linux tests + Windows .exe (manual trigger for now)
 - [ ] Enhance / upscale assets
 - [ ] Enhancements: widescreen, translation
-- [ ] Fast-forward hotkey
 - [ ] Save states (within a run)
 - [ ] Trainer: cheat codes, memory search
 - [ ] Network Battle
