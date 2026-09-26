@@ -21,6 +21,10 @@ public:
 
     bool read_frame(uint32_t frame, uint8_t* out) const;
     bool write_frame(uint32_t frame, const uint8_t* in);  ///< persists immediately
+    /// Write `count` consecutive frames from `in` (count * 128 bytes) and persist once.
+    bool write_frames(uint32_t first, uint32_t count, const uint8_t* in);
+    /// Erase the card to a freshly formatted state (header, empty directory) and persist.
+    void reformat();
 
     const std::filesystem::path& path() const { return path_; }
 
