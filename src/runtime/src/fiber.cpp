@@ -54,7 +54,8 @@ std::unique_ptr<Fiber> Fiber::create(Entry entry, void* arg, size_t stack_bytes)
     impl->entry = entry;
     impl->arg = arg;
     Impl* raw = impl.get();
-    impl->handle = CreateFiber(stack_bytes, [](LPVOID p) {
+    // Reserve the whole stack but commit little: it grows on demand, like the Linux mmap stacks.
+    impl->handle = CreateFiberEx(64 * 1024, stack_bytes, FIBER_FLAG_FLOAT_SWITCH, [](LPVOID p) {
         auto* self = static_cast<Impl*>(p);
         self->entry(self->arg);
         std::fprintf(stderr, "[fiber] entry returned\n");

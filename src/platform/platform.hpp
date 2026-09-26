@@ -52,6 +52,12 @@ struct FrameStats {
     double gpu_pct = 0;    ///< share of wall time spent in the software rasterizer
 };
 
+/// Host-loop hotkeys, as bits from Platform::take_commands().
+enum HostCommand : uint32_t {
+    kTogglePause = 1u << 0,   ///< [hotkeys] pause
+    kFrameAdvance = 1u << 1,  ///< [hotkeys] frame_advance
+};
+
 class Platform {
 public:
     virtual ~Platform() = default;
@@ -67,6 +73,10 @@ public:
     virtual void set_stats(const FrameStats& stats) { (void)stats; }
     /// Whether any key or gamepad button went down since the last call (window hotkeys excluded).
     virtual bool take_any_press() { return false; }
+    /// Host-loop hotkeys pressed since the last call (HostCommand bits).
+    virtual uint32_t take_commands() { return 0; }
+    /// Whether the game is paused (the backend shows it).
+    virtual void set_paused(bool paused) { (void)paused; }
 };
 
 /// Headless backend: no window, no audio, nothing pressed (tests / CI / batch runs).

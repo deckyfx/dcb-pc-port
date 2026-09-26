@@ -19,7 +19,9 @@
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
+#include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 #ifndef _WIN32
@@ -149,11 +151,10 @@ int main(int argc, char** argv) {
         if (!std::getenv("DCB_HEADLESS")) host = platform::make_sdl3("Digimon World: Digital Card Arena (PC Port)");
 #endif
         if (!host) host = platform::make_headless();
-        system.on_vblank([&] {
-            if (!host->pump_events()) {
-                std::printf("[dcb] window closed\n");
-                std::exit(0);
-            }
+        // Host work after each game frame (the game is suspended at its VBLANK): input for the
+        // next frame, present, audio, overlay numbers, debug dumps.
+        platform::DisplayArea area;
+        const auto guest_frame = [&] {
             // Input. While a movie plays (the MDEC is busy), any key or button skips it: the game
             // itself only accepts Start, so a press becomes a short Start tap.
             static uint64_t pad_frame = 0, mdec_seen = 0, movie_until = 0, skip_until = 0;
@@ -176,7 +177,6 @@ int main(int argc, char** argv) {
             }
             ++pad_frame;
             const hle::Gpu::Display d = mmio.gpu().display();
-            platform::DisplayArea area;
             area.x = d.x;
             area.y = d.y;
             area.width = d.width;
@@ -216,7 +216,7 @@ int main(int argc, char** argv) {
             if (dump && !audio.empty()) std::fwrite(audio.data(), sizeof(int16_t), audio.size(), dump);
             static uint64_t frame = 0;
             snapshot(mmio.gpu().vram(), area, frame++);
-        });
+        };
 
         const psx::ExeInfo exe = exe_override.empty() ? machine.load_exe(boot) : machine.load_exe(exe_override);
         std::printf("[dcb] %s: text %08X+%X, entry %08X, %u recompiled functions\n", DCB_GAME_ID, exe.t_addr,
@@ -226,7 +226,34 @@ int main(int argc, char** argv) {
             std::printf("[dcb] no recompiled code linked yet: run tools/recomp, then rebuild\n");
             return 0;
         }
-        psx_dispatch(&machine.ctx(), exe.pc0);
+
+        // The host loop: the game runs on its own fibers, one frame per resume_guest(), and this
+        // thread owns everything in between (docs/HOST_MAIN_LOOP.md).
+        system.start(exe.pc0);
+        bool paused = false;
+        for (;;) {
+            if (!host->pump_events()) {
+                std::printf("[dcb] window closed\n");
+                break;
+            }
+            const uint32_t commands = host->take_commands();
+            if (commands & platform::kTogglePause) {
+                paused = !paused;
+                host->set_paused(paused);
+            }
+            if (paused && !(commands & platform::kFrameAdvance)) {
+                host->present(mmio.gpu().vram(), area);  // the frozen picture (window resizes, overlay)
+                std::this_thread::sleep_for(std::chrono::milliseconds(16));
+                continue;
+            }
+            if (!system.resume_guest()) {
+                if (!system.error().empty()) throw std::runtime_error(system.error());
+                std::printf("[dcb] the game's main program returned\n");
+                break;
+            }
+            guest_frame();
+            if (!paused) system.pace();
+        }
     } catch (const std::exception& e) {
         std::fprintf(stderr, "[dcb] fatal: %s\n", e.what());
         return 1;
