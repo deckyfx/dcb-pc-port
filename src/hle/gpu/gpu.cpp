@@ -1,5 +1,7 @@
 #include "gpu/gpu.hpp"
 
+#include "gpu/hd_textures.hpp"
+
 #include <algorithm>
 #include <cstdlib>
 #include <utility>
@@ -66,6 +68,8 @@ constexpr int64_t kInterpBias = int64_t{1} << 11;
 }  // namespace
 
 Gpu::Gpu() : vram_(static_cast<std::size_t>(kVramWidth) * kVramHeight, 0) { reset(); }
+
+Gpu::~Gpu() = default;
 
 // ---------------------------------------------------------------------------------------------
 // GP0
@@ -315,6 +319,11 @@ void Gpu::copy_vram() {
     }
 }
 
+HdTextures* Gpu::install_hd() {
+    if (!hd_) hd_ = std::make_unique<HdTextures>();
+    return hd_.get();
+}
+
 void Gpu::begin_cpu_to_vram() {
     // psx-spx "GP0(A0h)": destination, size (0 = max), then ceil(w*h/2) data words.
     write_.x = static_cast<int32_t>(fifo_[1] & 0x3FFu);
@@ -324,9 +333,46 @@ void Gpu::begin_cpu_to_vram() {
     write_.cx = write_.cy = 0;
     write_.remaining = static_cast<uint32_t>(write_.w * write_.h);
     mode_ = Mode::CpuToVram;
+    // When HD replacement is armed, stage the words instead of writing through:
+    // commit_staged_upload() hashes the full rect before anything hits VRAM.
+    hd_staging_ = hd_ && hd_->enabled();
+    if (hd_staging_) {
+        const size_t pixels = static_cast<size_t>(write_.w) * static_cast<size_t>(write_.h);
+        // Cap staging at 1M words (512x1024 max rect is 256K words); bigger rects
+        // can only come from corrupt headers, so fall back to direct writes.
+        if (pixels <= (1u << 20) * 2) {
+            staged_.clear();
+            staged_.reserve((pixels + 1) / 2);
+        } else {
+            hd_staging_ = false;
+        }
+    }
 }
 
-void Gpu::write_transfer_word(uint32_t word) {
+void Gpu::commit_staged_upload() {
+    mode_ = Mode::Command;
+    const std::vector<uint16_t>* replacement =
+        hd_ ? hd_->maybe_replace(write_.x, write_.y, write_.w, write_.h, staged_.data(), staged_.size())
+            : nullptr;
+    if (replacement) {
+        // HD hit: commit the substitute pixels through the same masked path.
+        size_t i = 0;
+        for (int32_t row = 0; row < write_.h; ++row) {
+            for (int32_t col = 0; col < write_.w; ++col) put_masked(write_.x + col, write_.y + row, (*replacement)[i++]);
+        }
+    } else {
+        // Miss or disabled mid-transfer: replay the original words verbatim.
+        // write_transfer_word() zeroed write_.remaining when staging completed,
+        // so restore the cursor before replaying.
+        write_.cx = write_.cy = 0;
+        write_.remaining = static_cast<uint32_t>(static_cast<size_t>(write_.w) * static_cast<size_t>(write_.h));
+        for (uint32_t word : staged_) write_transfer_word_direct(word);
+    }
+    staged_.clear();
+    hd_staging_ = false;
+}
+
+void Gpu::write_transfer_word_direct(uint32_t word) {
     for (int half = 0; half < 2 && write_.remaining != 0; ++half) {
         put_masked(write_.x + write_.cx, write_.y + write_.cy, static_cast<uint16_t>(word >> (16 * half)));
         if (++write_.cx == write_.w) {
@@ -336,6 +382,18 @@ void Gpu::write_transfer_word(uint32_t word) {
         --write_.remaining;
     }
     if (write_.remaining == 0) mode_ = Mode::Command;
+}
+
+void Gpu::write_transfer_word(uint32_t word) {
+    if (hd_staging_) {
+        staged_.push_back(word);
+        // ceil(pixels/2) words complete the rect; odd rects pad the last half.
+        const size_t pixels = static_cast<size_t>(write_.w) * static_cast<size_t>(write_.h);
+        write_.remaining = pixels > staged_.size() * 2 ? static_cast<uint32_t>(pixels - staged_.size() * 2) : 0;
+        if (write_.remaining == 0) commit_staged_upload();
+        return;
+    }
+    write_transfer_word_direct(word);
 }
 
 void Gpu::begin_vram_to_cpu() {
@@ -578,6 +636,8 @@ void Gpu::reset_command_buffer() {
     mode_ = Mode::Command;
     write_.remaining = 0;
     read_.remaining = 0;
+    staged_.clear();  // drop any half-staged HD upload (GP1(01h) mid-transfer)
+    hd_staging_ = false;
 }
 
 void Gpu::reset() {

@@ -2,11 +2,14 @@
 // ctest entry (gpu.<case>).
 
 #include "gpu/gpu.hpp"
+#include "gpu/hd_textures.hpp"
 
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <memory>
+#include <vector>
 
 #define CHECK(cond)                                                                       \
     do {                                                                                  \
@@ -389,11 +392,67 @@ void test_display() {
     CHECK(gpu.gpustat() == 0x1C802000u);
 }
 
+void test_hd_upload() {
+    // HD armed: a staged GP0(A0h) upload whose content hash is in the manifest is
+    // substituted; unknown content commits verbatim; unarmed GPU is untouched.
+    auto gpu = make_gpu();
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / "dcb_gpu_hd_test";
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    fs::create_directories(dir / "art", ec);
+    // 1x1 red PNG (same bytes as tests/vfs/test_vfs.cpp).
+    const uint8_t png[] = {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
+                           0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+                           0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53, 0xDE, 0x00, 0x00, 0x00,
+                           0x0C, 0x49, 0x44, 0x41, 0x54, 0x08, 0xD7, 0x63, 0xF8, 0xCF, 0xC0, 0x00,
+                           0x00, 0x03, 0x01, 0x01, 0x00, 0x18, 0xFB, 0x52, 0x1D, 0x00, 0x00, 0x00,
+                           0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82};
+    FILE* f = std::fopen((dir / "art" / "r.png").string().c_str(), "wb");
+    CHECK(f != nullptr);
+    CHECK(std::fwrite(png, 1, sizeof png, f) == sizeof png);
+    std::fclose(f);
+    // Image content = one 16-bit word 0x03E0 (green); manifest maps its hash.
+    // The 1x1 PNG replaces 1:1. Odd-pixel uploads pad the word's high half.
+    const uint8_t img_bytes[2] = {0xE0, 0x03};
+    uint64_t h = 14695981039346656037ull;
+    for (uint8_t b : img_bytes) {
+        h ^= b;
+        h *= 1099511628211ull;
+    }
+    char manifest[256];
+    std::snprintf(manifest, sizeof manifest,
+                  "{\"version\":1,\"entries\":[{\"img\":\"%016llx\",\"w\":1,\"h\":1,\"bpp\":16,\"path\":\"r.png\"}]}",
+                  (unsigned long long)h);
+    const std::string man = (dir / "m.json").string();
+    f = std::fopen(man.c_str(), "wb");
+    CHECK(f != nullptr);
+    std::fwrite(manifest, 1, std::strlen(manifest), f);
+    std::fclose(f);
+
+    CHECK(gpu->hd() == nullptr);
+    CHECK(gpu->install_hd()->load(man, (dir / "art").string()));
+    CHECK(gpu->hd()->enabled());
+
+    // Known content: 1x1 green upload, replaced by the 1x1 red PNG -> 0x001F.
+    const uint16_t known[1] = {0x03E0u};
+    upload(*gpu, 10, 10, 1, 1, known);
+    CHECK(!gpu->receiving_vram());
+    CHECK(px(*gpu, 10, 10) == 0x001F);
+
+    // Unknown content: bit-identical fallback.
+    const uint16_t unknown[2] = {0x1234u, 0x5678u};
+    upload(*gpu, 20, 10, 2, 1, unknown);
+    CHECK(px(*gpu, 20, 10) == 0x1234 && px(*gpu, 21, 10) == 0x5678);
+    fs::remove_all(dir, ec);
+}
+
 struct Case {
     const char* name;
     void (*fn)();
 };
 constexpr Case kCases[] = {
+    {"hd_upload", test_hd_upload},
     {"fill_rect", test_fill_rect},
     {"vram_transfer", test_vram_transfer},
     {"triangle_fill_rule", test_triangle_fill_rule},

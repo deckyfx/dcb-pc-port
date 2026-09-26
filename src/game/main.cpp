@@ -3,6 +3,7 @@
 
 #include "bios/bios.hpp"
 #include "cdrom/disc.hpp"
+#include "gpu/hd_textures.hpp"
 #include "hw/mmio.hpp"
 #include "system.hpp"
 
@@ -138,6 +139,28 @@ int main(int argc, char** argv) {
         const std::vector<uint8_t> boot = exe_override.empty() ? disc->read_boot_exe() : std::vector<uint8_t>{};
         std::printf("[dcb] game data: %s\n", disc->describe().c_str());
         mmio.insert_disc(std::move(disc));
+        // HD texture replacement. Defaults read from the project folder
+        // (assets/converted/<id>/assets_manifest.json + textures, written by
+        // dcb_asset_ripper); DCB_HD_MANIFEST / DCB_HD_PACK override them.
+        // Without both halves the game runs exactly as before (all uploads
+        // commit verbatim).
+        {
+            const char* env_manifest = std::getenv("DCB_HD_MANIFEST");
+            const char* env_pack = std::getenv("DCB_HD_PACK");
+            const std::string def_manifest =
+                std::string("assets/converted/") + DCB_GAME_ID + "/assets_manifest.json";
+            const std::string def_pack = std::string("assets/converted/") + DCB_GAME_ID + "/textures";
+            const std::string manifest = env_manifest ? env_manifest : def_manifest;
+            const std::string art = env_pack ? env_pack : def_pack;
+            std::error_code hd_ec;
+            if (std::filesystem::is_regular_file(manifest, hd_ec)) {
+                if (mmio.gpu().install_hd()->load(manifest, art)) {
+                    std::printf("[dcb] HD textures armed (%s)\n", manifest.c_str());
+                } else {
+                    std::printf("[dcb] HD textures unavailable (continuing without them)\n");
+                }
+            }
+        }
         mmio.attach(&system, machine.ctx());
         machine.set_bios_handler(&bios);
         machine.set_mmio_handler(&mmio);

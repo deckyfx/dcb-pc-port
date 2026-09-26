@@ -9,9 +9,12 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 namespace hle {
+
+class HdTextures;
 
 /// Software model of the PS1 GPU (CXD8561 "new" GPU, GP1(10h) version 2).
 class Gpu {
@@ -19,6 +22,7 @@ public:
     static constexpr int kVramWidth = 1024, kVramHeight = 512;  // 16-bit pixels
 
     Gpu();
+    ~Gpu();  // defined in gpu.cpp where HdTextures is complete (unique_ptr member)
 
     /// GP0 port 0x1F801810 write: commands + their parameter/data words.
     void gp0(uint32_t word);
@@ -54,6 +58,13 @@ public:
     /// True while a GP0(C0h) download still has data to hand out through gpuread().
     bool sending_vram() const { return read_.remaining != 0; }
 
+    /// HD texture replacement (nullptr until install_hd() is called by the owner).
+    /// When installed and enabled, staged GP0(A0h) uploads are hashed and may be
+    /// substituted with upscaled art; otherwise uploads commit verbatim.
+    HdTextures* install_hd();
+    HdTextures* hd() { return hd_.get(); }
+    const HdTextures* hd() const { return hd_.get(); }
+
 private:
     /// A vertex after draw-offset application, with 8-bit color and texture coordinates.
     struct Vertex {
@@ -78,6 +89,9 @@ private:
     enum class Mode { Command, CpuToVram, Polyline };
 
     std::vector<uint16_t> vram_;
+    std::unique_ptr<HdTextures> hd_;  ///< null until install_hd()
+    std::vector<uint32_t> staged_;    ///< staged GP0(A0h) words while HD is armed
+    bool hd_staging_ = false;
 
     // GP0 command assembly
     Mode mode_ = Mode::Command;
@@ -123,6 +137,8 @@ private:
     void begin_cpu_to_vram();
     void begin_vram_to_cpu();
     void write_transfer_word(uint32_t word);
+    void write_transfer_word_direct(uint32_t word);  ///< masked VRAM write, HD bypass
+    void commit_staged_upload();  ///< hash staged_ via HdTextures, commit winner to VRAM
 
     Prim make_prim(uint32_t cmd, bool textured, uint32_t texpage, uint32_t clut) const;
     Vertex decode_vertex(uint32_t xy, uint32_t color) const;
