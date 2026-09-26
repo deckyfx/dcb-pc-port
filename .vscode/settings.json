@@ -11,20 +11,28 @@
   ],
   "C_Cpp.intelliSenseEngine": "disabled",
 
-  // Generated C (~150k lines) and disc data are huge: keep them out of search and watchers.
+  // Generated C (~150k lines), disc data, ripped assets and the Ghidra install are huge (and
+  // gitignored): keep them out of search and watchers; the Ghidra install is hidden entirely.
   "search.exclude": {
     "build/**": true,
     "generated/**": true,
     "extracted/**": true,
     "disc/**": true,
-    "ghidra/project/**": true
+    "assets/**": true,
+    "ghidra/project/**": true,
+    "ghidra/ghidra_*_PUBLIC/**": true
   },
   "files.watcherExclude": {
     "**/build/**": true,
     "**/generated/**": true,
     "**/extracted/**": true,
     "**/disc/**": true,
-    "**/ghidra/project/**": true
+    "**/assets/**": true,
+    "**/ghidra/project/**": true,
+    "**/ghidra/ghidra_*_PUBLIC/**": true
+  },
+  "files.exclude": {
+    "ghidra/ghidra_*_PUBLIC": true
   },
   "files.associations": { "*.sinc": "plaintext" }
 }
