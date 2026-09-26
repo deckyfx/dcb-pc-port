@@ -8,6 +8,7 @@
 #include "vfs/tim.hpp"
 #include "vfs/vfs.hpp"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 
@@ -43,8 +44,51 @@ bool parse_string(const char*& p, const char* end, std::string& out) {
     ++p;
     out.clear();
     while (p < end && *p != '"') {
-        if (*p == '\\') return false;  // the ripper never emits escapes
-        out.push_back(*p++);
+        if (*p == '\\') {
+            // The ripper escapes `"`, `\` and control chars; decode the
+            // standard JSON escapes (TOC names may contain `"` and `\`).
+            ++p;
+            if (p >= end) return false;
+            switch (*p) {
+                case '"': out.push_back('"'); break;
+                case '\\': out.push_back('\\'); break;
+                case '/': out.push_back('/'); break;
+                case 'b': out.push_back('\b'); break;
+                case 'f': out.push_back('\f'); break;
+                case 'n': out.push_back('\n'); break;
+                case 'r': out.push_back('\r'); break;
+                case 't': out.push_back('\t'); break;
+                case 'u': {
+                    if (end - p < 5) return false;
+                    unsigned cp = 0;
+                    for (int i = 1; i <= 4; ++i) {
+                        const char c = p[i];
+                        cp <<= 4;
+                        if (c >= '0' && c <= '9') cp |= static_cast<unsigned>(c - '0');
+                        else if (c >= 'a' && c <= 'f') cp |= static_cast<unsigned>(c - 'a' + 10);
+                        else if (c >= 'A' && c <= 'F') cp |= static_cast<unsigned>(c - 'A' + 10);
+                        else return false;
+                    }
+                    // BMP only (surrogates rejected); encode UTF-8.
+                    if (cp == 0 || cp > 0xFFFFu || (cp >= 0xD800u && cp <= 0xDFFFu)) return false;
+                    if (cp < 0x80) out.push_back(static_cast<char>(cp));
+                    else if (cp < 0x800) {
+                        out.push_back(static_cast<char>(0xC0 | (cp >> 6)));
+                        out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+                    } else {
+                        out.push_back(static_cast<char>(0xE0 | (cp >> 12)));
+                        out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+                        out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+                    }
+                    p += 4;
+                    break;
+                }
+                default: return false;
+            }
+            ++p;
+        } else {
+            out.push_back(*p++);
+        }
     }
     if (p >= end) return false;
     return ++p, true;
@@ -58,10 +102,81 @@ bool parse_int(const char*& p, const char* end, long long& out) {
         ++p;
     }
     if (p >= end || *p < '0' || *p > '9') return false;
-    long long v = 0;
-    while (p < end && *p >= '0' && *p <= '9') v = v * 10 + (*p++ - '0');
-    out = neg ? -v : v;
+    // Saturate instead of overflowing: values only feed checked ranges.
+    unsigned long long v = 0;
+    while (p < end && *p >= '0' && *p <= '9') {
+        const unsigned d = static_cast<unsigned>(*p++ - '0');
+        if (v > (0xFFFFFFFFFFFFFFFFull - d) / 10) {
+            v = 0xFFFFFFFFFFFFFFFFull;
+            while (p < end && *p >= '0' && *p <= '9') ++p;
+            break;
+        }
+        v = v * 10 + d;
+    }
+    constexpr unsigned long long kMax = static_cast<unsigned long long>(0x7FFFFFFFFFFFFFFFull);
+    out = neg ? (v > kMax + 1 ? -0x7FFFFFFFFFFFFFFFLL - 1 : -static_cast<long long>(v))
+              : (v > kMax ? 0x7FFFFFFFFFFFFFFFLL : static_cast<long long>(v));
     return true;
+}
+
+/// Skip one JSON value of any shape (object/array nesting included).
+bool skip_value(const char*& p, const char* end) {
+    p = skip_ws(p, end);
+    if (p >= end) return false;
+    if (*p == '"') {
+        std::string ignored;
+        return parse_string(p, end, ignored);
+    }
+    if (*p == '{' || *p == '[') {
+        const char open = *p++, close = open == '{' ? '}' : ']';
+        p = skip_ws(p, end);
+        if (p < end && *p == close) {
+            ++p;
+            return true;
+        }
+        while (true) {
+            if (open == '{') {
+                std::string ignored;
+                if (!parse_string(p, end, ignored) || !expect(p, end, ':')) return false;
+            }
+            if (!skip_value(p, end)) return false;
+            p = skip_ws(p, end);
+            if (p < end && *p == ',') {
+                ++p;
+                continue;
+            }
+            if (p < end && *p == close) {
+                ++p;
+                return true;
+            }
+            return false;
+        }
+    }
+    if ((*p >= '0' && *p <= '9') || *p == '-') {
+        long long ignored = 0;
+        if (!parse_int(p, end, ignored)) return false;
+        // Fractions/exponents: consume (provenance only, value dropped).
+        if (p < end && *p == '.') {
+            ++p;
+            if (p >= end || *p < '0' || *p > '9') return false;
+            while (p < end && *p >= '0' && *p <= '9') ++p;
+        }
+        if (p < end && (*p == 'e' || *p == 'E')) {
+            ++p;
+            if (p < end && (*p == '+' || *p == '-')) ++p;
+            if (p >= end || *p < '0' || *p > '9') return false;
+            while (p < end && *p >= '0' && *p <= '9') ++p;
+        }
+        return true;
+    }
+    for (const char* lit : {"true", "false", "null"}) {
+        const size_t n = std::strlen(lit);
+        if (static_cast<size_t>(end - p) >= n && std::memcmp(p, lit, n) == 0) {
+            p += n;
+            return true;
+        }
+    }
+    return false;
 }
 
 bool parse_entry(const char*& p, const char* end, ManifestEntry& e) {
@@ -94,15 +209,9 @@ bool parse_entry(const char*& p, const char* end, ManifestEntry& e) {
             else e.bpp = static_cast<int>(num);
         } else {
             // Provenance for humans/debuggers ("drv", "drv_offset", "drv_size",
-            // "lba", "alt", ...) skipped generically so the ripper can grow
-            // new fields without breaking older game builds. Values are
-            // string/int only — anything else is a schema error.
-            p = skip_ws(p, end);
-            if (p < end && *p == '"') {
-                if (!parse_string(p, end, str)) return false;
-            } else {
-                if (!parse_int(p, end, num)) return false;
-            }
+            // "lba", "alt", ...) skipped generically — any JSON shape — so the
+            // ripper can grow new fields without breaking older game builds.
+            if (!skip_value(p, end)) return false;
         }
         p = skip_ws(p, end);
         if (p < end && *p == ',') {
@@ -150,7 +259,9 @@ bool parse_manifest(const std::vector<uint8_t>& blob, std::vector<ManifestEntry>
         } else if (key == "game") {
             if (!parse_string(p, end, str)) return false;  // informational only
         } else {
-            return false;  // top-level shape is fixed; entries carry provenance
+            // Unknown top-level keys skipped like entry provenance: newer
+            // manifests stay loadable; only "version" gates compatibility.
+            if (!skip_value(p, end)) return false;
         }
         p = skip_ws(p, end);
         if (p >= end) return false;
@@ -164,6 +275,49 @@ bool parse_manifest(const std::vector<uint8_t>& blob, std::vector<ManifestEntry>
         }
         return false;
     }
+}
+
+/// Map one fitted RGBA pixel to a palette index. Exact 16-bit match first
+/// (RGB *and* STP, via the same rgba_to_psx15 the PNG round-trips through),
+/// so identity art — including transparent 0x0000 wherever it sits, not just
+/// at index 0 — returns its original index. Nearest-RGB fallback skips the
+/// transparent entry only when it really is 0x0000; STP is compared, not
+/// ignored, so duplicate RGB entries keep their bit.
+unsigned quantize_index(const std::vector<uint16_t>& pal, size_t per, uint8_t r, uint8_t g, uint8_t b,
+                        uint8_t a) {
+    const uint16_t want = vfs::rgba_to_psx15(r, g, b, a);
+    for (size_t k = 0; k < per; ++k) {
+        if (pal[k] == want) return static_cast<unsigned>(k);
+    }
+    // No exact entry: transparent stays index 0 only if that entry is 0x0000,
+    // else nearest opaque color.
+    if (a < 128) {
+        if (!pal.empty() && pal[0] == 0) return 0;
+    }
+    // Exact entry for transparent-black-as-zero when it lives elsewhere.
+    if (want == 0) {
+        for (size_t k = 0; k < per; ++k) {
+            if (pal[k] == 0) return static_cast<unsigned>(k);
+        }
+    }
+    unsigned best = 0;
+    unsigned best_d = 0xFFFFFFFFu;
+    for (size_t k = 0; k < per; ++k) {
+        const uint16_t e = pal[k];
+        if (e == 0) continue;
+        const int dr = static_cast<int>(r) - vfs::expand5(static_cast<uint16_t>(e & 0x1F));
+        const int dg = static_cast<int>(g) - vfs::expand5(static_cast<uint16_t>((e >> 5) & 0x1F));
+        const int db = static_cast<int>(b) - vfs::expand5(static_cast<uint16_t>((e >> 10) & 0x1F));
+        // STP mismatch costs as much as a full-channel miss: keeps duplicate
+        // RGB entries on their own side of the bit.
+        const unsigned stp_cost = ((e ^ want) & 0x8000u) ? 3u * 255u * 255u : 0u;
+        const unsigned d = static_cast<unsigned>(dr * dr + dg * dg + db * db) + stp_cost;
+        if (d < best_d) {
+            best_d = d;
+            best = static_cast<unsigned>(k);
+        }
+    }
+    return best;
 }
 
 }  // namespace
@@ -183,6 +337,7 @@ bool HdTextures::load(const std::string& manifest_path, const std::string& art_p
     have_clut_ = false;
     entry_total_ = 0;
     hits_ = misses_ = fit_hits_ = 0;
+    miss_shape_ = miss_no_palette_ = miss_palette_not_live_ = miss_palette_shape_ = 0;
 
     if (!manifest_path.empty()) {
         FILE* f = std::fopen(manifest_path.c_str(), "rb");
@@ -314,15 +469,17 @@ const std::vector<uint16_t>* HdTextures::maybe_replace(int x, int y, int w, int 
                 break;
             }
         }
-        if (pick) return replace(*pick, units);
+        if (pick) return replace(*pick, units, staged, staged_words);
         // Shape mismatches are pure coincidences; still sniff CLUTs below so a
         // palette upload with TIM-identical bytes refreshes the cache.
         if (shape_ok == 0) {
             if (clut_hashes_.find(hash) != clut_hashes_.end()) note_clut(hash, staged, words);
+            ++miss_shape_;
             ++misses_;
             return nullptr;
         }
         // Right shape, no live palette: keep the original bytes (never guess).
+        ++miss_palette_not_live_;
         ++misses_;
         return nullptr;
     }
@@ -372,9 +529,14 @@ HdTextures::Snapshot HdTextures::save() const {
     snap.last_clut = last_clut_;
     snap.have_clut = have_clut_;
     snap.clut_cache = clut_cache_;
+    snap.clut_lru.assign(clut_lru_.begin(), clut_lru_.end());
     snap.hits = hits_;
     snap.misses = misses_;
     snap.fit_hits = fit_hits_;
+    snap.miss_shape = miss_shape_;
+    snap.miss_no_palette = miss_no_palette_;
+    snap.miss_palette_not_live = miss_palette_not_live_;
+    snap.miss_palette_shape = miss_palette_shape_;
     return snap;
 }
 
@@ -382,14 +544,28 @@ void HdTextures::load_snapshot(const Snapshot& snap) {
     last_clut_ = snap.last_clut;
     have_clut_ = snap.have_clut;
     clut_cache_ = snap.clut_cache;
+    // Restore the exact eviction order (front→back); drop hashes with no
+    // cached contents (a snapshot edited by hand, not a runtime state).
     clut_lru_.clear();
+    for (uint64_t hash : snap.clut_lru) {
+        if (clut_cache_.find(hash) != clut_cache_.end()) clut_lru_.push_back(hash);
+    }
+    // Any cached palette missing from the order still participates (back =
+    // evict-first); this only happens for hand-built snapshots.
     for (const auto& [hash, _] : clut_cache_) {
-        clut_lru_.push_back(hash);
-        if (clut_lru_.size() >= kMaxCachedCluts) break;
+        if (std::find(clut_lru_.begin(), clut_lru_.end(), hash) == clut_lru_.end()) clut_lru_.push_front(hash);
+    }
+    while (clut_lru_.size() > kMaxCachedCluts) {
+        clut_cache_.erase(clut_lru_.front());
+        clut_lru_.pop_front();
     }
     hits_ = snap.hits;
     misses_ = snap.misses;
     fit_hits_ = snap.fit_hits;
+    miss_shape_ = snap.miss_shape;
+    miss_no_palette_ = snap.miss_no_palette;
+    miss_palette_not_live_ = snap.miss_palette_not_live;
+    miss_palette_shape_ = snap.miss_palette_shape;
     fit_cache_.clear();  // fits re-derive deterministically from palette + PNG
     fit_lru_.clear();
     fit_bytes_ = 0;
@@ -404,22 +580,30 @@ void HdTextures::reset_runtime() {
     fit_lru_.clear();
     fit_bytes_ = 0;
     hits_ = misses_ = fit_hits_ = 0;
+    miss_shape_ = miss_no_palette_ = miss_palette_not_live_ = miss_palette_shape_ = 0;
 }
 
-const std::vector<uint16_t>* HdTextures::replace(const Candidate& pick, size_t units) {
+const std::vector<uint16_t>* HdTextures::replace(const Candidate& pick, size_t units, const uint32_t* staged,
+                                                     size_t staged_words) {
     // Indexed art re-quantizes against the live palette: key the fit on it so a
     // palette change refits instead of serving stale indices.
     FitKey key{pick.path, 0};
     const std::vector<uint16_t>* pal_ptr = nullptr;
     size_t per = 0;
     if (pick.bpp != 16) {
-        if (!pick.has_clut || !have_clut_) {
-            ++misses_;  // no live palette: keep the original bytes (never guess)
+        // The palette is identified by content hash (pick.clut), not by upload
+        // recency: an image uploaded before its CLUT still resolves once the
+        // CLUT has been sniffed at any point. The fit key uses the same hash
+        // so each palette gets its own correct indices.
+        if (!pick.has_clut) {
+            ++miss_no_palette_;
+            ++misses_;
             return nullptr;
         }
-        key.clut = last_clut_;
+        key.clut = pick.clut;
         const auto cache = clut_cache_.find(pick.clut);
-        if (cache == clut_cache_.end() || cache->first != last_clut_) {
+        if (cache == clut_cache_.end()) {
+            ++miss_palette_not_live_;
             ++misses_;
             return nullptr;
         }
@@ -427,6 +611,7 @@ const std::vector<uint16_t>* HdTextures::replace(const Candidate& pick, size_t u
         per = pick.bpp == 4 ? 16 : 256;  // entries per palette row
         // NOTE: only single-row palettes are handled (see below).
         if (pal_ptr->size() != per) {
+            ++miss_palette_shape_;
             ++misses_;
             return nullptr;
         }
@@ -450,8 +635,29 @@ const std::vector<uint16_t>* HdTextures::replace(const Candidate& pick, size_t u
     }
     scratch_.resize(units);
     if (pick.bpp == 16) {
+        // STP defaults to the staged texel's bit: AI upscalers and 8-bit PNG
+        // quantization don't preserve exact alpha 254, so requiring it would
+        // silently drop STP on real HD art. Alpha 0 forces transparent;
+        // alpha 254 forces STP set (explicit override); any other opaque
+        // alpha inherits. Transparent staged texels stay transparent.
+        // (A dedicated STP mask image as override is future work.)
         for (size_t i = 0; i < units; ++i) {
-            scratch_[i] = vfs::rgba_to_psx15(fit[i * 4], fit[i * 4 + 1], fit[i * 4 + 2], fit[i * 4 + 3]);
+            const uint16_t staged_px =
+                (staged && i / 2 < staged_words)
+                    ? static_cast<uint16_t>(staged[i / 2] >> ((i & 1) * 16))
+                    : 0;
+            const uint8_t a = fit[i * 4 + 3];
+            uint16_t px;
+            if (a < 128 || staged_px == 0) {
+                px = 0;
+            } else if (a == vfs::kStpAlpha) {
+                px = static_cast<uint16_t>(vfs::rgba_to_psx15(fit[i * 4], fit[i * 4 + 1], fit[i * 4 + 2], a) |
+                                           0x8000u);
+            } else {
+                px = static_cast<uint16_t>(vfs::rgba_to_psx15(fit[i * 4], fit[i * 4 + 1], fit[i * 4 + 2], 255) |
+                                           (staged_px & 0x8000u));
+            }
+            scratch_[i] = px;
         }
     } else {
         // Re-quantize to the live palette row (hoisted above): same shape the game
@@ -463,43 +669,11 @@ const std::vector<uint16_t>* HdTextures::replace(const Candidate& pick, size_t u
         std::vector<uint8_t> indices(pixels);
         for (size_t i = 0; i < pixels; ++i) {
             const uint8_t r = fit[i * 4], g = fit[i * 4 + 1], b = fit[i * 4 + 2], a = fit[i * 4 + 3];
-            unsigned best = 0;
-            if (a >= 128) {
-                // Exact 16-bit palette match first (RGB *and* STP): identity art
-                // round-trips bit-for-bit, and artist edits that reuse exact
-                // palette colors keep their STP. Nearest RGB only as fallback.
-                const uint16_t want =
-                    vfs::rgba_to_psx15(r, g, b, a >= 254 ? vfs::kStpAlpha : 255);
-                const std::vector<uint16_t>& pal = *pal_ptr;
-                bool exact = false;
-                for (size_t k = 0; k < per; ++k) {
-                    if (pal[k] == want) {
-                        best = static_cast<unsigned>(k);
-                        exact = true;
-                        break;
-                    }
-                }
-                if (!exact) {
-                    // Nearest palette RGB; index 0 conventionally transparent.
-                    unsigned best_d = 0xFFFFFFFFu;
-                    for (size_t k = 0; k < per; ++k) {
-                        const uint16_t e = pal[k];
-                        if (e == 0) continue;
-                        const int dr = static_cast<int>(r) - vfs::expand5(static_cast<uint16_t>(e & 0x1F));
-                        const int dg = static_cast<int>(g) - vfs::expand5(static_cast<uint16_t>((e >> 5) & 0x1F));
-                        const int db = static_cast<int>(b) - vfs::expand5(static_cast<uint16_t>((e >> 10) & 0x1F));
-                        const unsigned d =
-                            static_cast<unsigned>(dr * dr + dg * dg + db * db);
-                        if (d < best_d) {
-                            best_d = d;
-                            best = static_cast<unsigned>(k);
-                        }
-                    }
-                    // If the best match is worse than pure black-is-zero... keep it:
-                    // entry 0 is transparent so a black HD pixel maps to the nearest
-                    // non-zero dark entry, same as the artist's TIM would.
-                }
-            }
+            // Pass alpha through unchanged: 0 = transparent (exact-match 0x0000
+            // below), 254 = STP set, anything else = opaque STP-clear. Inverting
+            // either bit (e.g. mapping 255 -> STP) would corrupt palettes that
+            // carry the same RGB with and without STP.
+            unsigned best = quantize_index(*pal_ptr, per, r, g, b, a);
             indices[i] = static_cast<uint8_t>(best);
         }
         // Re-pack indices into words in VRAM order (low unit first).

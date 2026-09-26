@@ -65,6 +65,24 @@ public:
     HdTextures* hd() { return hd_.get(); }
     const HdTextures* hd() const { return hd_.get(); }
 
+    /// Save-state support for a mid-upload GP0(A0h) transfer. A VBLANK yield can
+    /// land between data words (generated loops poll on back-edges), so a save
+    /// taken there must capture the staged words, the destination cursor and
+    /// the HD flag — otherwise the load commits a half/garbled upload. The
+    /// HdTextures runtime snapshot (CLUT sniffer + caches) is separate; see
+    /// HdTextures::save()/load_snapshot(). fifo_/mode_/write_ are covered by
+    /// the GPU's own snapshot alongside these members.
+    struct UploadSnapshot {
+        int32_t x = 0, y = 0, w = 0, h = 0;  ///< write_ destination rect
+        int32_t cx = 0, cy = 0;              ///< write_ progress cursor
+        uint32_t remaining = 0;              ///< write_ pixels left
+        std::vector<uint32_t> staged;        ///< staged GP0(A0h) words
+        bool hd_staging = false;
+        bool active = false;  ///< true while mode_ == Mode::CpuToVram
+    };
+    UploadSnapshot save_upload() const;
+    void load_upload(const UploadSnapshot& snap);
+
 private:
     /// A vertex after draw-offset application, with 8-bit color and texture coordinates.
     struct Vertex {

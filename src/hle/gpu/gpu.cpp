@@ -631,6 +631,40 @@ void Gpu::draw_sprite(const Vertex& o, int32_t w, int32_t h, const Prim& p) {
 // GP1 / status
 // ---------------------------------------------------------------------------------------------
 
+Gpu::UploadSnapshot Gpu::save_upload() const {
+    UploadSnapshot snap;
+    snap.x = write_.x;
+    snap.y = write_.y;
+    snap.w = write_.w;
+    snap.h = write_.h;
+    snap.cx = write_.cx;
+    snap.cy = write_.cy;
+    snap.remaining = write_.remaining;
+    snap.staged = staged_;
+    snap.hd_staging = hd_staging_;
+    snap.active = mode_ == Mode::CpuToVram;
+    return snap;
+}
+
+void Gpu::load_upload(const UploadSnapshot& snap) {
+    write_.x = snap.x;
+    write_.y = snap.y;
+    write_.w = snap.w;
+    write_.h = snap.h;
+    write_.cx = snap.cx;
+    write_.cy = snap.cy;
+    write_.remaining = snap.remaining;
+    staged_ = snap.staged;
+    // A snapshot taken with HD armed but loaded without it (or vice versa)
+    // still replays the same words; the flag only selects staged vs direct.
+    hd_staging_ = snap.hd_staging && hd_ && hd_->enabled();
+    mode_ = snap.active ? Mode::CpuToVram : Mode::Command;
+    if (mode_ != Mode::CpuToVram) {
+        staged_.clear();
+        hd_staging_ = false;
+    }
+}
+
 void Gpu::reset_command_buffer() {
     fifo_len_ = 0;
     mode_ = Mode::Command;

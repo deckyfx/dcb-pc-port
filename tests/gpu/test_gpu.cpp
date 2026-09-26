@@ -447,12 +447,60 @@ void test_hd_upload() {
     fs::remove_all(dir, ec);
 }
 
+void test_hd_upload_snapshot() {
+    // Mid-upload save/load with HD armed: feed half the words of a 2x2 upload
+    // of unknown content, snapshot, restore into a fresh GPU (also HD-armed),
+    // feed the rest — VRAM must equal the uninterrupted verbatim replay.
+    auto gpu = make_gpu();
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / "dcb_gpu_hd_snap_test";
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    fs::create_directories(dir / "art", ec);
+    // One unrelated entry: HD arms (enabled) but our content never matches,
+    // so every upload replays verbatim through the staged path.
+    char manifest[256];
+    std::snprintf(manifest, sizeof manifest,
+                  "{\"version\":1,\"entries\":[{\"img\":\"ffffffffffffffff\",\"w\":1,\"h\":1,\"bpp\":16,"
+                  "\"path\":\"nope.png\"}]}");
+    const std::string man = (dir / "m.json").string();
+    FILE* f = std::fopen(man.c_str(), "wb");
+    CHECK(f != nullptr);
+    std::fwrite(manifest, 1, std::strlen(manifest), f);
+    std::fclose(f);
+    CHECK(gpu->install_hd()->load(man, (dir / "art").string()));
+    CHECK(gpu->hd()->enabled());
+    gpu->gp0(0xA0000000u);
+    gpu->gp0(xy(30, 40));
+    gpu->gp0(xy(2, 2));
+    gpu->gp0(0x22221111u);  // first two pixels
+    CHECK(gpu->receiving_vram());
+    Gpu::UploadSnapshot snap = gpu->save_upload();
+    CHECK(snap.active && snap.staged.size() == 1 && snap.hd_staging);
+
+    auto gpu2 = make_gpu();
+    CHECK(gpu2->install_hd()->load(man, (dir / "art").string()));
+    gpu2->load_upload(snap);
+    CHECK(gpu2->receiving_vram());
+    gpu2->gp0(0x44443333u);  // remaining two pixels
+    CHECK(!gpu2->receiving_vram());
+    CHECK(px(*gpu2, 30, 40) == 0x1111 && px(*gpu2, 31, 40) == 0x2222);
+    CHECK(px(*gpu2, 30, 41) == 0x3333 && px(*gpu2, 31, 41) == 0x4444);
+
+    // Inactive snapshot restores to idle.
+    auto gpu3 = make_gpu();
+    gpu3->load_upload(Gpu::UploadSnapshot{});
+    CHECK(!gpu3->receiving_vram());
+    fs::remove_all(dir, ec);
+}
+
 struct Case {
     const char* name;
     void (*fn)();
 };
 constexpr Case kCases[] = {
     {"hd_upload", test_hd_upload},
+    {"hd_upload_snapshot", test_hd_upload_snapshot},
     {"fill_rect", test_fill_rect},
     {"vram_transfer", test_vram_transfer},
     {"triangle_fill_rule", test_triangle_fill_rule},

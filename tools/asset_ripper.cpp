@@ -245,26 +245,53 @@ void rip_payload(Ripper& r, const std::vector<uint8_t>& drv, uint32_t off, uint3
 
 void rip_toc_level(Ripper& r, const std::vector<uint8_t>& drv, const std::vector<TocEntry>& toc,
                    const std::string& drv_name) {
+    size_t groups = 0, payloads = 0;
     for (const TocEntry& t : toc) {
         const uint64_t off64 = static_cast<uint64_t>(t.sector) * kSector;
         if (off64 > drv.size()) {
-            std::fprintf(stderr, "[ripper] %s:%s sector %u past end\n", drv_name.c_str(), t.name.c_str(), t.sector);
+            std::fprintf(stderr, "[ripper] %s:%s sector %u past end, skipped\n", drv_name.c_str(), t.name.c_str(),
+                         t.sector);
             continue;
         }
         const uint32_t off = static_cast<uint32_t>(off64);
         if (t.is_group || t.size == 0) {
             // Sub-TOC of the same 32-byte shape (B.DRV CARD/FONT/..., A.DRV BGM, ...).
-            for (const TocEntry& sub : vfs::parse_toc(drv.data(), drv.size(), off)) {
-                const uint64_t soff64 = static_cast<uint64_t>(sub.sector) * kSector;
-                if (soff64 > drv.size() || sub.is_group || sub.size == 0) continue;
-                rip_payload(r, drv, static_cast<uint32_t>(soff64), sub.size, drv_name,
-                            t.name + "_" + sub.name);
+            const vfs::TocResult sub = vfs::parse_toc_detailed(drv.data(), drv.size(), off);
+            size_t kept = 0;
+            for (const TocEntry& s : sub.entries) {
+                const uint64_t soff64 = static_cast<uint64_t>(s.sector) * kSector;
+                if (soff64 > drv.size()) {
+                    std::fprintf(stderr, "[ripper] %s:%s:%s sector %u past end, skipped\n", drv_name.c_str(),
+                                 t.name.c_str(), s.name.c_str(), s.sector);
+                    continue;
+                }
+                if (s.is_group) {
+                    std::fprintf(stderr, "[ripper] %s:%s:%s nested group, skipped\n", drv_name.c_str(),
+                                 t.name.c_str(), s.name.c_str());
+                    continue;
+                }
+                // Same clamp rule as top level: never read past the blob.
+                const uint32_t soff = static_cast<uint32_t>(soff64);
+                const uint32_t ssize =
+                    s.size < drv.size() - soff ? s.size : static_cast<uint32_t>(drv.size() - soff);
+                if (ssize == 0) {
+                    std::fprintf(stderr, "[ripper] %s:%s:%s empty after clamp, skipped\n", drv_name.c_str(),
+                                 t.name.c_str(), s.name.c_str());
+                    continue;
+                }
+                rip_payload(r, drv, soff, ssize, drv_name, t.name + "_" + s.name);
+                ++kept;
             }
+            std::printf("[ripper] %s:%s: %zu/%zu sub-entries (%s at record %zu)\n", drv_name.c_str(),
+                        t.name.c_str(), kept, sub.entries.size(), vfs::toc_stop_name(sub.stop), sub.stop_index);
+            ++groups;
             continue;
         }
         const uint32_t size = std::min(t.size, static_cast<uint32_t>(drv.size() - off));
         rip_payload(r, drv, off, size, drv_name, t.name);
+        ++payloads;
     }
+    if (groups > 0) std::printf("[ripper] %s: %zu payloads + %zu groups\n", drv_name.c_str(), payloads, groups);
 }
 
 bool rip_drv(Ripper& r, const fs::path& drv_path) {
@@ -274,15 +301,16 @@ bool rip_drv(Ripper& r, const fs::path& drv_path) {
         return false;
     }
     const std::string drv_name = drv_path.filename().string();
-    const std::vector<TocEntry> toc = vfs::parse_toc(drv.data(), drv.size(), 0);
-    if (toc.empty()) {
+    const vfs::TocResult toc = vfs::parse_toc_detailed(drv.data(), drv.size(), 0);
+    if (toc.entries.empty()) {
         // No container table (e.g. MMM.DAT, SLPS_031.01): still scan for TIMs.
         std::fprintf(stderr, "[ripper] %s: no TOC, raw TIM scan\n", drv_name.c_str());
         rip_payload(r, drv, 0, static_cast<uint32_t>(drv.size()), drv_name, "raw");
         return true;
     }
-    std::printf("[ripper] %s: %zu TOC entries\n", drv_name.c_str(), toc.size());
-    rip_toc_level(r, drv, toc, drv_name);
+    std::printf("[ripper] %s: %zu TOC entries (%s at record %zu)\n", drv_name.c_str(), toc.entries.size(),
+                vfs::toc_stop_name(toc.stop), toc.stop_index);
+    rip_toc_level(r, drv, toc.entries, drv_name);
     return true;
 }
 
@@ -391,8 +419,11 @@ int cmd_unpack(int argc, char** argv) {
     if (game.empty()) game = "unknown";
     r.game = sanitize(game);
     // Project folder layout (all gitignored): assets/raw/<game>/, assets/converted/<game>/.
+    // Start from a clean tree: stale PNGs from earlier rips (e.g. pre-dedup
+    // names) would otherwise accumulate unused next to the fresh output.
     r.raw_root = out / "raw" / r.game;
     r.converted_root = out / "converted" / r.game;
+    fs::remove_all(r.converted_root, ec);
     fs::create_directories(r.converted_root / "textures", ec);
     if (!lba_map.empty()) load_lba_map(r, lba_map);
     std::sort(drvs.begin(), drvs.end());
@@ -543,6 +574,8 @@ int cmd_sfx(int argc, char** argv) {
     }
     std::sort(bins.begin(), bins.end());
     const fs::path sfx_root = out / "converted" / game;
+    // Clean tree, like unpack: stale .vab/.seq from earlier rips must not linger.
+    fs::remove_all(sfx_root / "sfx", ec);
     fs::create_directories(sfx_root / "sfx", ec);
     std::vector<SfxBank> banks;
     std::vector<SfxTone> tones;

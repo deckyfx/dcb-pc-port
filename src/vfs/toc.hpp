@@ -27,9 +27,30 @@ struct TocEntry {
     bool is_group = false;  ///< \x80 marker: sector points at a sub-TOC, size is 0
 };
 
+/// Why the TOC walk stopped (for ripper logs; see tools/asset_ripper.cpp).
+enum class TocStop {
+    Terminator,  ///< zero record: the normal end of the table
+    EndOfBlob,   ///< ran out of bytes (truncated table)
+    BadKind,     ///< unknown record kind byte
+    BadName,     ///< implausible 16-byte name
+    BadSector,   ///< sector out of range
+    BadSize,     ///< data entry size out of range
+};
+
+const char* toc_stop_name(TocStop stop);
+
+struct TocResult {
+    std::vector<TocEntry> entries;
+    TocStop stop = TocStop::EndOfBlob;
+    size_t stop_index = 0;  ///< record index where the walk stopped
+};
+
 /// Parse the TOC at `data[base,...)`. Stops at the zero record, an unknown
 /// record kind, an implausible name/sector/size, or the end of the blob.
 /// Never reads past `size`.
 std::vector<TocEntry> parse_toc(const uint8_t* data, size_t size, size_t base = 0);
+
+/// Same walk with the stop reason (for ripper logs).
+TocResult parse_toc_detailed(const uint8_t* data, size_t size, size_t base = 0);
 
 }  // namespace vfs

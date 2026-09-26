@@ -1,6 +1,11 @@
 // Unit tests for dcb_vfs (src/vfs) and the HD texture index (src/hle/gpu).
 // Run as `test_vfs <case>`; each case is its own ctest entry (vfs.<case>).
 
+// stb_image_write first: its C math.h clashes with an already-included C++
+// cmath. Test-only PNG encoding (the game binary never links the encoder).
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb/stb_image_write.h"
+
 #include "gpu/hd_textures.hpp"
 #include "vfs/hash.hpp"
 #include "vfs/image.hpp"
@@ -316,6 +321,48 @@ void test_hd_replace() {
     hle::HdTextures bad;
     CHECK(!bad.load((dir / "missing.json").string(), ""));
     CHECK(!bad.enabled());
+    // Manifest with escaped strings, nested provenance, and unknown top-level
+    // keys still loads (L1 hardening).
+    char manifest2[1024];
+    std::snprintf(manifest2, sizeof manifest2,
+                  "{\"version\":1,\"future\":[1,{\"a\":null}],\"entries\":[{\"img\":\"%s\",\"w\":1,\"h\":1,"
+                  "\"bpp\":16,\"path\":\"r.png\",\"note\":\"a\\\"b\\\\c \\u00e9\",\"ratio\":1.5e3,"
+                  "\"flags\":{\"x\":[true,false]}}]}",
+                  vfs::to_hex16(img).c_str());
+    const std::string man2_path = (dir / "m2.json").string();
+    f = std::fopen(man2_path.c_str(), "wb");
+    CHECK(f);
+    std::fwrite(manifest2, 1, std::strlen(manifest2), f);
+    std::fclose(f);
+    hle::HdTextures hd_tol;
+    CHECK(hd_tol.load(man2_path, (dir / "art").string()));
+    CHECK(hd_tol.enabled() && hd_tol.entry_count() == 1);
+    const std::vector<uint16_t>* hit_tol = hd_tol.maybe_replace(0, 0, 1, 1, staged, 1);
+    CHECK(hit_tol && (*hit_tol)[0] == want);
+    // Huge integers saturate instead of overflowing; bad version still rejects.
+    char manifest3[256];
+    std::snprintf(manifest3, sizeof manifest3,
+                  "{\"version\":1,\"entries\":[{\"img\":\"%s\",\"w\":9999999999999999999999,\"h\":1,"
+                  "\"bpp\":16,\"path\":\"r.png\"}]}",
+                  vfs::to_hex16(img).c_str());
+    const std::string man3_path = (dir / "m3.json").string();
+    f = std::fopen(man3_path.c_str(), "wb");
+    CHECK(f);
+    std::fwrite(manifest3, 1, std::strlen(manifest3), f);
+    std::fclose(f);
+    hle::HdTextures hd3;
+    // Absurd width saturates then narrows out of range: entry (and manifest)
+    // rejected, no overflow UB anywhere.
+    CHECK(!hd3.load(man3_path, (dir / "art").string()));
+    char manifest4[64];
+    std::snprintf(manifest4, sizeof manifest4, "{\"version\":2,\"entries\":[]}");
+    const std::string man4_path = (dir / "m4.json").string();
+    f = std::fopen(man4_path.c_str(), "wb");
+    CHECK(f);
+    std::fwrite(manifest4, 1, std::strlen(manifest4), f);
+    std::fclose(f);
+    hle::HdTextures hd4;
+    CHECK(!hd4.load(man4_path, (dir / "art").string()));
     // Second call for the same upload must come from the fit cache (no re-decode).
     const uint64_t fits_before = hd.fit_hits();
     const std::vector<uint16_t>* hit2 = hd.maybe_replace(0, 0, 1, 1, staged, 1);
@@ -336,8 +383,7 @@ void test_hd_replace() {
     CHECK(hd2.enabled());  // mounts survive the reset
 }
 
-// Identity pack: a ripped-then-replayed 4-bit TIM with STP-set outline must
-// come back bit-for-bit (the title-screen black-outline scenario).
+// Identity pack end-to-end (see test_hd_identity_e2e below).
 void test_hd_identity_stp() {
     // 4-bit 8x1 TIM, one 16-entry palette: idx0 transparent, idx1 = opaque
     // black 0x8000 (STP set, the outline), idx2 = semi-transparent red 0x801F.
@@ -397,6 +443,93 @@ void test_hd_identity_stp() {
         }
         CHECK(found);
     }
+}
+
+// Identity pack end-to-end through maybe_replace(): build a 4-bit TIM, run the
+// ripper path (tim_to_rgba -> PNG bytes -> manifest), upload the CLUT (palette
+// sniffing), then upload the image bytes and require bit-identical words back.
+// The palette is adversarial: transparent 0x0000 NOT at index 0, duplicate red
+// with STP set and clear, STP-set black outline. Uses stb_image_write directly
+// (test-only; the game binary never links the encoder).
+void test_hd_identity_e2e() {
+    // 4-bit 8x1 TIM, palette: [0]=0x0001 opaque near-black, [1]=0x001F red,
+    // [2]=0x801F red STP-set, [3]=0x0000 transparent, [4]=0x8000 black STP-set.
+    std::vector<uint8_t> t;
+    auto u32 = [&](uint32_t v) {
+        for (int i = 0; i < 4; ++i) t.push_back(static_cast<uint8_t>(v >> (8 * i)));
+    };
+    auto u16 = [&](uint16_t v) {
+        t.push_back(static_cast<uint8_t>(v));
+        t.push_back(static_cast<uint8_t>(v >> 8));
+    };
+    u32(0x10);
+    u32(0x08);
+    u32(12 + 32);
+    u16(0);
+    u16(0);
+    u16(16);
+    u16(1);
+    const uint16_t entries[16] = {0x0001, 0x001F, 0x801F, 0x0000, 0x8000, 0x001F, 0x001F, 0x001F,
+                                  0x001F, 0x001F, 0x001F, 0x001F, 0x001F, 0x001F, 0x001F, 0x001F};
+    for (uint16_t e : entries) u16(e);
+    u32(12 + 2 * 1 * 2);
+    u16(0);
+    u16(0);
+    u16(2);
+    u16(1);
+    // pixels: 0,1,2,3,4,1,2,3
+    t.push_back(0x10);
+    t.push_back(0x32);
+    t.push_back(0x14);
+    t.push_back(0x32);
+    vfs::Tim tim;
+    CHECK(vfs::parse_tim(t.data(), t.size(), tim) == t.size());
+    // Ripper path: RGBA -> PNG bytes (in-memory, like stbi_write_png_to_mem).
+    std::vector<uint8_t> rgba;
+    CHECK(vfs::tim_to_rgba(tim, 0, rgba));
+    int png_len = 0;
+    unsigned char* png = stbi_write_png_to_mem(rgba.data(), 8 * 4, 8, 1, 4, &png_len);
+    CHECK(png && png_len > 0);
+
+    const fs::path dir = scratch_dir();
+    fs::create_directories(dir / "art");
+    FILE* f = std::fopen((dir / "art" / "e.png").string().c_str(), "wb");
+    CHECK(f);
+    CHECK(std::fwrite(png, 1, static_cast<size_t>(png_len), f) == static_cast<size_t>(png_len));
+    std::fclose(f);
+    STBIW_FREE(png);
+
+    // Manifest: img hash over the packed index bytes, clut hash over the row.
+    const size_t img_off = 8 + 12 + 32 + 12;
+    const uint64_t img = vfs::fnv1a64(t.data() + img_off, 4);
+    const uint64_t clut = vfs::fnv1a64(entries, sizeof entries);
+    char manifest[512];
+    std::snprintf(manifest, sizeof manifest,
+                  "{\"version\":1,\"entries\":[{\"img\":\"%s\",\"w\":8,\"h\":1,\"bpp\":4,\"path\":\"e.png\","
+                  "\"clut\":\"%s\"}]}",
+                  vfs::to_hex16(img).c_str(), vfs::to_hex16(clut).c_str());
+    const std::string man_path = (dir / "m.json").string();
+    f = std::fopen(man_path.c_str(), "wb");
+    CHECK(f);
+    std::fwrite(manifest, 1, std::strlen(manifest), f);
+    std::fclose(f);
+
+    hle::HdTextures hd;
+    CHECK(hd.load(man_path, (dir / "art").string()));
+    // 1. CLUT upload first (16 entries = 8 words), so the sniffer caches it.
+    uint32_t clut_words[8];
+    for (int i = 0; i < 8; ++i)
+        clut_words[i] = static_cast<uint32_t>(entries[i * 2]) | (static_cast<uint32_t>(entries[i * 2 + 1]) << 16);
+    CHECK(hd.maybe_replace(0, 496, 16, 1, clut_words, 8) == nullptr);  // sniff only, no image hit
+    // 2. Image upload: 8x1 4-bit -> 2x1-unit rect = ONE word (4 packed bytes).
+    const uint32_t staged[1] = {0x32143210u};  // bytes 10 32 14 32 = idx0..idx7
+    const std::vector<uint16_t>* hit = hd.maybe_replace(0, 0, 2, 1, staged, 1);
+    CHECK(hit && hit->size() == 2);
+    CHECK((*hit)[0] == 0x3210u && (*hit)[1] == 0x3214u);  // bit-identical
+    // 3. Repeat comes from the fit cache.
+    const uint64_t fits_before = hd.fit_hits();
+    CHECK(hd.maybe_replace(0, 0, 2, 1, staged, 1) == hit);
+    CHECK(hd.fit_hits() == fits_before + 1);
 }
 
 // --- VAB / BRR ---------------------------------------------------------------
@@ -519,6 +652,7 @@ constexpr Case kCases[] = {
     {"vfs_mounts", test_vfs_mounts},
     {"hd_replace", test_hd_replace},
     {"hd_identity_stp", test_hd_identity_stp},
+    {"hd_identity_e2e", test_hd_identity_e2e},
     {"brr_block", test_brr_block},
     {"vab_parse", test_vab_parse},
     {"vab_decode", test_vab_decode},
