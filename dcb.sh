@@ -8,13 +8,14 @@
 #   ./dcb.sh -b          build only, don't run
 #   ./dcb.sh -w          also cross-build the Windows .exe
 #   ./dcb.sh -s SERIAL   game id (default SLPS-03101)
+#   ./dcb.sh -G          open Ghidra (ghidra/ghidra_12.1.2_PUBLIC, MCP scripting on) instead
 # Flags combine: ./dcb.sh -r -t
 set -euo pipefail
 cd "$(dirname "$0")"
 
 SERIAL="SLPS-03101"
 RECOMPILE=0 TRACE=0 GDB=0 RUN=1 WINDOWS=0
-while getopts "rtgbws:h" opt; do
+while getopts "rtgbws:Gh" opt; do
     case "$opt" in
         r) RECOMPILE=1 ;;
         t) TRACE=1 ;;
@@ -22,7 +23,8 @@ while getopts "rtgbws:h" opt; do
         b) RUN=0 ;;
         w) WINDOWS=1 ;;
         s) SERIAL="$OPTARG" ;;
-        *) sed -n '2,11p' "$0"; exit 2 ;;
+        G) exec tools/ghidra/ghidra_gui.sh ;;
+        *) sed -n '2,12p' "$0"; exit 2 ;;
     esac
 done
 

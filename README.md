@@ -95,7 +95,7 @@ cmake --preset linux-debug && cmake --build --preset linux-debug --target recomp
 # 5. Mirror the discovery into Ghidra (new functions + overlay blocks such as KAWSEG::801E2A6C):
 #    GUI: Script Manager > DCB > ApplyDiscovered.java (or via MCP run_ghidra_script), or headless
 #    with Ghidra closed:
-../ghidra_12.1.2_PUBLIC/support/analyzeHeadless ghidra/project DCB/SLPS-03101 -process SLPS_031.01 \
+ghidra/ghidra_12.1.2_PUBLIC/support/analyzeHeadless ghidra/project DCB/SLPS-03101 -process SLPS_031.01 \
     -noanalysis -scriptPath ghidra/scripts -postScript ApplyDiscovered.java "$PWD"
 
 # 6. Build: native dev loop, or a Windows x64 .exe cross-compiled from Linux
