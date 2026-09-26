@@ -85,6 +85,18 @@ public:
             for (size_t s = 0; s < prog_.segments.size(); ++s) {
                 for (auto [addr, origin] : weak_seeds(s)) try_weak_seed(s, addr, origin);
             }
+            // Functions referenced only from code we have not reached (or through address
+            // arithmetic we do not follow), e.g. task entries: a stack-frame prologue that directly
+            // follows the end of the previous function, in code nothing else claims.
+            for (size_t s = 0; s < prog_.segments.size(); ++s) {
+                const Segment& seg = prog_.segments[s];
+                for (uint32_t a = seg.code_begin; a < seg.code_end; a += 4) {
+                    if (covered(s, a) || is_entry(s, a)) continue;
+                    const Instr first = seg.instr(a);
+                    if (first.op != Op::Addiu || first.rs != 29 || first.rt != 29 || first.simm() >= 0) continue;
+                    try_weak_seed(s, a, Origin::PrologueSweep);
+                }
+            }
             drain();
         }
         reclassify();
@@ -347,6 +359,7 @@ const char* origin_name(Origin o) {
         case Origin::Call: return "call";
         case Origin::DataPointer: return "data_pointer";
         case Origin::CodeConstant: return "code_constant";
+        case Origin::PrologueSweep: return "prologue_sweep";
     }
     return "?";
 }

@@ -27,6 +27,7 @@ public:
     void insert(std::unique_ptr<Disc> disc) { disc_ = std::move(disc); }
 
     uint8_t read(uint32_t phys);
+    uint8_t read_reg(uint32_t phys);
     void write(uint32_t phys, uint8_t value);
 
     /// Advance to guest time `now` (cycles): deliver responses and sectors that are due.
@@ -46,11 +47,14 @@ private:
     std::function<void()> raise_irq2_;
     std::unique_ptr<Disc> disc_;
     bool trace_ = false;  ///< DCB_TRACE_CD=1
+    unsigned trace_regs_ = 0;
     uint64_t now_ = 0;
 
     // Registers
     uint8_t index_ = 0;
-    uint8_t irq_enable_ = 0, irq_flags_ = 0;
+    // Power-on state as the BIOS leaves it after booting a disc: CD interrupts enabled. libcd's
+    // first command (CdlNop in CD_init) is sent before it programs the enable register itself.
+    uint8_t irq_enable_ = 0x1F, irq_flags_ = 0;
     std::deque<uint8_t> params_, response_;
     std::vector<uint8_t> data_;           // data FIFO (current sector, after a BFRD request)
     size_t data_pos_ = 0;

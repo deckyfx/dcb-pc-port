@@ -154,7 +154,10 @@ void System::poll(PsxContext& ctx) {
 }
 
 void System::idle(PsxContext& ctx) {
-    ctx.cycles = (ctx.cycles / cycles_per_vblank() + 1) * cycles_per_vblank();
+    // Deliver what is already pending first; only then let a little guest time pass (~60 us, the
+    // scale of a DMA or CD response), so native waits end as soon as their event can arrive.
+    poll(ctx);
+    ctx.cycles += 2048;
     poll(ctx);
 }
 

@@ -89,7 +89,7 @@ void CdRom::tick(uint64_t now) {
 void CdRom::command(uint8_t cmd) {
     auto param = [&](size_t i) { return i < params_.size() ? params_[i] : uint8_t{0}; };
     if (trace_) {
-        std::fprintf(stderr, "[cd] cmd %02X", cmd);
+        std::fprintf(stderr, "[cd %7.3fs] cmd %02X", static_cast<double>(now_) / static_cast<double>(kCpuHz), cmd);
         for (uint8_t p : params_) std::fprintf(stderr, " %02X", p);
         std::fprintf(stderr, "  (mode %02X, lba %u)\n", mode_, read_lba_);
     }
@@ -208,6 +208,16 @@ void CdRom::command(uint8_t cmd) {
 }
 
 uint8_t CdRom::read(uint32_t phys) {
+    const uint8_t v = read_reg(phys);
+    if (trace_ && trace_regs_ < 60) {
+        ++trace_regs_;
+        std::fprintf(stderr, "[cd %7.3fs] rd %u.%u -> %02X\n", static_cast<double>(now_) / static_cast<double>(kCpuHz),
+                     phys - kBase, index_, v);
+    }
+    return v;
+}
+
+uint8_t CdRom::read_reg(uint32_t phys) {
     switch (phys - kBase) {
         case 0: return status_register();
         case 1: {  // response FIFO
@@ -225,6 +235,11 @@ uint8_t CdRom::read(uint32_t phys) {
 
 void CdRom::write(uint32_t phys, uint8_t value) {
     const uint32_t reg = phys - kBase;
+    if (trace_ && trace_regs_ < 60) {
+        ++trace_regs_;
+        std::fprintf(stderr, "[cd %7.3fs] wr %u.%u <- %02X\n", static_cast<double>(now_) / static_cast<double>(kCpuHz),
+                     reg, index_, value);
+    }
     if (reg == 0) {
         index_ = value & 3u;
         return;
@@ -232,7 +247,10 @@ void CdRom::write(uint32_t phys, uint8_t value) {
     switch (reg << 2 | index_) {
         case (1 << 2 | 0): command(value); break;              // command
         case (2 << 2 | 0): params_.push_back(value); break;    // parameter FIFO
-        case (2 << 2 | 1): irq_enable_ = value & 0x1Fu; break;
+        case (2 << 2 | 1):  // interrupt enable: a response already waiting interrupts now
+            irq_enable_ = value & 0x1Fu;
+            if (irq_flags_ & irq_enable_ & 7u) raise_irq2_();
+            break;
         case (3 << 2 | 0):                                     // request: BFRD
             // 1 loads the announced sector into the data FIFO; repeating it while loaded does not
             // rewind (libcd requests again before each partial transfer). 0 empties the FIFO.

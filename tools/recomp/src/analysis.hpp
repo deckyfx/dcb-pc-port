@@ -12,7 +12,7 @@
 namespace recomp {
 
 /// Why a function was considered an entry point, strongest first.
-enum class Origin : uint8_t { Entry, Ghidra, Call, DataPointer, CodeConstant };
+enum class Origin : uint8_t { Entry, Ghidra, Call, DataPointer, CodeConstant, PrologueSweep };
 const char* origin_name(Origin o);
 
 struct JumpTable {

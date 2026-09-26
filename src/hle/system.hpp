@@ -34,7 +34,7 @@ public:
     uint64_t cpu_cycles() const { return ctx_.cycles; }
     uint64_t hblanks() const { return ctx_.cycles * static_cast<uint64_t>(kHblankHz) / static_cast<uint64_t>(kCpuHz); }
 
-    /// A native wait (no guest code runs): fast-forward guest time to the next VBLANK and poll.
+    /// A native wait (no guest code runs): deliver pending interrupts, then advance guest time a little.
     void idle(PsxContext& ctx);
 
     /// Host work once per guest frame (present, input), run at each VBLANK before pacing.
