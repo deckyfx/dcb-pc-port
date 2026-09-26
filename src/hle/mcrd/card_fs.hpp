@@ -16,7 +16,8 @@
 //   B0:55 GetLastFileError(fd)      -> CardFs::file_error
 //
 // Everything completes synchronously. Files opened with FASYNC (0x8000) additionally expect a
-// HwCARD (F0000011h) event after read/write: last_was_async() / async_spec() say which.
+// completion event after read/write (SwCARD F4000001h, which games wait on, plus HwCARD
+// F0000011h for the sector transfer): last_was_async() / async_spec() say which.
 // Directory frames are re-read from the card on every call, so raw sector writes through
 // B0:4E stay coherent with this layer. Reference: psx-spx "Memory Card Data Format",
 // "BIOS File Functions", "BIOS Memory Card Functions".
@@ -53,8 +54,7 @@ public:
     static constexpr uint32_t kEMFile = 0x18;   ///< no free file descriptor
     static constexpr uint32_t kENoSpc = 0x1C;   ///< not enough free blocks / write past the end
 
-    // Card event specs for async completion (class HwCARD F0000011h).
-    static constexpr uint32_t kHwCardClass = 0xF0000011u;
+    // Card event specs for async completion (classes SwCARD F4000001h and HwCARD F0000011h).
     static constexpr uint32_t kSpecDone = 0x0004u;
     static constexpr uint32_t kSpecError = 0x8000u;
 
@@ -99,7 +99,7 @@ public:
     uint32_t last_error() const { return last_error_; }
     /// Error of the last operation on `fd` (B0:55); kEBadF for an unknown fd.
     uint32_t file_error(int fd) const;
-    /// True when the last read/write was on an FASYNC file: deliver a HwCARD event.
+    /// True when the last read/write was on an FASYNC file: deliver the card completion events.
     bool last_was_async() const { return last_async_; }
     /// Spec to deliver with that event: kSpecDone on success, kSpecError on failure.
     uint32_t async_spec() const { return last_error_ == kENoError ? kSpecDone : kSpecError; }

@@ -166,6 +166,14 @@ int main(int argc, char** argv) {
             if (any_press && pad_frame < movie_until) skip_until = pad_frame + 6;
             if (pad_frame < skip_until) pad = static_cast<uint16_t>(pad & ~platform::Start);
             mmio.set_pad_buttons(0, pad);
+            // DCB_TRACE_INPUT: what the game's pad library last read over the port.
+            static const bool trace_input = std::getenv("DCB_TRACE_INPUT") != nullptr;
+            static uint16_t sent_seen = 0xFFFF;
+            if (trace_input && mmio.pad_sent() != sent_seen) {
+                sent_seen = mmio.pad_sent();
+                std::fprintf(stderr, "[input] frame %llu: game read pad %04X\n",
+                             static_cast<unsigned long long>(pad_frame), sent_seen);
+            }
             ++pad_frame;
             const hle::Gpu::Display d = mmio.gpu().display();
             platform::DisplayArea area;

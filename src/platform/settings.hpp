@@ -180,6 +180,7 @@ inline constexpr const char* kSettingsAppDir = "dcb-pc-port";
 /// Inputs to settings-path resolution (captured from the process, or injected by tests).
 struct SettingsLocations {
     std::filesystem::path override_path;    ///< DCB_SETTINGS; wins when set
+    std::filesystem::path cwd;              ///< current directory (a project / game folder)
     std::filesystem::path exe_dir;          ///< directory holding the executable
     std::filesystem::path appdata;          ///< %APPDATA% (Windows)
     std::filesystem::path xdg_config_home;  ///< $XDG_CONFIG_HOME
@@ -187,10 +188,11 @@ struct SettingsLocations {
     bool windows = false;
 };
 
-/// Where settings.ini lives: DCB_SETTINGS if set; else <exe_dir>/settings.ini if it exists
-/// (portable mode); else %APPDATA%\dcb-pc-port\settings.ini on Windows, or
-/// $XDG_CONFIG_HOME (falling back to ~/.config)/dcb-pc-port/settings.ini elsewhere. With no
-/// usable per-user directory, falls back to the portable location.
+/// Where settings.ini lives: DCB_SETTINGS if set; else ./settings.ini in the current directory
+/// if it exists; else <exe_dir>/settings.ini if it exists (portable mode); else the per-user file
+/// in home: %APPDATA%\dcb-pc-port\settings.ini on Windows, or $XDG_CONFIG_HOME (falling back to
+/// ~/.config)/dcb-pc-port/settings.ini elsewhere. With no usable per-user directory, falls back
+/// to the portable location.
 std::filesystem::path resolve_settings_path(const SettingsLocations& where,
                                             const std::function<bool(const std::filesystem::path&)>& exists);
 

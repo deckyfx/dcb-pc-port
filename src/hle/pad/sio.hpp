@@ -28,6 +28,8 @@ public:
 
     /// Digital pad state, active low (0xFFFF = nothing pressed).
     void set_buttons(unsigned port, uint16_t buttons) { buttons_[port & 1u] = buttons; }
+    /// Last button bytes the game actually read for port 1 (lo | hi << 8), for tracing.
+    uint16_t last_sent() const { return last_sent_; }
 
 private:
     std::function<void()> raise_irq7_;
@@ -40,6 +42,7 @@ private:
     bool busy_ = false, ack_pending_ = false, rx_pending_ = false;
     uint8_t rx_next_ = 0xFF;
     uint64_t done_at_ = 0, ack_at_ = 0, ack_end_ = 0;
+    uint16_t last_sent_ = 0xFFFF;
     unsigned index_ = 0;   ///< byte position in the current transaction
     bool selected_ = false, talking_to_pad_ = false;
 
