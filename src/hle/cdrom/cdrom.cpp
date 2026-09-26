@@ -13,6 +13,11 @@ constexpr uint64_t kCpuHz = 33868800;
 constexpr uint64_t kAckDelay = 25000;       // first response (INT3), ~0.7 ms
 constexpr uint64_t kCompleteDelay = 150000;  // second response (INT2) of slow commands, ~4.4 ms
 constexpr uint64_t kSeekDelay = 250000;      // before the first sector of a read, ~7 ms
+// After an acknowledge the next queued interrupt waits a little (psx-spx "CDROM - Response/Data
+// Queueing": data requests shortly after the acknowledge still belong to the old INT1). libcd
+// acknowledges INT1 before its callback requests the sector: without this gap, a sector already
+// buffered behind it (the game was slow to take the last one) replaced it before the request.
+constexpr uint64_t kRearmDelay = 2000;       // ~60 us
 
 constexpr uint8_t kStatMotor = 0x02, kStatRead = 0x20, kStatSeek = 0x40, kStatPlay = 0x80;
 constexpr uint8_t kModeDoubleSpeed = 0x80, kModeXaAdpcm = 0x40, kModeWholeSector = 0x20,
@@ -23,8 +28,8 @@ uint32_t from_bcd(uint8_t v) { return (v >> 4) * 10u + (v & 0xFu); }
 
 }  // namespace
 
-CdRom::CdRom(std::function<void()> raise_irq2)
-    : raise_irq2_(std::move(raise_irq2)), trace_(std::getenv("DCB_TRACE_CD") != nullptr) {}
+CdRom::CdRom(std::function<void()> raise_irq2, std::function<uint64_t()> clock)
+    : raise_irq2_(std::move(raise_irq2)), clock_(std::move(clock)), trace_(std::getenv("DCB_TRACE_CD") != nullptr) {}
 
 void CdRom::reset_xa() {
     xa_.reset();
@@ -46,8 +51,9 @@ uint8_t CdRom::status_register() const {
 }
 
 void CdRom::deliver_due() {
-    // One interrupt at a time: the next response waits until the game acknowledges the flags.
-    if ((irq_flags_ & 7u) || queue_.empty() || queue_.front().due > now_) return;
+    // One interrupt at a time: the next response waits until the game acknowledges the flags,
+    // and then kRearmDelay more.
+    if ((irq_flags_ & 7u) || now_ < hold_until_ || queue_.empty() || queue_.front().due > now_) return;
     Response r = std::move(queue_.front());
     queue_.pop_front();
     if (r.sector) {
@@ -288,8 +294,11 @@ void CdRom::write(uint32_t phys, uint8_t value) {
         case (3 << 2 | 1):                                     // acknowledge interrupt flags
             irq_flags_ = static_cast<uint8_t>(irq_flags_ & ~(value & 0x1Fu));
             if (value & 0x40u) params_.clear();
-            if (!(irq_flags_ & 7u)) response_.clear();
-            deliver_due();
+            if (!(irq_flags_ & 7u)) {
+                response_.clear();
+                if (clock_) now_ = std::max(now_, clock_());  // the ack lands between ticks
+                hold_until_ = now_ + kRearmDelay;  // the next response comes on a later tick
+            }
             break;
         // CD audio volume matrix (psx-spx "CDROM Audio Volume"): latched, applied by ADPCTL bit 5.
         case (2 << 2 | 2): atv_pending_[0] = value; break;     // L -> L

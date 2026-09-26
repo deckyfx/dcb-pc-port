@@ -189,6 +189,21 @@ void test_invalid_values_fall_back() {
     CHECK(e.display.scale == 8 && e.display.fullscreen && e.volume == 0);
 }
 
+void test_hotkeys() {
+    // Defaults (a file without [hotkeys]) resolve silently; a bad value warns and keeps the default.
+    std::vector<std::string> warnings;
+    const BindingResolvers r{fake_resolve, fake_resolve};
+    Settings s = parse_settings(IniDocument::parse(""), r, warnings);
+    CHECK(warnings.empty());
+    CHECK(s.frame_advance_keys == std::vector<int>{'N' - 'A'});
+    CHECK(s.pause_keys.empty());  // "P, Pause": the fake resolver knows no "Pause", so the default is unbound
+
+    s = parse_settings(IniDocument::parse("[hotkeys]\npause = Q\nframe_advance = Bogus Key\n"), r, warnings);
+    CHECK(s.pause_keys == std::vector<int>{'Q' - 'A'});
+    CHECK(s.frame_advance_keys == std::vector<int>{'N' - 'A'});
+    CHECK(warnings.size() == 1 && warnings[0].find("frame_advance") != std::string::npos);
+}
+
 void test_binding_lists() {
     std::string bad;
     CHECK(parse_binding_list("Z", fake_resolve) == std::vector<int>{25});
@@ -439,6 +454,7 @@ int main(int /*argc*/, char** argv) {
     test_defaults();
     test_invalid_values_fall_back();
     test_binding_lists();
+    test_hotkeys();
 #if defined(DCB_HAS_SDL3)
     test_sdl_names();
 #endif

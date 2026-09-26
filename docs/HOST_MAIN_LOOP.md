@@ -1,6 +1,8 @@
 # Host-driven main loop (game on a fiber)
 
-Status: **planned**. Nothing here is implemented yet except what "Today" describes.
+Status: **implemented**: the host loop, pause and frame advance, and input record/replay.
+Save states, fast-forward, trainer and custom menus are still planned. "Today" below describes
+the design *before* this change; "The change" is what the code does now.
 
 Move the game's main code path onto a fiber so the PC side owns the frame loop. The game then
 runs *inside* our program, one frame at a time, and stops at a clean point between frames.
@@ -100,10 +102,10 @@ scripted run must produce **bit-identical frames** before and after the change.
 Once the host owns the frame boundary, every feature below runs while the game is frozen at a
 clean point. None of them has to cope with the game being halfway through a frame.
 
-| Feature | How it works | Planned hotkey / switch |
+| Feature | How it works | Hotkey / switch |
 |---|---|---|
-| **Pause** | The host stops calling `resume_guest()`; the window keeps presenting and taking input. | `Pause` / `P` |
-| **Frame advance** | While paused, resume for exactly one frame. | `F10` / `N` |
+| **Pause** | The host stops calling `resume_guest()`; the window keeps presenting and taking input. | `P`, `Pause` (`[hotkeys] pause`) |
+| **Frame advance** | While paused, resume for exactly one frame (hold to step). | `N` (`[hotkeys] frame_advance`) |
 | **Fast-forward** | Skip pacing (today's `DCB_FAST=1`, but toggled live). | hold `Tab` |
 | **Input record / replay** | Log pad state per frame; feed it back. Guest time is virtual, so a replay reproduces a run exactly, headless and across rebuilds. | `DCB_RECORD=run.inp`, `DCB_REPLAY=run.inp` |
 | **Save states** (same run) | Copy out guest RAM, scratchpad, VRAM, SPU RAM, device and BIOS state, the task list, and the game fiber stacks; copy back to load. Valid within one process. | `F5` save, `F7` load, slots `1`–`4` |
@@ -112,7 +114,8 @@ clean point. None of them has to cope with the game being halfway through a fram
 | **PC menus** | Settings, save states, trainer and custom modes drawn by the host on top of the frozen game. | `F1` |
 | **Threaded rendering / audio** | Frame work can move off the game's critical path and overlap the next frame. This change enables it; it does not deliver the speedup by itself. | — |
 
-Hotkeys are proposals. They will be configurable under `[hotkeys]` like `overlay = F3`.
+Pause and frame advance exist and are configurable under `[hotkeys]`, like `overlay = F3`;
+the other hotkeys are proposals.
 
 ### Running game code from the host
 
@@ -168,9 +171,11 @@ upscaled backgrounds would come from the asset pipeline (`docs/ASSETS_RIP_UPSCAL
 
 ## Roadmap
 
-1. Baseline frame-hash check on `main` (the verification run above).
-2. Game on a fiber and the host loop; pause and frame-advance. The hashes must match.
-3. Input record / replay.
+1. ~~Baseline frame-hash check on `main`~~: done; two baseline runs matched each other.
+2. ~~Game on a fiber and the host loop; pause and frame-advance~~: done; 202/202 snapshot
+   frames identical to `main`.
+3. ~~Input record / replay~~: done (`DCB_RECORD`, `DCB_REPLAY`, `DCB_REPLAY_EXIT`); replays are
+   bit-identical to the recorded run.
 4. Save states within a run (all device and HLE state serialisable).
 5. Trainer: RAM codes from `settings.ini`, memory search in a debug overlay.
 6. Custom Battle: approach A, then B.

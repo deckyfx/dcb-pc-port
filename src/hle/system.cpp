@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <exception>
 #include <thread>
 
 namespace hle {
@@ -71,12 +72,62 @@ void System::task_main(void* arg) {
     auto* self = static_cast<System*>(arg);
     PsxContext& ctx = self->ctx_;
     Task& me = *self->current_;
-    self->reap_dead_tasks();
-    self->apply_resume(ctx, me.resume_tcb, true);
-    psx_dispatch(&ctx, me.start_pc);
-    // The entry returned: MIPS would jump to $ra, which a task system points at its exit routine.
-    psx_dispatch(&ctx, ctx.r[31]);
+    try {
+        self->reap_dead_tasks();
+        self->apply_resume(ctx, me.resume_tcb, true);
+        psx_dispatch(&ctx, me.start_pc);
+        // The entry returned: MIPS would jump to $ra, which a task system points at its exit routine.
+        psx_dispatch(&ctx, ctx.r[31]);
+    } catch (const std::exception& e) {
+        self->guest_finished(e.what());  // exceptions cannot cross fibers: hand them to the host
+    }
     std::fprintf(stderr, "[task] exit routine %08X returned into a finished task\n", ctx.r[31]);
+    std::abort();
+}
+
+// ---------------------------------------------------------------------------------------------
+// Host loop
+
+void System::main_fiber(void* arg) {
+    auto* self = static_cast<System*>(arg);
+    try {
+        psx_dispatch(&self->ctx_, self->main_entry_);
+    } catch (const std::exception& e) {
+        self->guest_finished(e.what());
+    }
+    self->guest_finished("");  // the boot executable returned
+}
+
+void System::start(uint32_t entry) {
+    host_ = psx::Fiber::current();
+    main_entry_ = entry;
+    auto t = std::make_unique<Task>();
+    t->cookie = next_cookie_++;
+    // Recompiled code nests native frames as deep as the guest calls: give the main path what
+    // the OS thread had (and more). The stack is committed lazily.
+    t->owned = psx::Fiber::create(&System::main_fiber, this, 16u << 20);
+    t->fiber = t->owned.get();
+    guest_ = t->fiber;
+    current_ = t.get();
+    tasks_[t->cookie] = std::move(t);
+}
+
+bool System::resume_guest() {
+    if (guest_done_ || !guest_) return false;
+    guest_->resume();  // returns at the game's next VBLANK (or when it finishes)
+    return !guest_done_;
+}
+
+void System::yield_to_host() {
+    guest_ = psx::Fiber::current();
+    host_->resume();
+}
+
+void System::guest_finished(std::string error) {
+    error_ = std::move(error);
+    guest_done_ = true;
+    host_->resume();
+    std::fprintf(stderr, "[dcb] a finished game fiber was resumed\n");
     std::abort();
 }
 
@@ -150,8 +201,7 @@ void System::poll(PsxContext& ctx) {
         vblanks_ = due;  // coalesce: a late poll delivers one VBLANK, like a missed frame
         mmio_.raise_irq(0);
         mmio_.vblank();
-        if (on_vblank_) on_vblank_();
-        pace();
+        if (host_) yield_to_host();  // the host presents, reads input and paces, then resumes us
     }
     deliver(ctx);
 }

@@ -20,6 +20,7 @@ public:
 
     /// A new suspended fiber that runs `entry(arg)` when first resumed. `entry` must never return:
     /// a finished fiber switches away for the last time and is destroyed by someone else.
+    /// `stack_bytes` is reserved address space; memory is committed as the stack grows.
     static std::unique_ptr<Fiber> create(Entry entry, void* arg, size_t stack_bytes = 1u << 20);
 
     /// Suspend the current fiber and run this one. Returns when something resumes the caller.

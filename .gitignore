@@ -1,7 +1,7 @@
 # Copyrighted inputs and everything derived from them: never commit.
-/disc/
+/disc
 /bios/
-/extracted/
+/extracted
 /saves/
 /assets/raw/*
 /assets/converted/*

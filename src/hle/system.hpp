@@ -2,6 +2,10 @@
 // Time and interrupts. A host clock drives the PS1 timers and raises VBLANK at the NTSC rate;
 // pending interrupts are delivered to the game's own dispatcher (libetc, registered through
 // HookEntryInt) whenever generated code polls (loop back-edges) or reads a hardware register.
+//
+// The game runs on fibers only; the OS thread is the host. start() creates the game's main fiber,
+// resume_guest() runs the game until its next VBLANK, where it switches back to the host with its
+// whole stack suspended (see docs/HOST_MAIN_LOOP.md). Host code touches game state only there.
 
 #include <psx/fiber.hpp>
 #include <psx/runtime.hpp>
@@ -9,8 +13,8 @@
 #include <chrono>
 #include <csetjmp>
 #include <cstdint>
-#include <functional>
 #include <map>
+#include <string>
 #include <memory>
 
 namespace hle {
@@ -40,8 +44,17 @@ public:
     /// Host time spent sleeping for frame pacing (ns), for the performance overlay.
     uint64_t sleep_ns() const { return sleep_ns_; }
 
-    /// Host work once per guest frame (present, input), run at each VBLANK before pacing.
-    void on_vblank(std::function<void()> fn) { on_vblank_ = std::move(fn); }
+    // ---- Host loop ----------------------------------------------------------------------------
+
+    /// Create the game's main fiber, starting at `entry` when first resumed. Call from the host.
+    void start(uint32_t entry);
+    /// Run the game until its next VBLANK. Returns false once the game can no longer run (its
+    /// entry returned or threw; see error()).
+    bool resume_guest();
+    /// Why the game stopped, if it stopped with an error (empty otherwise).
+    const std::string& error() const { return error_; }
+    /// Wait at a frame boundary so the game runs at 59.94 fps (no-op with DCB_FAST=1). Host side.
+    void pace();
 
     /// B0:17: leave the interrupt handler and resume the interrupted code.
     [[noreturn]] void return_from_exception();
@@ -106,11 +119,20 @@ private:
     static void task_main(void* arg);
 
     bool pacing_ = true;  ///< DCB_FAST=1 runs unthrottled
-    std::function<void()> on_vblank_;
     uint64_t sleep_ns_ = 0;
 
+    psx::Fiber* host_ = nullptr;   ///< the OS thread's fiber: runs the host loop
+    psx::Fiber* guest_ = nullptr;  ///< game fiber to resume (the one that last yielded)
+    bool guest_done_ = false;
+    std::string error_;
+    uint32_t main_entry_ = 0;
+
     uint64_t cycles_per_vblank() const { return static_cast<uint64_t>(kCpuHz / kVblankHz); }
-    void pace();
+    /// From game code at a VBLANK: suspend this fiber and let the host run a frame.
+    void yield_to_host();
+    /// The game can no longer run: record why and hand control to the host for good.
+    [[noreturn]] void guest_finished(std::string error);
+    static void main_fiber(void* arg);
     void deliver(PsxContext& ctx);
     void leave_interrupt(PsxContext& ctx, const uint32_t* saved, uint32_t hi, uint32_t lo, uint32_t pc, uint32_t sr,
                          uint32_t cookie);

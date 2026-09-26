@@ -354,6 +354,9 @@ IniDocument default_settings_ini() {
     doc.add_comment("hotkeys", "Keyboard keys for port features (SDL scancode names, comma-separated).");
     doc.add_comment("hotkeys", "overlay: show/hide FPS, game FPS, CPU/GPU load and audio queue (top right).");
     doc.set("hotkeys", "overlay", "F3");
+    doc.add_comment("hotkeys", "pause: freeze / resume the game. frame_advance: while paused, run one frame.");
+    doc.set("hotkeys", "pause", "P, Pause");
+    doc.set("hotkeys", "frame_advance", "N");
     return doc;
 }
 
@@ -372,19 +375,23 @@ Settings parse_settings(const IniDocument& doc, const BindingResolvers& resolver
     s.stick_deadzone = r.integer("gamepad", "deadzone", kDeadzoneDefault, kDeadzoneMin, kDeadzoneMax);
     s.keyboard = r.bindings("keyboard", kDefaultKeyboardBindings, resolvers.keyboard);
     s.gamepad = r.bindings("gamepad", kDefaultGamepadBindings, resolvers.gamepad);
-    // [hotkeys] overlay. Like the pad bindings, the default resolves silently; only an invalid
-    // value from the file warns (files written before this key existed simply get the default).
-    const std::vector<int> overlay_default =
-        parse_binding_list("F3", resolvers.keyboard, nullptr).value_or(std::vector<int>{});
-    s.overlay_keys = overlay_default;
-    if (const std::optional<std::string> overlay = doc.get("hotkeys", "overlay")) {
-        std::string bad;
-        if (auto keys = parse_binding_list(*overlay, resolvers.keyboard, &bad)) {
-            s.overlay_keys = *keys;
-        } else {
-            warnings.push_back("[hotkeys] overlay: unknown key '" + bad + "', using F3");
+    // [hotkeys]. Like the pad bindings, defaults resolve silently; only an invalid value from the
+    // file warns (files written before a key existed simply get its default).
+    const auto hotkey = [&](const char* key, const char* fallback) {
+        std::vector<int> keys = parse_binding_list(fallback, resolvers.keyboard, nullptr).value_or(std::vector<int>{});
+        if (const std::optional<std::string> value = doc.get("hotkeys", key)) {
+            std::string bad;
+            if (auto parsed = parse_binding_list(*value, resolvers.keyboard, &bad)) {
+                keys = *parsed;
+            } else {
+                warnings.push_back(std::string("[hotkeys] ") + key + ": unknown key '" + bad + "', using " + fallback);
+            }
         }
-    }
+        return keys;
+    };
+    s.overlay_keys = hotkey("overlay", "F3");
+    s.pause_keys = hotkey("pause", "P, Pause");
+    s.frame_advance_keys = hotkey("frame_advance", "N");
     return s;
 }
 

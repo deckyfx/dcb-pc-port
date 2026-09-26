@@ -107,10 +107,12 @@ public:
                     quit_ = true;
                 } else if (is_enter(ev.key.scancode) && (ev.key.mod & SDL_KMOD_ALT) != 0 && !ev.key.repeat) {
                     toggle_fullscreen();
-                } else if (!ev.key.repeat &&
-                           std::find(settings_.overlay_keys.begin(), settings_.overlay_keys.end(),
-                                     static_cast<int>(ev.key.scancode)) != settings_.overlay_keys.end()) {
+                } else if (!ev.key.repeat && bound(settings_.overlay_keys, ev.key.scancode)) {
                     overlay_visible_ = !overlay_visible_;
+                } else if (!ev.key.repeat && bound(settings_.pause_keys, ev.key.scancode)) {
+                    commands_ |= kTogglePause;
+                } else if (bound(settings_.frame_advance_keys, ev.key.scancode)) {
+                    commands_ |= kFrameAdvance;  // key repeat steps frame by frame while held
                 } else if (!ev.key.repeat) {
                     any_press_ = true;
                 }
@@ -171,14 +173,23 @@ public:
             const SDL_FRect dst = output_rect();
             SDL_RenderTexture(renderer_, texture_, &src, &dst);
             blank_frames_ = 0;
-        } else {
+        } else if (!paused_) {
             draw_loading();
         }
+        if (paused_) draw_paused();
         if (overlay_visible_) draw_overlay();
         SDL_RenderPresent(renderer_);
     }
 
     void set_stats(const FrameStats& stats) override { stats_ = stats; }
+
+    uint32_t take_commands() override {
+        const uint32_t c = commands_;
+        commands_ = 0;
+        return c;
+    }
+
+    void set_paused(bool paused) override { paused_ = paused; }
 
     bool take_any_press() override {
         const bool pressed = any_press_;
@@ -214,6 +225,25 @@ public:
     /// While the game keeps its display off (boot, loading between scenes), show an animated
     /// "Loading..." after half a second so a black window doesn't look like a hang. Host-side
     /// only: the game's picture is never touched.
+    /// "PAUSED" in the top-left corner while the host holds the game.
+    void draw_paused() {
+        int ww = 0, wh = 0;
+        SDL_GetRenderOutputSize(renderer_, &ww, &wh);
+        const float scale = std::max(1.0f, static_cast<float>(wh) / 240.0f);
+        SDL_SetRenderScale(renderer_, scale, scale);
+        SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 170);
+        const SDL_FRect panel{4.0f, 4.0f, 8.0f * 6.0f + 8.0f, 16.0f};
+        SDL_RenderFillRect(renderer_, &panel);
+        SDL_SetRenderDrawColor(renderer_, 255, 220, 120, 255);
+        SDL_RenderDebugText(renderer_, 8.0f, 8.0f, "PAUSED");
+        SDL_SetRenderScale(renderer_, 1.0f, 1.0f);
+    }
+
+    static bool bound(const std::vector<int>& keys, SDL_Scancode sc) {
+        return std::find(keys.begin(), keys.end(), static_cast<int>(sc)) != keys.end();
+    }
+
     void draw_loading() {
         if (++blank_frames_ < 30) return;
         static constexpr const char* kText[] = {"Loading", "Loading.", "Loading..", "Loading..."};
@@ -365,6 +395,8 @@ private:
     /// DCB_TRACE_INPUT: log key presses and the pad state they produce.
     const bool trace_input_ = std::getenv("DCB_TRACE_INPUT") != nullptr;
     bool any_press_ = false;
+    uint32_t commands_ = 0;  ///< HostCommand bits since take_commands()
+    bool paused_ = false;
     std::array<bool, SDL_SCANCODE_COUNT> key_held_{};    ///< keys down now (from key events)
     /// Frames a key still counts as pressed after going down, so a tap shorter than the game's own
     /// pad sampling interval is not lost.

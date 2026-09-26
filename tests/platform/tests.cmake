@@ -12,3 +12,7 @@ add_test(NAME platform.headless COMMAND test_platform_headless)
 add_executable(test_platform_settings ${CMAKE_CURRENT_LIST_DIR}/test_settings.cpp)
 target_link_libraries(test_platform_settings PRIVATE dcb_platform dcb::warnings)
 add_test(NAME platform.settings COMMAND test_platform_settings)
+
+add_executable(test_platform_input_log ${CMAKE_CURRENT_LIST_DIR}/test_input_log.cpp)
+target_link_libraries(test_platform_input_log PRIVATE dcb_platform dcb::warnings)
+add_test(NAME platform.input_log COMMAND test_platform_input_log)

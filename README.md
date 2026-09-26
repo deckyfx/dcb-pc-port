@@ -35,18 +35,19 @@ executable: MIPS R3000A → C, with native HLE of the kernel and Psy-Q libraries
 - [ ] US version (SLUS-01328, Digimon Digital Card Battle)
 - [x] PC options: `settings.ini` (window scale, filtering, aspect, key/gamepad rebinding, volume)
 - [x] Performance overlay (FPS, game FPS, CPU/GPU load, audio queue): F3
+- [x] Host-driven main loop: the game runs on fibers; pause (P), frame advance (N) ([design](docs/HOST_MAIN_LOOP.md))
+- [x] Input record / replay (`DCB_RECORD`, `DCB_REPLAY`): reproducible runs, bit-identical frames
 - [x] GTE commands implemented (unit-tested; awaiting in-game use)
 - [x] Memory card file API (`bu00:`) implemented and used by the game's saves
 - [x] CI: Linux tests + Windows .exe (manual trigger for now)
 - [ ] Enhance / upscale assets
 - [ ] Enhancements: widescreen, translation
-- [ ] Host-driven main loop (game on a fiber): pause, frame advance, fast-forward ([plan](docs/HOST_MAIN_LOOP.md))
+- [ ] Fast-forward hotkey
 - [ ] Save states (within a run)
 - [ ] Trainer: cheat codes, memory search
 - [ ] Network Battle
 - [ ] Custom Battle mode: pick the opponent and the arena
 - [ ] Rust port of the game logic
-- [ ] Input record / replay (reproducible bug reports)
 
 ## Layout
 
@@ -118,6 +119,16 @@ card managers also read.
 `DCB_PAD_SCRIPT="<from>-<to>:<Button>[+<Button>],..."` holds pad buttons during those frames (names
 as in `settings.ini`; `Any` = some unbound key), e.g. `DCB_HEADLESS=1 DCB_PAD_SCRIPT=2000-2000:Any`
 skips the opening movie in a headless run.
+
+**Input record / replay.** `DCB_RECORD=<file>` logs the pad state the game is given each frame
+(after keyboard, gamepad, `DCB_PAD_SCRIPT` and the movie-skip tap are combined), plus the
+"any key" pulse. `DCB_REPLAY=<file>` feeds such a log back: host input is ignored until the log
+ends, then control returns to the keyboard/gamepad; add `DCB_REPLAY_EXIT=1` to quit at that
+point instead. Guest time is virtual, so a replay reproduces the run frame for frame (compare
+`DCB_SNAPSHOT` output to check). The file is a small text log (`src/platform/input_log.hpp`) that
+stores only changes, starts with a `DCB-INPUT <version> <game id>` header (logs for another
+version or game are rejected) and is flushed about once a second, so a crash still leaves a
+usable file. Both variables can be combined to re-record a replay.
 
 ## Ghidra MCP
 

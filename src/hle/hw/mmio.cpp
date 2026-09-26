@@ -24,7 +24,9 @@ constexpr unsigned kLogLimit = 4;
 
 }  // namespace
 
-Mmio::Mmio() : cdrom_([this] { raise_irq(2); }), sio_([this] { raise_irq(7); }, [this] { return system_ ? system_->cpu_cycles() : uint64_t{0}; }) {
+Mmio::Mmio()
+    : cdrom_([this] { raise_irq(2); }, [this] { return system_ ? system_->cpu_cycles() : uint64_t{0}; }),
+      sio_([this] { raise_irq(7); }, [this] { return system_ ? system_->cpu_cycles() : uint64_t{0}; }) {
     cdrom_.on_cd_audio([this](const int16_t* pcm, size_t frames) { spu_.push_cd_audio(pcm, frames); });
 }
 

@@ -114,6 +114,8 @@ struct Settings {
     BindingTable keyboard;                ///< SDL scancodes
     BindingTable gamepad;                 ///< gamepad input codes (see encode_gamepad_axis)
     std::vector<int> overlay_keys;        ///< [hotkeys] overlay: toggles the performance overlay
+    std::vector<int> pause_keys;          ///< [hotkeys] pause: freezes / resumes the game
+    std::vector<int> frame_advance_keys;  ///< [hotkeys] frame_advance: while paused, run one frame
 };
 
 /// Maps one binding name to an input code, or nullopt if the name is unknown.
