@@ -66,10 +66,13 @@ public:
     HdTextures();
     ~HdTextures();  // defined in hd_textures.cpp where vfs::Vfs is complete
 
-    /// Load the manifest and mount the HD pack/dir. Both arguments are optional:
-    /// a manifest without art (or art without a manifest) simply never replaces.
-    /// Returns true when at least one manifest entry loaded.
+    /// Mount the art (`.pak` or folder) and load the manifest: `manifest_path` if given, else
+    /// kManifestName inside the art, so one `.pak` can be self-contained. Returns true when at
+    /// least one manifest entry loaded; replacement also needs the art to be mounted.
     bool load(const std::string& manifest_path, const std::string& art_path);
+
+    /// Name of the manifest inside an asset folder or `.pak` (used when no manifest path is given).
+    static constexpr const char* kManifestName = "assets_manifest.json";
 
     bool enabled() const { return !index_.empty() && vfs_ != nullptr; }
     size_t entry_count() const { return entry_total_; }

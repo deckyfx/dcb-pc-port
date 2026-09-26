@@ -41,7 +41,8 @@ executable: MIPS R3000A → C, with native HLE of the kernel and Psy-Q libraries
 - [x] GTE commands implemented (unit-tested; awaiting in-game use)
 - [x] Memory card file API (`bu00:`) implemented and used by the game's saves
 - [x] CI: Linux tests + Windows .exe (manual trigger for now)
-- [ ] Enhance / upscale assets
+- [x] Asset pipeline: rip textures/sound banks, pack them into one `.pak` the game loads (same-size edits today)
+- [ ] Enhance / upscale assets (needs a renderer with higher internal resolution to show HD art)
 - [ ] Enhancements: widescreen, translation
 - [x] Save states within a run: F5 save, F7 load, F6 slot (bit-identical after a load)
 - [x] Trainer: GameShark-style cheat codes (`cheats/<serial>.txt`) and memory search, F4 panel
@@ -206,6 +207,24 @@ machine differs (every frame boundary with `n=1`). Frame numbers count every fra
 `DCB_SNAPSHOT` file names do: after a load at *M* of a state saved at *N*, snapshot *M+k* equals
 snapshot *N+k* of a run without the load. With `DCB_RECORD`, loading a state rewinds the recording
 to the loaded frame, so the log replays the timeline that was finally played.
+
+**Game assets (textures).** `dcb_asset_ripper` (built with the tools) rips the images and sound
+banks from the game data into `assets/` (gitignored), and packs them into one file:
+
+```sh
+./build/linux-debug/dcb_asset_ripper unpack extracted/SLPS-03101        # -> assets/raw/, assets/converted/SLPS-03101/
+./build/linux-debug/dcb_asset_ripper sfx assets/raw/SLPS-03101 --game SLPS-03101   # sound banks + sfx_manifest.json
+./build/linux-debug/dcb_asset_ripper pack assets/converted/SLPS-03101 assets/SLPS-03101.pak
+```
+
+At start the game loads replacement textures from the first of: `DCB_HD_PACK=<.pak|folder>`,
+`assets/<serial>.pak`, `assets/converted/<serial>/`; the manifest (`assets_manifest.json`) is read
+from inside the pack or folder unless `DCB_HD_MANIFEST=<file>` names one. Edit a PNG (same size as the
+original for now: the renderer draws at native resolution), re-pack, restart. Unmodified art gives
+frames bit-identical to the original. PNG alpha: 0 = transparent, 255 = opaque; the semi-transparency
+bit is taken from the original pixel unless alpha is exactly 254 (forces it on). At exit the game
+prints how many texture uploads were replaced and why others were not; `DCB_TRACE_HD=<n>` logs the
+first *n* uploads that match no manifest entry (movie frames arrive as 24-pixel-wide strips and never match).
 
 ## Ghidra MCP
 

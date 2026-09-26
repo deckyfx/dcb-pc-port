@@ -11,11 +11,14 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
 
 namespace vfs {
+
+class PakReader;
 
 class Vfs {
 public:
@@ -33,7 +36,8 @@ public:
 private:
     struct Mount {
         enum class Kind { Pak, Dir } kind;
-        std::filesystem::path path;  ///< pak file, or directory root
+        std::filesystem::path path;         ///< pak file, or directory root
+        std::shared_ptr<PakReader> pak;     ///< Pak: its table, parsed once at mount time
     };
     std::vector<Mount> mounts_;
     mutable std::vector<std::string> errors_;  ///< sticky I/O diagnostics, for logs

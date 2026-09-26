@@ -149,25 +149,28 @@ int main(int argc, char** argv) {
         const std::vector<uint8_t> boot = exe_override.empty() ? disc->read_boot_exe() : std::vector<uint8_t>{};
         std::printf("[dcb] game data: %s\n", disc->describe().c_str());
         mmio.insert_disc(std::move(disc));
-        // HD texture replacement. Defaults read from the project folder
-        // (assets/converted/<id>/assets_manifest.json + textures, written by
-        // dcb_asset_ripper); DCB_HD_MANIFEST / DCB_HD_PACK override them.
-        // Without both halves the game runs exactly as before (all uploads
-        // commit verbatim).
+        hle::HdTextures* hd_textures = nullptr;  // for the exit summary
+        // Texture replacement (dcb_asset_ripper output). First found wins:
+        //   DCB_HD_PACK=<.pak|folder> (+ DCB_HD_MANIFEST=<file> if the manifest lives elsewhere),
+        //   assets/<id>.pak (self-contained: manifest inside), assets/converted/<id>/ (loose files).
+        // Without any, the game runs exactly as before (every upload commits verbatim).
         {
             const char* env_manifest = std::getenv("DCB_HD_MANIFEST");
             const char* env_pack = std::getenv("DCB_HD_PACK");
-            const std::string def_manifest =
-                std::string("assets/converted/") + DCB_GAME_ID + "/assets_manifest.json";
-            const std::string def_pack = std::string("assets/converted/") + DCB_GAME_ID + "/textures";
-            const std::string manifest = env_manifest ? env_manifest : def_manifest;
-            const std::string art = env_pack ? env_pack : def_pack;
+            const std::filesystem::path pak = std::filesystem::path("assets") / (std::string(DCB_GAME_ID) + ".pak");
+            const std::filesystem::path loose = std::filesystem::path("assets") / "converted" / DCB_GAME_ID;
             std::error_code hd_ec;
-            if (std::filesystem::is_regular_file(manifest, hd_ec)) {
-                if (mmio.gpu().install_hd()->load(manifest, art)) {
-                    std::printf("[dcb] HD textures armed (%s)\n", manifest.c_str());
+            std::string art;
+            if (env_pack) art = env_pack;
+            else if (std::filesystem::is_regular_file(pak, hd_ec)) art = pak.string();
+            else if (std::filesystem::is_regular_file(loose / hle::HdTextures::kManifestName, hd_ec)) art = loose.string();
+            if (!art.empty()) {
+                hle::HdTextures* hd = mmio.gpu().install_hd();
+                if (hd->load(env_manifest ? env_manifest : "", art)) {
+                    std::printf("[dcb] replacement textures: %s\n", art.c_str());
+                    hd_textures = hd;
                 } else {
-                    std::printf("[dcb] HD textures unavailable (continuing without them)\n");
+                    std::printf("[dcb] replacement textures unavailable (continuing without them)\n");
                 }
             }
         }
@@ -311,6 +314,18 @@ int main(int argc, char** argv) {
             else system.pace();
             frozen = false;
         }
+        if (hd_textures)
+            std::printf("[hd] %llu texture uploads replaced (%llu from the cache), %llu left as they were\n",
+                        static_cast<unsigned long long>(hd_textures->hits()),
+                        static_cast<unsigned long long>(hd_textures->fit_hits()),
+                        static_cast<unsigned long long>(hd_textures->misses()));
+        if (hd_textures && hd_textures->misses())
+            std::printf("[hd] of those: %llu shape mismatch, %llu no palette, %llu palette not live, "
+                        "%llu palette shape; the rest match no manifest entry (DCB_TRACE_HD=<n> lists them)\n",
+                        static_cast<unsigned long long>(hd_textures->miss_shape()),
+                        static_cast<unsigned long long>(hd_textures->miss_no_palette()),
+                        static_cast<unsigned long long>(hd_textures->miss_palette_not_live()),
+                        static_cast<unsigned long long>(hd_textures->miss_palette_shape()));
     } catch (const std::exception& e) {
         std::fprintf(stderr, "[dcb] fatal: %s\n", e.what());
         return 1;

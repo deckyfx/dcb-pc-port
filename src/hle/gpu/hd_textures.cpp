@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 namespace hle {
@@ -339,6 +340,20 @@ bool HdTextures::load(const std::string& manifest_path, const std::string& art_p
     hits_ = misses_ = fit_hits_ = 0;
     miss_shape_ = miss_no_palette_ = miss_palette_not_live_ = miss_palette_shape_ = 0;
 
+    // Art first: a self-contained `.pak` (or asset folder) may carry the manifest itself.
+    if (!art_path.empty()) {
+        auto vfs = std::make_unique<vfs::Vfs>();
+        if (!vfs->mount(art_path)) {
+            std::fprintf(stderr, "[hd] cannot mount art %s\n", art_path.c_str());
+        } else {
+            std::printf("[hd] mounted %s\n", art_path.c_str());
+            vfs_ = std::move(vfs);
+        }
+    }
+
+    // The manifest: an explicit file, else kManifestName inside the mounted art.
+    std::vector<uint8_t> blob;
+    std::string source;
     if (!manifest_path.empty()) {
         FILE* f = std::fopen(manifest_path.c_str(), "rb");
         if (!f) {
@@ -348,35 +363,29 @@ bool HdTextures::load(const std::string& manifest_path, const std::string& art_p
         std::fseek(f, 0, SEEK_END);
         const long total = std::ftell(f);
         std::fseek(f, 0, SEEK_SET);
-        std::vector<uint8_t> blob;
         if (total > 0 && total < (1l << 30)) {
             blob.resize(static_cast<size_t>(total));
             if (std::fread(blob.data(), 1, blob.size(), f) != blob.size()) blob.clear();
         }
         std::fclose(f);
-        std::vector<ManifestEntry> entries;
-        if (blob.empty() || !parse_manifest(blob, entries)) {
-            std::fprintf(stderr, "[hd] bad manifest %s\n", manifest_path.c_str());
-            return false;
-        }
-        for (auto& e : entries) {
-            index_[e.img].push_back({std::move(e.path), e.w, e.h, e.bpp, e.clut, e.has_clut});
-            if (e.has_clut) clut_hashes_.insert(e.clut);
-            ++entry_total_;
-        }
-        std::printf("[hd] manifest %s: %zu entries\n", manifest_path.c_str(), entries.size());
+        source = manifest_path;
+    } else if (vfs_ && vfs_->read(kManifestName, blob)) {
+        source = art_path + ":" + kManifestName;
+    } else {
+        std::fprintf(stderr, "[hd] no manifest (none given, and no %s in %s)\n", kManifestName, art_path.c_str());
+        return false;
     }
-
-    if (!art_path.empty()) {
-        auto vfs = std::make_unique<vfs::Vfs>();
-        if (!vfs->mount(art_path)) {
-            std::fprintf(stderr, "[hd] cannot mount art %s\n", art_path.c_str());
-            if (index_.empty()) return false;
-        } else {
-            std::printf("[hd] mounted %s\n", art_path.c_str());
-        }
-        vfs_ = std::move(vfs);
+    std::vector<ManifestEntry> entries;
+    if (blob.empty() || !parse_manifest(blob, entries)) {
+        std::fprintf(stderr, "[hd] bad manifest %s\n", source.c_str());
+        return false;
     }
+    for (auto& e : entries) {
+        index_[e.img].push_back({std::move(e.path), e.w, e.h, e.bpp, e.clut, e.has_clut});
+        if (e.has_clut) clut_hashes_.insert(e.clut);
+        ++entry_total_;
+    }
+    std::printf("[hd] manifest %s: %zu entries\n", source.c_str(), entries.size());
     return !index_.empty();
 }
 
@@ -421,8 +430,6 @@ void HdTextures::note_clut(uint64_t hash, const uint32_t* staged, size_t staged_
 
 const std::vector<uint16_t>* HdTextures::maybe_replace(int x, int y, int w, int h, const uint32_t* staged,
                                                        size_t staged_words) {
-    (void)x;
-    (void)y;
     if (!enabled() || !staged || w <= 0 || h <= 0 || w > 1024 || h > 512) {
         ++misses_;
         return nullptr;
@@ -485,7 +492,16 @@ const std::vector<uint16_t>* HdTextures::maybe_replace(int x, int y, int w, int 
     }
 
     // CLUT sniffing: palette uploads refresh the remembered palette *contents*.
-    if (clut_hashes_.find(hash) != clut_hashes_.end()) note_clut(hash, staged, words);
+    const bool known_clut = clut_hashes_.find(hash) != clut_hashes_.end();
+    if (known_clut) note_clut(hash, staged, words);
+    // DCB_TRACE_HD=<n>: log the first n uploads no manifest entry matches (coverage debugging).
+    static const unsigned trace = std::getenv("DCB_TRACE_HD") ? static_cast<unsigned>(std::atoi(std::getenv("DCB_TRACE_HD"))) : 0;
+    static unsigned traced = 0;
+    if (traced < trace) {
+        ++traced;
+        std::fprintf(stderr, "[hd] no match: %dx%d at (%d,%d) hash %016llx%s\n", w, h, x, y,
+                     static_cast<unsigned long long>(hash), known_clut ? " (known palette)" : "");
+    }
     ++misses_;
     return nullptr;
 }

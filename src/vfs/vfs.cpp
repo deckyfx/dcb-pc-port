@@ -22,13 +22,13 @@ std::string lower_ext(const std::filesystem::path& path) {
 bool Vfs::mount_pak(const std::filesystem::path& path) {
     std::error_code ec;
     if (!std::filesystem::is_regular_file(path, ec)) return false;
-    PakReader probe;
-    if (!probe.open(path.string())) return false;
-    mounts_.push_back({Mount::Kind::Pak, path});
+    auto reader = std::make_shared<PakReader>();
+    if (!reader->open(path.string())) return false;
+    mounts_.push_back({Mount::Kind::Pak, path, std::move(reader)});
     return true;
 }
 
-void Vfs::mount_dir(const std::filesystem::path& path) { mounts_.push_back({Mount::Kind::Dir, path}); }
+void Vfs::mount_dir(const std::filesystem::path& path) { mounts_.push_back({Mount::Kind::Dir, path, nullptr}); }
 
 bool Vfs::mount(const std::filesystem::path& path) {
     std::error_code ec;
@@ -89,14 +89,9 @@ bool Vfs::read(const std::string& name, std::vector<uint8_t>& out) const {
             if (read_file(full, out)) return true;
             errors_.push_back("cannot read " + full.string());
         } else {
-            PakReader reader;
-            if (!reader.open(it->path.string())) {
-                errors_.push_back("cannot open pak " + it->path.string());
-                continue;
-            }
             PakEntry entry{"", 0, 0, 0};
-            if (!reader.find(name, entry)) continue;
-            if (reader.read(name, out)) return true;
+            if (!it->pak->find(name, entry)) continue;
+            if (it->pak->read(name, out)) return true;
             errors_.push_back("corrupt entry " + name + " in " + it->path.string());
         }
     }
