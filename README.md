@@ -37,12 +37,13 @@ executable: MIPS R3000A → C, with native HLE of the kernel and Psy-Q libraries
 - [x] Performance overlay (FPS, game FPS, CPU/GPU load, audio queue): F3
 - [x] Host-driven main loop: the game runs on fibers; pause (P), frame advance (N), fast-forward (hold Tab) ([design](docs/HOST_MAIN_LOOP.md))
 - [x] Input record / replay (`DCB_RECORD`, `DCB_REPLAY`): reproducible runs, bit-identical frames
+- [x] Save states within a run: F5 save, F7 load, F6 slot 1-4 (Linux, Windows MinGW build)
 - [x] GTE commands implemented (unit-tested; awaiting in-game use)
 - [x] Memory card file API (`bu00:`) implemented and used by the game's saves
 - [x] CI: Linux tests + Windows .exe (manual trigger for now)
 - [ ] Enhance / upscale assets
 - [ ] Enhancements: widescreen, translation
-- [ ] Save states (within a run)
+- [x] Save states within a run: F5 save, F7 load, F6 slot (bit-identical after a load)
 - [x] Trainer: GameShark-style cheat codes (`cheats/<serial>.txt`) and memory search, F4 panel
 - [ ] Network Battle
 - [ ] Custom Battle mode: pick the opponent and the arena
@@ -186,6 +187,25 @@ cheat is never half-applied. Enabled cheats are written once per frame at the fr
   addresses remain. On a result, `F` freezes it (adds an enabled cheat holding the typed value, or
   the current one if the field is empty; `S` on the Cheats page saves it) and `W` writes the
   typed value once. The first 500 results are listed; the count is always shown.
+
+**Save states.** While playing, `F5` saves the game into the selected slot, `F7` loads it and `F6`
+selects the next slot (1-4); a short notice confirms each ("State 2 saved", "Slot 3", "No state in
+slot 1"). They work while paused too. The keys are `save_state`, `load_state` and `state_slot` under
+`[hotkeys]` in `settings.ini`. Limits:
+- States live in memory for the current run only: they are gone when the game closes, and cannot
+  be written to disk or moved to another machine (they contain host stack addresses).
+- Memory cards are not part of a state: loading an older state does not undo a save written to
+  `card1.mcd` since. Avoid loading a state taken in the middle of a memory-card save.
+- Supported by the Linux build (glibc, x86-64 / ARM64) and the Windows build made with MinGW (the
+  release `.exe`). An MSVC build or macOS shows "save states are not supported on this platform".
+
+For scripted checks, `DCB_STATE_SAVE_AT=<frame>[,...]` / `DCB_STATE_LOAD_AT=<frame>[,...]` save and
+load the selected slot after that many frames, `DCB_EXIT_AT=<frame>` quits cleanly, and
+`DCB_STATE_STRESS=<n>` saves, runs *n* frames, loads and runs them again, and aborts if the
+machine differs (every frame boundary with `n=1`). Frame numbers count every frame run, as the
+`DCB_SNAPSHOT` file names do: after a load at *M* of a state saved at *N*, snapshot *M+k* equals
+snapshot *N+k* of a run without the load. With `DCB_RECORD`, loading a state rewinds the recording
+to the loaded frame, so the log replays the timeline that was finally played.
 
 ## Ghidra MCP
 
