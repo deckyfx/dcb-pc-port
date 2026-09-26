@@ -16,7 +16,7 @@ set(DCB_GAME_ID "SLPS-03101" CACHE STRING "Disc serial being recompiled; selects
 set_property(CACHE DCB_GAME_ID PROPERTY STRINGS SLPS-03101 SLUS-01328)
 option(DCB_BUILD_TOOLS "Build host tools (MIPS->C recompiler). Skipped automatically when cross-compiling." ON)
 option(DCB_BUILD_TESTS "Build unit tests" ON)
-option(DCB_USE_SDL3    "Build the SDL3 platform backend (window, audio, input)" OFF)
+option(DCB_USE_SDL3    "Build the SDL3 platform backend (window, audio, input)" ON)
 
 # ---------------------------------------------------------------------------
 # Language standards: generated code is C, everything hand-written is C++.
@@ -58,18 +58,30 @@ add_library(dcb_platform STATIC ${DCB_PLATFORM_SOURCES})
 target_include_directories(dcb_platform PUBLIC src/platform)
 target_link_libraries(dcb_platform PUBLIC psx_hle PRIVATE dcb::warnings)
 if(DCB_USE_SDL3)
+    # A system SDL3 is used when present; otherwise a pinned release is built statically so the
+    # Windows .exe needs no SDL3.dll. SYSTEM keeps our strict warnings out of SDL's headers.
     find_package(SDL3 CONFIG QUIET)
     if(NOT SDL3_FOUND)
         include(FetchContent)
         FetchContent_Declare(SDL3
-            GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
-            GIT_TAG        release-3.2.24
-            GIT_SHALLOW    TRUE)
-        set(SDL_SHARED OFF CACHE BOOL "" FORCE)
-        set(SDL_STATIC ON  CACHE BOOL "" FORCE)
+            URL      https://github.com/libsdl-org/SDL/releases/download/release-3.4.16/SDL3-3.4.16.tar.gz
+            URL_HASH SHA256=7322236cd12090c3eb40b9728be4d49c76f66ad17d04369584d4ecad5cf77c68
+            DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+            SYSTEM)
+        set(SDL_SHARED   OFF CACHE BOOL "" FORCE)
+        set(SDL_STATIC   ON  CACHE BOOL "" FORCE)
+        set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
+        set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
+        set(SDL_INSTALL  OFF CACHE BOOL "" FORCE)
+        # Screensaver inhibition via libXss is not needed and its headers are often missing.
+        set(SDL_X11_XSCRNSAVER OFF CACHE BOOL "" FORCE)
         FetchContent_MakeAvailable(SDL3)
     endif()
-    target_link_libraries(dcb_platform PUBLIC SDL3::SDL3)
+    if(TARGET SDL3::SDL3-static)
+        target_link_libraries(dcb_platform PUBLIC SDL3::SDL3-static)
+    else()
+        target_link_libraries(dcb_platform PUBLIC SDL3::SDL3)
+    endif()
     target_compile_definitions(dcb_platform PUBLIC DCB_HAS_SDL3=1)
 endif()
 
