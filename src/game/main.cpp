@@ -80,7 +80,7 @@ int main(int argc, char** argv) {
     std::setvbuf(stdout, nullptr, _IOLBF, 0);
     arm_watchdog();
 
-    // Usage: dcb [disc.cue|disc.bin]   (a PS-EXE path is also accepted, for development)
+    // Usage: dcb [extracted-dir|disc.cue|disc.bin]   (a PS-EXE path is also accepted, for development)
     std::filesystem::path disc_hint, exe_override;
     if (argc > 1) {
         const std::filesystem::path arg = argv[1];
@@ -98,9 +98,10 @@ int main(int argc, char** argv) {
         bios.insert_cards(std::filesystem::path("saves") / DCB_GAME_ID);
         const auto disc_path = hle::Disc::locate(DCB_GAME_ID, disc_hint);
         // The boot executable's code is compiled in; its data comes from the disc, like everything else.
-        const std::vector<uint8_t> boot = exe_override.empty() ? hle::Disc(disc_path).read_boot_exe() : std::vector<uint8_t>{};
-        mmio.insert_disc(std::make_unique<hle::Disc>(disc_path));
-        std::printf("[dcb] disc %s\n", disc_path.string().c_str());
+        auto disc = hle::Disc::open(disc_path);
+        const std::vector<uint8_t> boot = exe_override.empty() ? disc->read_boot_exe() : std::vector<uint8_t>{};
+        std::printf("[dcb] game data: %s\n", disc->describe().c_str());
+        mmio.insert_disc(std::move(disc));
         mmio.attach(&system, machine.ctx());
         machine.set_bios_handler(&bios);
         machine.set_mmio_handler(&mmio);
