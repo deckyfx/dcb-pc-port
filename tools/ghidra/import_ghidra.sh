@@ -10,7 +10,7 @@ set -euo pipefail
 
 GAME_ID="${1:?usage: $0 <disc serial, e.g. SLPS-03101>}"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-GHIDRA_INSTALL_DIR="${GHIDRA_INSTALL_DIR:-$(cd "$ROOT/.." && pwd)/ghidra_12.1.2_PUBLIC}"
+GHIDRA_INSTALL_DIR="${GHIDRA_INSTALL_DIR:-$ROOT/ghidra/ghidra_12.1.2_PUBLIC}"
 MANIFEST="$ROOT/extracted/$GAME_ID/manifest.json"
 [[ -f "$MANIFEST" ]] || { echo "error: $MANIFEST missing; run tools/disc/extract_disc.py first" >&2; exit 1; }
 

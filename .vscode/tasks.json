@@ -68,7 +68,7 @@
     {
       "label": "ghidra: apply discovery (headless, close GUI first)",
       "type": "shell",
-      "command": "../ghidra_12.1.2_PUBLIC/support/analyzeHeadless ghidra/project DCB/SLPS-03101 -process SLPS_031.01 -noanalysis -scriptPath ghidra/scripts -postScript ApplyDiscovered.java \"${workspaceFolder}\"",
+      "command": "ghidra/ghidra_12.1.2_PUBLIC/support/analyzeHeadless ghidra/project DCB/SLPS-03101 -process SLPS_031.01 -noanalysis -scriptPath ghidra/scripts -postScript ApplyDiscovered.java \"${workspaceFolder}\"",
       "problemMatcher": []
     }
   ]

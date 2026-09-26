@@ -11,6 +11,8 @@
 
 # Ghidra databases (share symbols via ghidra/symbols exports instead)
 /ghidra/project/*
+# Ghidra itself (a local dependency: unpack the release zip here)
+/ghidra/ghidra_*_PUBLIC/
 *.lock
 *.lock~
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Install the GhidraMCP extension + MCP bridge (bethington/ghidra-mcp), pinned and checksum-verified.
 #
-#   GHIDRA_INSTALL_DIR=/path/to/ghidra_12.1.2_PUBLIC tools/ghidra/setup_ghidra_mcp.sh
+#   tools/ghidra/setup_ghidra_mcp.sh     # Ghidra in ghidra/ghidra_12.1.2_PUBLIC (or set GHIDRA_INSTALL_DIR)
 #
 # Afterwards, in the Ghidra GUI (one time):
 #   File > Configure > Configure All Plugins > enable "GhidraMCP"
@@ -15,7 +15,8 @@ EXT_SHA256="867731de27d5143632a010943b907a6485dd54d0e19729e2f85ee9f692c99873"
 WHEEL="ghidra_mcp_bridge-${VERSION}-py3-none-any.whl"
 WHEEL_SHA256="71939a890009826664720166d8f786f3a2ea2460f7effcd83c73759ba4241334"
 
-GHIDRA_INSTALL_DIR="${GHIDRA_INSTALL_DIR:-$(cd "$(dirname "$0")/../../.." && pwd)/ghidra_12.1.2_PUBLIC}"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+GHIDRA_INSTALL_DIR="${GHIDRA_INSTALL_DIR:-$ROOT/ghidra/ghidra_12.1.2_PUBLIC}"
 [[ -f "$GHIDRA_INSTALL_DIR/Ghidra/application.properties" ]] || {
     echo "error: set GHIDRA_INSTALL_DIR (no Ghidra at $GHIDRA_INSTALL_DIR)" >&2; exit 1; }
 GHIDRA_VERSION="$(sed -n 's/^application.version=//p' "$GHIDRA_INSTALL_DIR/Ghidra/application.properties")"
