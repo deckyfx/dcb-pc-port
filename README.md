@@ -223,7 +223,8 @@ from inside the pack or folder unless `DCB_HD_MANIFEST=<file>` names one. Edit a
 original for now: the renderer draws at native resolution), re-pack, restart. Unmodified art gives
 frames bit-identical to the original. PNG alpha: 0 = transparent, 255 = opaque; the semi-transparency
 bit is taken from the original pixel unless alpha is exactly 254 (forces it on). At exit the game
-prints how many texture uploads were replaced and why others were not; `DCB_TRACE_HD=<n>` logs the
+prints how many texture uploads were replaced and why others were not; `DCB_LOG_HD=1` (or
+`./dcb.sh -H`) logs each texture as it is replaced (file, size, format); `DCB_TRACE_HD=<n>` logs the
 first *n* uploads that match no manifest entry (movie frames arrive as 24-pixel-wide strips and never match).
 
 ## Ghidra MCP

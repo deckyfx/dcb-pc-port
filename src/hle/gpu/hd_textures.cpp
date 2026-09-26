@@ -704,9 +704,11 @@ const std::vector<uint16_t>* HdTextures::replace(const Candidate& pick, size_t u
         }
     }
     ++hits_;
-    // Every fresh replacement is logged (repeats come from the fit cache and stay quiet).
-    std::printf("[hd] replaced %s (%dx%d, %d-bit, from a %dx%d PNG)\n", pick.path.c_str(), pick.w, pick.h, pick.bpp,
-                png_w, png_h);
+    // DCB_LOG_HD=1: log every fresh replacement (repeats come from the fit cache and stay quiet).
+    static const bool log_hd = std::getenv("DCB_LOG_HD") != nullptr;
+    if (log_hd)
+        std::printf("[hd] replaced %s (%dx%d, %d-bit, from a %dx%d PNG)\n", pick.path.c_str(), pick.w, pick.h,
+                    pick.bpp, png_w, png_h);
     // Cache the fitted result; return the cached copy so the pointer stays
     // valid across later replacements reusing scratch_.
     store_fit(key, scratch_);

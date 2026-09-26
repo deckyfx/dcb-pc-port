@@ -8,14 +8,15 @@
 #   ./dcb.sh -b          build only, don't run
 #   ./dcb.sh -w          also cross-build the Windows .exe
 #   ./dcb.sh -s SERIAL   game id (default SLPS-03101)
+#   ./dcb.sh -H          log each replacement texture as it is used (DCB_LOG_HD=1)
 #   ./dcb.sh -G          open Ghidra (ghidra/ghidra_12.1.2_PUBLIC, MCP scripting on) instead
 # Flags combine: ./dcb.sh -r -t
 set -euo pipefail
 cd "$(dirname "$0")"
 
 SERIAL="SLPS-03101"
-RECOMPILE=0 TRACE=0 GDB=0 RUN=1 WINDOWS=0
-while getopts "rtgbws:Gh" opt; do
+RECOMPILE=0 TRACE=0 GDB=0 RUN=1 WINDOWS=0 LOG_HD=0
+while getopts "rtgbws:GHh" opt; do
     case "$opt" in
         r) RECOMPILE=1 ;;
         t) TRACE=1 ;;
@@ -24,7 +25,8 @@ while getopts "rtgbws:Gh" opt; do
         w) WINDOWS=1 ;;
         s) SERIAL="$OPTARG" ;;
         G) exec tools/ghidra/ghidra_gui.sh ;;
-        *) sed -n '2,12p' "$0"; exit 2 ;;
+        H) LOG_HD=1 ;;
+        *) sed -n '2,13p' "$0"; exit 2 ;;
     esac
 done
 
@@ -47,6 +49,7 @@ fi
 
 (( RUN )) || exit 0
 (( TRACE )) && export DCB_TRACE_BIOS=1
+(( LOG_HD )) && export DCB_LOG_HD=1
 mkdir -p logs
 if (( GDB )); then
     exec gdb -q -ex run -ex bt --args ./build/linux-debug/dcb
