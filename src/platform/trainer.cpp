@@ -1,0 +1,431 @@
+// Trainer panel logic (see trainer.hpp).
+
+#include "trainer.hpp"
+
+#include "settings.hpp"  // read_text_file / write_text_file
+
+#include <algorithm>
+#include <cstdio>
+#include <cstdlib>
+#include <system_error>
+#include <utility>
+
+namespace trainer {
+
+namespace {
+
+std::string hex_address(uint32_t offset) {
+    char buf[16];
+    std::snprintf(buf, sizeof buf, "%08X", kRamBase | offset);
+    return buf;
+}
+
+const char* size_name(ValueSize s) {
+    switch (s) {
+    case ValueSize::U8: return "8-bit";
+    case ValueSize::U16: return "16-bit";
+    case ValueSize::U32: return "32-bit";
+    }
+    return "?";
+}
+
+bool is_value_char(char c) {
+    return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F') || c == 'x' || c == 'X' ||
+           c == '$' || c == '-';
+}
+
+}  // namespace
+
+std::unique_ptr<Trainer> make_trainer(uint8_t* ram, std::string_view serial) {
+    const platform::SettingsLocations where = platform::current_settings_locations();
+    const char* override_path = std::getenv("DCB_CHEATS");
+    const auto exists = [](const std::filesystem::path& p) {
+        std::error_code ec;
+        return std::filesystem::is_regular_file(p, ec);
+    };
+    auto t = std::make_unique<Trainer>(
+        ram, resolve_cheat_path(serial, override_path != nullptr ? override_path : "", where.cwd, where.exe_dir, exists));
+    for (const std::string& line : t->load()) std::printf("[cheats] %s\n", line.c_str());
+    t->set_trace(std::getenv("DCB_TRACE_CHEATS") != nullptr);
+    return t;
+}
+
+Trainer::Trainer(uint8_t* ram, std::filesystem::path cheat_path) : ram_(ram), path_(std::move(cheat_path)) {}
+
+std::vector<std::string> Trainer::load() {
+    std::vector<std::string> log;
+    std::error_code ec;
+    const std::string where = path_.string();
+    if (!std::filesystem::exists(path_, ec)) {
+        cheats_ = CheatSet::parse("");
+        log.push_back("no cheat file at " + where);
+    } else if (const std::optional<std::string> text = platform::read_text_file(path_)) {
+        cheats_ = CheatSet::parse(*text);
+        log.push_back(std::to_string(cheats_.cheats().size()) + " cheats (" + std::to_string(cheats_.enabled_count()) +
+                      " on) from " + where);
+        for (const std::string& w : cheats_.warnings()) log.push_back(where + ": " + w);
+    } else {
+        cheats_ = CheatSet::parse("");
+        log.push_back("cannot read " + where);
+    }
+    dirty_ = false;
+    cheat_sel_ = std::clamp(cheat_sel_, 0, std::max(0, static_cast<int>(cheats_.cheats().size()) - 1));
+    // The status line names only the file (the log above has the full path).
+    std::string summary = log.front();
+    if (const size_t at = summary.rfind(where); at != std::string::npos)
+        summary.replace(at, where.size(), path_.filename().string());
+    set_status(summary, log.size() > 1);
+    return log;
+}
+
+bool Trainer::save() {
+    if (!platform::write_text_file(path_, cheats_.text())) {
+        set_status("cannot write " + path_.string(), true);
+        return false;
+    }
+    dirty_ = false;
+    set_status("saved " + path_.string());
+    return true;
+}
+
+ApplyStats Trainer::apply_frame() {
+    const ApplyStats stats = cheats_.apply(ram_);
+    if (trace_ && stats.writes > 0)
+        std::fprintf(stderr, "[cheats] frame %llu: %zu writes, %zu bytes changed\n",
+                     static_cast<unsigned long long>(frame_), stats.writes, stats.bytes_changed);
+    ++frame_;
+    return stats;
+}
+
+void Trainer::set_open(bool open) { open_ = open; }
+
+void Trainer::set_status(std::string text, bool error) {
+    status_ = std::move(text);
+    status_error_ = error;
+}
+
+void Trainer::move(int& sel, int count, Key k) const {
+    switch (k) {
+    case Key::Up: --sel; break;
+    case Key::Down: ++sel; break;
+    case Key::PageUp: sel -= 10; break;
+    case Key::PageDown: sel += 10; break;
+    case Key::Home: sel = 0; break;
+    case Key::End: sel = count - 1; break;
+    default: break;
+    }
+    sel = std::clamp(sel, 0, std::max(0, count - 1));
+}
+
+void Trainer::key(Key k) {
+    if (k == Key::Close) {
+        open_ = false;
+        return;
+    }
+    if (k == Key::Tab) {
+        tab_ = tab_ == Tab::Cheats ? Tab::Search : Tab::Cheats;
+        return;
+    }
+    if (tab_ == Tab::Cheats) cheats_key(k); else search_key(k);
+}
+
+void Trainer::text(std::string_view chars) {
+    for (const char c : chars) {
+        if (static_cast<unsigned char>(c) >= 0x80) continue;  // ASCII only
+        if (tab_ == Tab::Cheats) cheats_char(c); else search_char(c);
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Cheats tab
+// ---------------------------------------------------------------------------------------------
+
+void Trainer::cheats_key(Key k) {
+    const int count = static_cast<int>(cheats_.cheats().size());
+    if (k == Key::Enter) {
+        cheats_char(' ');
+    } else if (k == Key::Delete) {
+        if (count == 0) return;
+        const std::string name = cheats_.cheats()[static_cast<size_t>(cheat_sel_)].name;
+        cheats_.remove(static_cast<size_t>(cheat_sel_));
+        dirty_ = true;
+        cheat_sel_ = std::clamp(cheat_sel_, 0, std::max(0, count - 2));
+        set_status("removed '" + name + "' (S saves)");
+    } else {
+        move(cheat_sel_, count, k);
+    }
+}
+
+void Trainer::cheats_char(char c) {
+    const int count = static_cast<int>(cheats_.cheats().size());
+    if (c == ' ') {
+        if (count == 0) return;
+        const size_t i = static_cast<size_t>(cheat_sel_);
+        const Cheat& cheat = cheats_.cheats()[i];
+        const bool on = !cheat.enabled;
+        if (!cheats_.set_enabled(i, on)) {
+            set_status("cannot enable: " + cheat.error, true);
+            return;
+        }
+        dirty_ = true;
+        set_status("'" + cheats_.cheats()[i].name + "' " + (on ? "on" : "off"));
+    } else if (c == 'r' || c == 'R') {
+        const bool had_changes = dirty_;
+        load();
+        if (had_changes && !status_error_) set_status(status_ + " (unsaved changes dropped)");
+    } else if (c == 's' || c == 'S') {
+        save();
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Search tab
+// ---------------------------------------------------------------------------------------------
+
+int Trainer::search_rows() const {
+    return kSearchControls + static_cast<int>(std::min(search_.count(), kMaxListedResults));
+}
+
+void Trainer::search_key(Key k) {
+    const int row = search_sel_;
+    switch (k) {
+    case Key::Left:
+    case Key::Right: {
+        const int dir = k == Key::Left ? -1 : 1;
+        if (row == kRowSize) {
+            const int next = std::clamp(size_index_ + dir, 0, 2);
+            if (next != size_index_) {
+                size_index_ = next;
+                if (search_.active()) {
+                    search_.reset();
+                    set_status("size changed: the search starts over");
+                }
+            }
+        } else if (row == kRowSigned) {
+            search_.set_signed(!search_.is_signed());
+        } else if (row == kRowFilter) {
+            filter_index_ = (filter_index_ + dir + static_cast<int>(kSearchFilterCount)) % static_cast<int>(kSearchFilterCount);
+        }
+        break;
+    }
+    case Key::Enter:
+        if (row == kRowSigned) {
+            search_.set_signed(!search_.is_signed());
+        } else if (row == kRowValue || row == kRowFilter) {
+            apply_filter();
+        } else if (row == kRowNew) {
+            search_.start(ram_, size());
+            result_scroll_ = 0;
+            set_status("new " + std::string(size_name(size())) + " search: " + std::to_string(search_.count()) +
+                       " addresses, snapshot taken");
+        } else if (row >= kSearchControls) {
+            set_status("on a result: F freezes it, W writes the value once");
+        }
+        break;
+    case Key::Backspace:
+        if (row == kRowValue && !value_text_.empty()) value_text_.pop_back();
+        break;
+    case Key::Delete:
+        if (row == kRowValue) value_text_.clear();
+        break;
+    default:
+        move(search_sel_, search_rows(), k);
+        break;
+    }
+}
+
+void Trainer::search_char(char c) {
+    if (search_sel_ >= kSearchControls) {
+        if (c == 'f' || c == 'F') freeze_selected();
+        else if (c == 'w' || c == 'W') write_selected();
+        return;
+    }
+    const bool starts_number = (c >= '0' && c <= '9') || c == '-' || c == '$';
+    if (search_sel_ != kRowValue) {
+        if (!starts_number) return;
+        search_sel_ = kRowValue;  // typing a number jumps to the value field
+    }
+    if (is_value_char(c) && value_text_.size() < 12) value_text_ += c;
+}
+
+void Trainer::apply_filter() {
+    const SearchFilter f = static_cast<SearchFilter>(filter_index_);
+    uint32_t value = 0;
+    if (filter_needs_value(f)) {
+        const std::optional<uint32_t> v = parse_value(value_text_, size());
+        if (!v) {
+            set_status(value_text_.empty() ? "type a value first"
+                                           : "'" + value_text_ + "' is not a " + size_name(size()) + " value",
+                       true);
+            return;
+        }
+        value = *v;
+    }
+    if (!search_.active()) {
+        search_.start(ram_, size());
+        if (!filter_needs_value(f)) {
+            set_status("snapshot taken: let the game run (F4), then filter again");
+            return;
+        }
+    }
+    const size_t n = search_.filter(ram_, f, value);
+    result_scroll_ = 0;
+    search_sel_ = std::min(search_sel_, search_rows() - 1);
+    std::string what = filter_name(f);
+    if (filter_needs_value(f)) what.replace(what.find("value"), 5, value_text_);
+    set_status(what + ": " + std::to_string(n) + (n == 1 ? " result" : " results"));
+}
+
+void Trainer::freeze_selected() {
+    const size_t i = static_cast<size_t>(search_sel_ - kSearchControls);
+    if (i >= search_.count()) return;
+    const uint32_t off = search_.offset(i);
+    const ValueSize s = search_.size();
+    uint32_t value = read_value(ram_, off, s);
+    if (!value_text_.empty()) {
+        const std::optional<uint32_t> v = parse_value(value_text_, s);
+        if (!v) {
+            set_status("'" + value_text_ + "' is not a " + size_name(s) + " value", true);
+            return;
+        }
+        value = *v;
+    }
+    const std::string name = "Freeze " + hex_address(off) + " = " + format_value(value, s, search_.is_signed());
+    std::string error;
+    if (!cheats_.add(name, freeze_codes(off, value, static_cast<int>(s)), true, &error)) {
+        set_status(error, true);
+        return;
+    }
+    dirty_ = true;
+    cheat_sel_ = static_cast<int>(cheats_.cheats().size()) - 1;
+    set_status("added '" + name + "' (on); S on the Cheats tab saves it");
+}
+
+void Trainer::write_selected() {
+    const size_t i = static_cast<size_t>(search_sel_ - kSearchControls);
+    if (i >= search_.count()) return;
+    const ValueSize s = search_.size();
+    const std::optional<uint32_t> v = parse_value(value_text_, s);
+    if (!v) {
+        set_status(value_text_.empty() ? "type the value to write first"
+                                       : "'" + value_text_ + "' is not a " + size_name(s) + " value",
+                   true);
+        return;
+    }
+    write_value(ram_, search_.offset(i), s, *v);
+    set_status("wrote " + format_value(*v, s, search_.is_signed()) + " to " + hex_address(search_.offset(i)));
+}
+
+// ---------------------------------------------------------------------------------------------
+// Rendering
+// ---------------------------------------------------------------------------------------------
+
+std::vector<Line> Trainer::render(int cols, int rows) const {
+    cols = std::max(cols, 0);
+    rows = std::max(rows, 0);
+    std::vector<Line> out;
+    const auto add = [&](std::string s, Style st = Style::Normal) {
+        if (static_cast<int>(out.size()) >= rows) return;
+        if (static_cast<int>(s.size()) > cols) s.resize(static_cast<size_t>(cols));
+        out.push_back({std::move(s), st});
+    };
+    // Keeps `sel` inside a window of `visible` rows starting at `scroll`.
+    const auto follow = [](int sel, int visible, int& scroll) {
+        if (visible <= 0) return;
+        if (sel < scroll) scroll = sel;
+        if (sel >= scroll + visible) scroll = sel - visible + 1;
+        scroll = std::max(scroll, 0);
+    };
+
+    add(std::string("TRAINER  ") + (tab_ == Tab::Cheats ? "[Cheats]  Search " : " Cheats  [Search]") +
+            (dirty_ ? "  *unsaved" : ""),
+        Style::Title);
+    add("Tab: switch  F4/Esc: close  (paused)", Style::Dim);
+    add(std::string(static_cast<size_t>(cols), '-'), Style::Dim);
+    constexpr int kHeader = 3, kFooter = 3;
+    const int body = std::max(0, rows - kHeader - kFooter);
+    std::vector<Line> lines;  // body
+
+    if (tab_ == Tab::Cheats) {
+        const std::vector<Cheat>& list = cheats_.cheats();
+        const int detail = body >= 8 ? 3 : 0;
+        const int visible = body - detail;
+        if (list.empty()) {
+            lines.push_back({"No cheats. Add codes to the file below,", Style::Dim});
+            lines.push_back({"or freeze a result on the Search tab.", Style::Dim});
+        } else {
+            follow(cheat_sel_, visible, cheat_scroll_);
+            for (int i = cheat_scroll_; i < static_cast<int>(list.size()) && i < cheat_scroll_ + visible; ++i) {
+                const Cheat& c = list[static_cast<size_t>(i)];
+                const bool sel = i == cheat_sel_;
+                std::string row = std::string(sel ? "> " : "  ") + (!c.error.empty() ? "[!] " : c.enabled ? "[x] " : "[ ] ") + c.name;
+                lines.push_back({row, sel ? Style::Selected : !c.error.empty() ? Style::Error : Style::Normal});
+            }
+        }
+        while (static_cast<int>(lines.size()) < visible) lines.push_back({});
+        if (detail > 0) {
+            std::string codes, error;
+            if (!list.empty()) {
+                const Cheat& c = list[static_cast<size_t>(cheat_sel_)];
+                for (const std::string& code : c.codes) codes += (codes.empty() ? "" : "  ") + code;
+                error = c.error;
+            }
+            lines.push_back({codes, Style::Dim});
+            lines.push_back({error, Style::Error});
+            // Long paths keep their end (the file name) visible.
+            std::string file = path_.string();
+            const size_t room = static_cast<size_t>(std::max(cols - 6, 4));
+            if (file.size() > room) file = "..." + file.substr(file.size() - (room - 3));
+            lines.push_back({"File: " + file, Style::Dim});
+        }
+    } else {
+        const int sel = search_sel_;
+        const auto control = [&](int row, std::string label, std::string value) {
+            lines.push_back({std::string(sel == row ? "> " : "  ") + label + value,
+                             sel == row ? Style::Selected : Style::Normal});
+        };
+        control(kRowSize, "Size    ", std::string("< ") + size_name(size()) + " >");
+        control(kRowSigned, "Signed  ", search_.is_signed() ? "< yes >" : "< no >");
+        control(kRowValue, "Value   ", "[" + value_text_ + (sel == kRowValue ? "_" : "") + "]");
+        control(kRowFilter, "Filter  ", std::string("< ") + filter_name(static_cast<SearchFilter>(filter_index_)) + " >");
+        control(kRowNew, "", "[ New search ]");
+        const size_t n = search_.count();
+        if (!search_.active()) {
+            lines.push_back({"No search yet: Enter on a filter or New search", Style::Dim});
+        } else {
+            lines.push_back({"Results: " + std::to_string(n) +
+                                 (n > kMaxListedResults ? " (first " + std::to_string(kMaxListedResults) + " listed)" : ""),
+                             Style::Dim});
+        }
+        const int visible = body - static_cast<int>(lines.size());
+        const int listed = static_cast<int>(std::min(n, kMaxListedResults));
+        if (sel >= kSearchControls) follow(sel - kSearchControls, visible, result_scroll_);
+        result_scroll_ = std::clamp(result_scroll_, 0, std::max(0, listed - 1));
+        const ValueSize s = search_.size();
+        for (int i = result_scroll_; i < listed && i < result_scroll_ + visible; ++i) {
+            const size_t idx = static_cast<size_t>(i);
+            const uint32_t off = search_.offset(idx);
+            const bool selected = sel == kSearchControls + i;
+            char buf[96];
+            std::snprintf(buf, sizeof buf, "%s%s  %-11s was %s", selected ? "> " : "  ", hex_address(off).c_str(),
+                          format_value(read_value(ram_, off, s), s, search_.is_signed()).c_str(),
+                          format_value(search_.previous(idx), s, search_.is_signed()).c_str());
+            lines.push_back({buf, selected ? Style::Selected : Style::Normal});
+        }
+    }
+    for (int i = 0; i < body; ++i) {
+        if (static_cast<size_t>(i) < lines.size()) add(lines[static_cast<size_t>(i)].text, lines[static_cast<size_t>(i)].style);
+        else add("");
+    }
+    if (tab_ == Tab::Cheats) {
+        add("Enter/Space: on/off  Del: remove", Style::Dim);
+        add("R: reload file  S: save file", Style::Dim);
+    } else {
+        add("Up/Down: select  Left/Right: change  Enter: go", Style::Dim);
+        add("On a result: F freeze  W write value once", Style::Dim);
+    }
+    add(status_, status_error_ ? Style::Error : Style::Good);
+    return out;
+}
+
+}  // namespace trainer
