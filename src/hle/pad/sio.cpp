@@ -35,7 +35,11 @@ void Sio0::transfer(uint8_t tx) {
             case 1: rx = 0x41; ack = tx == 0x42; talking_to_pad_ = ack; break;
             case 2: rx = 0x5A; ack = true; break;
             case 3: rx = static_cast<uint8_t>(buttons_[port]); ack = true; break;
-            case 4: rx = static_cast<uint8_t>(buttons_[port] >> 8); ack = false; break;
+            case 4:
+                rx = static_cast<uint8_t>(buttons_[port] >> 8);
+                ack = false;
+                if (port == 0) last_sent_ = buttons_[port];
+                break;
             default: talking_to_pad_ = false; break;
         }
     }
@@ -128,8 +132,10 @@ void Sio0::write(uint32_t phys, uint32_t value, unsigned width) {
             if (v & kCtrlReset) {
                 // Resets the serial port only: the pads' button state is host input, not port state.
                 const std::array<uint16_t, 2> buttons = buttons_;
+                const uint16_t sent = last_sent_;
                 *this = Sio0(std::move(raise_irq7_), std::move(clock_));
                 buttons_ = buttons;
+                last_sent_ = sent;
                 return;
             }
             if (v & kCtrlAck) irq_ = false;

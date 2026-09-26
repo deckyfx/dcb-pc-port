@@ -15,6 +15,7 @@
 #include <SDL3/SDL.h>
 
 #include <algorithm>
+#include <cstdlib>
 #include <cstdio>
 #include <string>
 #include <system_error>
@@ -94,6 +95,9 @@ public:
                 quit_ = true;
                 break;
             case SDL_EVENT_KEY_DOWN:
+                if (trace_input_ && !ev.key.repeat)
+                    SDL_Log("dcb: key down '%s' (scancode %d)", SDL_GetScancodeName(ev.key.scancode),
+                            static_cast<int>(ev.key.scancode));
                 if (ev.key.scancode == SDL_SCANCODE_ESCAPE) {
                     quit_ = true;
                 } else if (is_enter(ev.key.scancode) && (ev.key.mod & SDL_KMOD_ALT) != 0 && !ev.key.repeat) {
@@ -123,7 +127,14 @@ public:
                 break;
             }
         }
-        buttons_ = static_cast<uint16_t>(~(read_keyboard() | read_gamepad()));
+        const uint16_t buttons = static_cast<uint16_t>(~(read_keyboard() | read_gamepad()));
+        if (trace_input_ && buttons != buttons_) {
+            std::string names;
+            for (const PadButtonInfo& b : kPadButtons)
+                if ((buttons & b.bit) == 0) names += std::string(names.empty() ? "" : "+") + b.name;
+            SDL_Log("dcb: pad %04X %s", buttons, names.empty() ? "(released)" : names.c_str());
+        }
+        buttons_ = buttons;
         return !quit_;
     }
 
@@ -334,6 +345,8 @@ private:
     uint16_t buttons_ = 0xFFFF;
     int blank_frames_ = 0;  ///< consecutive frames with the display off
     bool overlay_visible_ = false;
+    /// DCB_TRACE_INPUT: log key presses and the pad state they produce.
+    const bool trace_input_ = std::getenv("DCB_TRACE_INPUT") != nullptr;
     bool any_press_ = false;  ///< a key / gamepad button went down since take_any_press()
     FrameStats stats_;
     bool quit_ = false;
