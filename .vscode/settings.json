@@ -1,0 +1,30 @@
+{
+  // CMake Tools drives the presets in CMakePresets.json.
+  "cmake.useCMakePresets": "always",
+  "cmake.configureOnOpen": true,
+
+  // clangd reads the compile database of the dev build.
+  "clangd.arguments": [
+    "--compile-commands-dir=${workspaceFolder}/build/linux-debug",
+    "--background-index",
+    "--header-insertion=never"
+  ],
+  "C_Cpp.intelliSenseEngine": "disabled",
+
+  // Generated C (~150k lines) and disc data are huge: keep them out of search and watchers.
+  "search.exclude": {
+    "build/**": true,
+    "generated/**": true,
+    "extracted/**": true,
+    "disc/**": true,
+    "ghidra/project/**": true
+  },
+  "files.watcherExclude": {
+    "**/build/**": true,
+    "**/generated/**": true,
+    "**/extracted/**": true,
+    "**/disc/**": true,
+    "**/ghidra/project/**": true
+  },
+  "files.associations": { "*.sinc": "plaintext" }
+}

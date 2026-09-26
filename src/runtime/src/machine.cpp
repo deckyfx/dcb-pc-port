@@ -33,9 +33,12 @@ Machine& Machine::from(PsxContext* ctx) {
 ExeInfo Machine::load_exe(const std::filesystem::path& path) {
     std::ifstream in(path, std::ios::binary);
     if (!in) throw std::runtime_error("cannot open " + path.string());
-    const std::vector<uint8_t> data{std::istreambuf_iterator<char>(in), {}};
+    return load_exe(std::vector<uint8_t>{std::istreambuf_iterator<char>(in), {}});
+}
+
+ExeInfo Machine::load_exe(const std::vector<uint8_t>& data) {
     if (data.size() < kExeHeaderSize || std::memcmp(data.data(), "PS-X EXE", 8) != 0)
-        throw std::runtime_error(path.string() + " is not a PS-X EXE");
+        throw std::runtime_error("not a PS-X EXE");
 
     ExeInfo exe{le32(data, 0x10), le32(data, 0x14), le32(data, 0x18), le32(data, 0x1C),
                 le32(data, 0x28), le32(data, 0x2C), le32(data, 0x30), le32(data, 0x34)};

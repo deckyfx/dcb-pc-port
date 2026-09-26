@@ -2,6 +2,7 @@
 /disc/
 /bios/
 /extracted/
+/saves/
 /assets/raw/*
 /assets/converted/*
 /generated/*
@@ -19,3 +20,7 @@ compile_commands.json
 .cache/
 __pycache__/
 /logs/
+
+# Claude Code agent worktrees
+/.claude/worktrees/
+/dist/

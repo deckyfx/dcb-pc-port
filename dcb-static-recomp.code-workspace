@@ -1,0 +1,19 @@
+{
+  // Open with: File > Open Workspace from File... (or `code dcb-static-recomp.code-workspace`).
+  // Tasks, launch configs and editor settings live in .vscode/ and apply to this folder.
+  "folders": [
+    { "name": "dcb-static-recomp", "path": "." }
+  ],
+  "settings": {
+    "window.title": "DCB recomp · ${activeEditorShort}"
+  },
+  "extensions": {
+    "recommendations": [
+      "ms-vscode.cmake-tools",
+      "llvm-vs-code-extensions.vscode-clangd",
+      "vadimcn.vscode-lldb",
+      "ms-python.python",
+      "ms-python.debugpy"
+    ]
+  }
+}

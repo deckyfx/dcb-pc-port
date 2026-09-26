@@ -1,0 +1,56 @@
+{
+  // F5 debugging with CodeLLDB (vadimcn.vscode-lldb). Each config builds first.
+  // The runtime stops with abort() on anything unimplemented (BIOS call, GTE op, unknown
+  // dispatch target), so the debugger halts right there with the full guest call stack:
+  // generated frames are named after guest addresses (f_80058CFC, o_KAWSEG_801E2A6C).
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug dcb (SLPS-03101)",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/linux-debug/dcb",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "dcb: build",
+      "initCommands": [
+        "breakpoint set --name psx_invalid",
+        "breakpoint set --name psx_bad_return"
+      ]
+    },
+    {
+      "name": "Debug dcb_recompiler (SLPS-03101)",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/linux-debug/dcb_recompiler",
+      "args": [".", "SLPS-03101"],
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "dcb: build"
+    },
+    {
+      "name": "Debug test: runtime memory",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/linux-debug/test_runtime_memory",
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "dcb: build"
+    },
+    {
+      "name": "Debug test: recomp decoder",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/build/linux-debug/test_recomp_decoder",
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "dcb: build"
+    },
+    {
+      "name": "Debug extract_disc.py",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/tools/disc/extract_disc.py",
+      "args": ["disc/SLPS-03101/dcb_jp.cue", "-o", "extracted/SLPS-03101", "--force"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    }
+  ]
+}
