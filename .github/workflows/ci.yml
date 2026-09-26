@@ -3,10 +3,9 @@
 # and the game itself are never run.
 name: CI
 
+# Manual only for now (Actions tab > CI > Run workflow, or `gh workflow run CI --ref <branch>`).
+# Restore `pull_request:` and `push: branches: [main]` to run it automatically again.
 on:
-  pull_request:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
