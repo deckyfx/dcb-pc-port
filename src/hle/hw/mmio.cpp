@@ -56,7 +56,7 @@ void Mmio::dma_write(unsigned channel, unsigned reg, uint32_t value) {
         dma_[channel][2] &= ~(kChcrBusy | kChcrTrigger);
         const bool master = dicr_ & (1u << 23);
         if (master && (dicr_ & (1u << (16 + channel)))) {
-            dicr_ |= 1u << (24 + channel) | 1u << 31;
+            dicr_ |= 1u << (24 + channel);
             raise_irq(3);
         }
     }
@@ -141,6 +141,35 @@ void Mmio::dma_run(unsigned channel) {
     }
 }
 
+uint32_t Mmio::dicr() const {
+    // Bit 31 is computed: force (15), or master enable (23) with an enabled channel flagged.
+    const bool irq = (dicr_ & (1u << 15)) || ((dicr_ & (1u << 23)) && ((dicr_ >> 24) & (dicr_ >> 16) & 0x7Fu));
+    return (dicr_ & 0x7FFFFFFFu) | (irq ? 0x80000000u : 0u);
+}
+
+uint32_t Mmio::dma_reg_read(uint32_t aligned) const {
+    if (aligned == kDpcr) return dpcr_;
+    if (aligned == kDicr) return dicr();
+    if (aligned >= kDmaBase && aligned < kDpcr) return dma_[(aligned - kDmaBase) >> 4][((aligned & 0xF) >> 2) % 3];
+    return 0;
+}
+
+void Mmio::dma_reg_write(uint32_t aligned, uint32_t value, uint32_t lanes) {
+    // `lanes` masks the bytes actually written: libcd flips DICR channel enables with byte writes.
+    if (aligned == kDicr) {
+        const uint32_t plain = lanes & 0x00FF803Fu;               // enables, master, force, bits 0-5
+        dicr_ = (dicr_ & ~plain) | (value & plain);
+        dicr_ &= ~(value & lanes & 0x7F000000u);                  // flags: writing 1 acknowledges
+        return;
+    }
+    const uint32_t merged = (dma_reg_read(aligned) & ~lanes) | (value & lanes);
+    if (aligned == kDpcr) {
+        dpcr_ = merged;
+        return;
+    }
+    dma_write((aligned - kDmaBase) >> 4, ((aligned & 0xF) >> 2) % 3, merged);
+}
+
 uint32_t Mmio::read(uint32_t phys, unsigned width) {
     // Status registers are what games spin on: let time advance and interrupts arrive.
     if (system_ && (phys == kIStat || phys == kGp1 || (phys >= kTimerBase && phys < kTimerBase + 0x30)))
@@ -148,8 +177,6 @@ uint32_t Mmio::read(uint32_t phys, unsigned width) {
     switch (phys) {
         case kIStat: return i_stat_;
         case kIMask: return i_mask_;
-        case kDpcr: return dpcr_;
-        case kDicr: return dicr_;
         case kGp0: return gpu_.gpuread();
         case kGp1: return gpu_.gpustat();
         case kMdecData: return mdec_.read_data();
@@ -162,7 +189,9 @@ uint32_t Mmio::read(uint32_t phys, unsigned width) {
         const uint32_t lo = spu_.read16(phys & ~1u);
         return width == 4 ? lo | static_cast<uint32_t>(spu_.read16((phys & ~1u) + 2)) << 16 : lo;
     }
-    if (phys >= kDmaBase && phys < kDpcr) return dma_[(phys - kDmaBase) >> 4][((phys & 0xF) >> 2) % 3];
+    if (phys >= kDmaBase && phys < kDicr + 4) {  // DMA registers: any width, any byte lane
+        return dma_reg_read(phys & ~3u) >> (8 * (phys & 3u));
+    }
     if (phys >= kTimerBase && phys < kTimerBase + 0x30) {
         const unsigned index = (phys - kTimerBase) >> 4;
         switch ((phys & 0xF) >> 2) {
@@ -180,10 +209,6 @@ void Mmio::write(uint32_t phys, uint32_t value, unsigned width) {
     switch (phys) {
         case kIStat: i_stat_ &= value; return;  // writing 0 acknowledges
         case kIMask: i_mask_ = value & 0x7FFu; return;
-        case kDpcr: dpcr_ = value; return;
-        case kDicr:  // bits 24-30 acknowledge by writing 1; the rest is plain
-            dicr_ = (dicr_ & 0x7F000000u & ~value) | (value & 0x00FF803Fu);
-            return;
         case kGp0: gp0(value); return;
         case kGp1: gpu_.gp1(value); return;
         case kMdecData: mdec_.write_command(value); return;
@@ -203,8 +228,10 @@ void Mmio::write(uint32_t phys, uint32_t value, unsigned width) {
         if (width == 4) spu_.write16((phys & ~1u) + 2, static_cast<uint16_t>(value >> 16));
         return;
     }
-    if (phys >= kDmaBase && phys < kDpcr) {
-        dma_write((phys - kDmaBase) >> 4, ((phys & 0xF) >> 2) % 3, value);
+    if (phys >= kDmaBase && phys < kDicr + 4) {
+        const uint32_t shift = 8 * (phys & 3u);
+        const uint32_t lanes = (width == 4 ? 0xFFFFFFFFu : width == 2 ? 0xFFFFu : 0xFFu) << shift;
+        dma_reg_write(phys & ~3u, value << shift, lanes);
         return;
     }
     if (phys >= kTimerBase && phys < kTimerBase + 0x30) {

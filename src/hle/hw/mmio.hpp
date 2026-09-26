@@ -75,6 +75,9 @@ private:
     uint32_t timer_counter(unsigned index) const;
     void gp0(uint32_t word);
     void dma_write(unsigned channel, unsigned reg, uint32_t value);
+    uint32_t dma_reg_read(uint32_t aligned) const;
+    void dma_reg_write(uint32_t aligned, uint32_t value, uint32_t lanes);
+    uint32_t dicr() const;
     void dma_run(unsigned channel);
     void dma_gpu_linked_list(uint32_t addr);
     void note(uint32_t phys, bool write, uint32_t value, unsigned width);
