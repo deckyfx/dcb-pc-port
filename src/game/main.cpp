@@ -99,7 +99,7 @@ int main(int argc, char** argv) {
         // Window, input and audio. DCB_HEADLESS=1 (or a build without SDL3) runs without a window.
         std::unique_ptr<platform::Platform> host;
 #ifdef DCB_HAS_SDL3
-        if (!std::getenv("DCB_HEADLESS")) host = platform::make_sdl3("Digimon World: Digital Card Arena");
+        if (!std::getenv("DCB_HEADLESS")) host = platform::make_sdl3("Digimon World: Digital Card Arena (PC Port)");
 #endif
         if (!host) host = platform::make_headless();
         system.on_vblank([&] {
