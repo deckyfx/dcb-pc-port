@@ -15,6 +15,7 @@
 #include <SDL3/SDL.h>
 
 #include <algorithm>
+#include <cstdio>
 #include <string>
 #include <system_error>
 #include <vector>
@@ -97,6 +98,10 @@ public:
                     quit_ = true;
                 } else if (is_enter(ev.key.scancode) && (ev.key.mod & SDL_KMOD_ALT) != 0 && !ev.key.repeat) {
                     toggle_fullscreen();
+                } else if (!ev.key.repeat &&
+                           std::find(settings_.overlay_keys.begin(), settings_.overlay_keys.end(),
+                                     static_cast<int>(ev.key.scancode)) != settings_.overlay_keys.end()) {
+                    overlay_visible_ = !overlay_visible_;
                 }
                 break;
             case SDL_EVENT_GAMEPAD_ADDED:
@@ -140,7 +145,35 @@ public:
         } else {
             draw_loading();
         }
+        if (overlay_visible_) draw_overlay();
         SDL_RenderPresent(renderer_);
+    }
+
+    void set_stats(const FrameStats& stats) override { stats_ = stats; }
+
+    /// Performance panel in the top-right corner (toggled by [hotkeys] overlay, default F3).
+    void draw_overlay() {
+        const int queued = audio_ ? SDL_GetAudioStreamQueued(audio_) / kBytesPerFrame : 0;
+        char lines[5][40];
+        std::snprintf(lines[0], sizeof lines[0], "FPS      %5.1f", stats_.fps);
+        std::snprintf(lines[1], sizeof lines[1], "Game FPS %5.1f", stats_.game_fps);
+        std::snprintf(lines[2], sizeof lines[2], "CPU      %4.0f%%", stats_.cpu_pct);
+        std::snprintf(lines[3], sizeof lines[3], "GPU      %4.0f%%", stats_.gpu_pct);
+        std::snprintf(lines[4], sizeof lines[4], "Audio    %3d ms", queued * 1000 / kAudioRate);
+
+        int ww = 0, wh = 0;
+        SDL_GetRenderOutputSize(renderer_, &ww, &wh);
+        const float scale = std::max(1.0f, static_cast<float>(wh) / 360.0f);  // stays readable, not huge
+        SDL_SetRenderScale(renderer_, scale, scale);
+        constexpr float kLine = 10.0f, kWidth = 8.0f * 15.0f + 8.0f;
+        const float x = static_cast<float>(ww) / scale - kWidth - 4.0f, y = 4.0f;
+        SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 170);
+        const SDL_FRect panel{x, y, kWidth, kLine * 5.0f + 6.0f};
+        SDL_RenderFillRect(renderer_, &panel);
+        SDL_SetRenderDrawColor(renderer_, 120, 255, 120, 255);
+        for (int i = 0; i < 5; ++i) SDL_RenderDebugText(renderer_, x + 4.0f, y + 4.0f + kLine * static_cast<float>(i), lines[i]);
+        SDL_SetRenderScale(renderer_, 1.0f, 1.0f);
     }
 
     /// While the game keeps its display off (boot, loading between scenes), show an animated
@@ -289,6 +322,8 @@ private:
     SettingsFile settings_file_;
     uint16_t buttons_ = 0xFFFF;
     int blank_frames_ = 0;  ///< consecutive frames with the display off
+    bool overlay_visible_ = false;
+    FrameStats stats_;
     bool quit_ = false;
 };
 

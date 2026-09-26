@@ -134,7 +134,10 @@ void System::pace() {
     const auto real = std::chrono::steady_clock::now() - start_;
     const auto ahead = std::chrono::duration_cast<std::chrono::microseconds>(guest - real);
     if (ahead.count() > 0) {
+        const auto t0 = std::chrono::steady_clock::now();
         std::this_thread::sleep_for(std::min(ahead, std::chrono::microseconds(100000)));
+        sleep_ns_ += static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - t0).count());
     } else if (ahead < -std::chrono::milliseconds(250)) {
         start_ = std::chrono::steady_clock::now() - std::chrono::duration_cast<std::chrono::steady_clock::duration>(guest);
     }

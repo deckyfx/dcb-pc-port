@@ -28,13 +28,16 @@ executable: MIPS R3000A → C, with native HLE of the kernel and Psy-Q libraries
 - [ ] Main menu and navigation
 - [ ] Card battles (KAWSEG overlay)
 - [ ] Remaining game modes and overlays (EVOSEG, SAISEG, SUBSEG, SUGSEG, ENDSEG)
-- [ ] GTE commands (geometry for 3D effects)
-- [ ] Memory card saves (BIOS file API, `bu00:`)
+- [ ] Memory card saves verified in game
 - [ ] `PSX2.EXE` mode (`LoadExec`)
 - [ ] One-time asset import from the player's own dump: no disc needed afterwards, no copyrighted data in the download
 - [ ] Windows x64 release build tested on Windows
 - [ ] US version (SLUS-01328, Digimon Digital Card Battle)
-- [ ] PC options: resolution scaling, filtering, key rebinding
+- [x] PC options: `settings.ini` (window scale, filtering, aspect, key/gamepad rebinding, volume)
+- [x] Performance overlay (FPS, game FPS, CPU/GPU load, audio queue): F3
+- [x] GTE commands implemented (unit-tested; awaiting in-game use)
+- [x] Memory card file API (`bu00:`) implemented (unit-tested; awaiting in-game use)
+- [x] CI: Linux tests + Windows .exe on every PR
 - [ ] Enhance / upscale assets
 - [ ] Enhancements: widescreen, translation
 - [ ] Network Battle

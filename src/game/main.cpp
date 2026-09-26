@@ -10,7 +10,9 @@
 
 #include <psx/runtime.hpp>
 
+#include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
@@ -127,7 +129,32 @@ int main(int argc, char** argv) {
             area.height = d.height;
             area.rgb24 = d.rgb24;
             area.enabled = d.enabled;
+            const auto present_start = std::chrono::steady_clock::now();
             host->present(mmio.gpu().vram(), area);
+            // Performance overlay: once per second, turn the counters into rates and shares.
+            static auto window_start = std::chrono::steady_clock::now();
+            static uint64_t frames = 0, flips0 = mmio.display_flips(), gpu0 = mmio.gpu_ns(), sleep0 = system.sleep_ns();
+            static uint64_t present_ns = 0;
+            const auto now = std::chrono::steady_clock::now();
+            present_ns += static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(now - present_start).count());
+            ++frames;
+            const double wall_ns = static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(now - window_start).count());
+            if (wall_ns >= 1e9) {
+                const double gpu_ns = static_cast<double>(mmio.gpu_ns() - gpu0);
+                const double sleep_ns = static_cast<double>(system.sleep_ns() - sleep0);
+                platform::FrameStats st;
+                st.fps = static_cast<double>(frames) * 1e9 / wall_ns;
+                st.game_fps = static_cast<double>(mmio.display_flips() - flips0) * 1e9 / wall_ns;
+                st.gpu_pct = 100.0 * gpu_ns / wall_ns;
+                st.cpu_pct = std::max(0.0, 100.0 * (wall_ns - sleep_ns - gpu_ns - static_cast<double>(present_ns)) / wall_ns);
+                host->set_stats(st);
+                window_start = now;
+                frames = 0;
+                present_ns = 0;
+                flips0 = mmio.display_flips();
+                gpu0 = mmio.gpu_ns();
+                sleep0 = system.sleep_ns();
+            }
             const std::vector<int16_t>& audio = mmio.take_audio();
             if (!audio.empty()) host->queue_audio(audio.data(), audio.size() / 2);
             // DCB_AUDIO_DUMP=<file>: raw s16le stereo 44100 Hz of everything played (ffmpeg -f s16le -ar 44100 -ac 2).

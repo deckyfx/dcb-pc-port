@@ -37,6 +37,9 @@ public:
     /// A native wait (no guest code runs): deliver pending interrupts, then advance guest time a little.
     void idle(PsxContext& ctx);
 
+    /// Host time spent sleeping for frame pacing (ns), for the performance overlay.
+    uint64_t sleep_ns() const { return sleep_ns_; }
+
     /// Host work once per guest frame (present, input), run at each VBLANK before pacing.
     void on_vblank(std::function<void()> fn) { on_vblank_ = std::move(fn); }
 
@@ -104,6 +107,7 @@ private:
 
     bool pacing_ = true;  ///< DCB_FAST=1 runs unthrottled
     std::function<void()> on_vblank_;
+    uint64_t sleep_ns_ = 0;
 
     uint64_t cycles_per_vblank() const { return static_cast<uint64_t>(kCpuHz / kVblankHz); }
     void pace();

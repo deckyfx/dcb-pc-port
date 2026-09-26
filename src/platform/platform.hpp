@@ -44,6 +44,14 @@ enum Button : uint16_t {
     Square = 1u << 15,
 };
 
+/// Performance numbers measured by the host loop, averaged over about a second.
+struct FrameStats {
+    double fps = 0;        ///< frames presented per second
+    double game_fps = 0;   ///< frames the game finished per second (display flips)
+    double cpu_pct = 0;    ///< share of wall time spent running the game (not sleeping/drawing)
+    double gpu_pct = 0;    ///< share of wall time spent in the software rasterizer
+};
+
 class Platform {
 public:
     virtual ~Platform() = default;
@@ -55,6 +63,8 @@ public:
     virtual void present(const uint16_t* vram, const DisplayArea& area) = 0;
     /// Queue `frames` interleaved stereo s16 frames at kAudioRate. Latency is kept bounded.
     virtual void queue_audio(const int16_t* stereo, size_t frames) = 0;
+    /// Latest performance numbers, for the on-screen overlay (ignored by backends without one).
+    virtual void set_stats(const FrameStats& stats) { (void)stats; }
 };
 
 /// Headless backend: no window, no audio, nothing pressed (tests / CI / batch runs).

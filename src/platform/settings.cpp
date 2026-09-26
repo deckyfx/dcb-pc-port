@@ -350,6 +350,10 @@ IniDocument default_settings_ini() {
     doc.add_comment("gamepad", "deadzone: percent of stick travel before a stick half counts as pressed (5-95).");
     doc.set("gamepad", "deadzone", std::to_string(kDeadzoneDefault));
     for (size_t i = 0; i < kPadButtonCount; ++i) doc.set("gamepad", kPadButtons[i].name, kDefaultGamepadBindings[i]);
+
+    doc.add_comment("hotkeys", "Keyboard keys for port features (SDL scancode names, comma-separated).");
+    doc.add_comment("hotkeys", "overlay: show/hide FPS, game FPS, CPU/GPU load and audio queue (top right).");
+    doc.set("hotkeys", "overlay", "F3");
     return doc;
 }
 
@@ -368,6 +372,19 @@ Settings parse_settings(const IniDocument& doc, const BindingResolvers& resolver
     s.stick_deadzone = r.integer("gamepad", "deadzone", kDeadzoneDefault, kDeadzoneMin, kDeadzoneMax);
     s.keyboard = r.bindings("keyboard", kDefaultKeyboardBindings, resolvers.keyboard);
     s.gamepad = r.bindings("gamepad", kDefaultGamepadBindings, resolvers.gamepad);
+    // [hotkeys] overlay. Like the pad bindings, the default resolves silently; only an invalid
+    // value from the file warns (files written before this key existed simply get the default).
+    const std::vector<int> overlay_default =
+        parse_binding_list("F3", resolvers.keyboard, nullptr).value_or(std::vector<int>{});
+    s.overlay_keys = overlay_default;
+    if (const std::optional<std::string> overlay = doc.get("hotkeys", "overlay")) {
+        std::string bad;
+        if (auto keys = parse_binding_list(*overlay, resolvers.keyboard, &bad)) {
+            s.overlay_keys = *keys;
+        } else {
+            warnings.push_back("[hotkeys] overlay: unknown key '" + bad + "', using F3");
+        }
+    }
     return s;
 }
 

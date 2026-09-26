@@ -113,6 +113,7 @@ struct Settings {
     int stick_deadzone = kDeadzoneDefault; ///< percent; stick bindings fire beyond it
     BindingTable keyboard;                ///< SDL scancodes
     BindingTable gamepad;                 ///< gamepad input codes (see encode_gamepad_axis)
+    std::vector<int> overlay_keys;        ///< [hotkeys] overlay: toggles the performance overlay
 };
 
 /// Maps one binding name to an input code, or nullopt if the name is unknown.
