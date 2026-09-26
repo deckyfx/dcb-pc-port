@@ -232,7 +232,11 @@ banks from the game data into `assets/` (gitignored), and packs them into one fi
 At start the game loads replacement textures from the first of: `DCB_HD_PACK=<.pak|folder>`,
 `assets/<serial>.pak`, `assets/converted/<serial>/`; the manifest (`assets_manifest.json`) is read
 from inside the pack or folder unless `DCB_HD_MANIFEST=<file>` names one. Edit a PNG (same size as the
-original for now: the renderer draws at native resolution), re-pack, restart. Unmodified art gives
+original for now: the renderer draws at native resolution), re-pack, restart. Palette images are
+converted against their own palette from the disc (stored in the manifest), so an edit should use
+that palette's colours; the game still chooses the palette when drawing, so palette animation keeps
+working. Manifests ripped before this change lack the palettes: re-rip (this rewrites
+`assets/converted/<serial>/`, so keep a copy of edited PNGs). Unmodified art gives
 frames bit-identical to the original. PNG alpha: 0 = transparent, 255 = opaque; the semi-transparency
 bit is taken from the original pixel unless alpha is exactly 254 (forces it on). At exit the game
 prints how many texture uploads were replaced and why others were not; `DCB_LOG_HD=1` (or

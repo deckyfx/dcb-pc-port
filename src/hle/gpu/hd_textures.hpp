@@ -105,6 +105,7 @@ private:
         int bpp = 0;       ///< 4, 8 or 16
         uint64_t clut = 0;
         bool has_clut = false;
+        std::vector<uint16_t> pal;  ///< the image's own palette (manifest "pal"); empty on old manifests
     };
 
     /// VRAM rect (in 16-bit units) a TIM of these pixel dims occupies when the
