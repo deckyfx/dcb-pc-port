@@ -42,13 +42,26 @@ target_include_directories(psx_runtime PUBLIC src/runtime/include)
 target_link_libraries(psx_runtime PRIVATE dcb::warnings)
 
 # ---------------------------------------------------------------------------
+# dcb_vfs — asset pipeline runtime: TIM parsing, .pak archives, VFS mounts,
+# PNG decoding (stb, vendored in third_party/stb). Linked into the game for
+# HD texture replacement; the ripper reuses it offline.
+# ---------------------------------------------------------------------------
+file(GLOB DCB_VFS_SOURCES CONFIGURE_DEPENDS src/vfs/*.cpp)
+add_library(dcb_vfs STATIC ${DCB_VFS_SOURCES})
+target_include_directories(dcb_vfs PUBLIC src)
+# SYSTEM keeps our strict warnings out of stb's headers.
+target_include_directories(dcb_vfs SYSTEM PUBLIC third_party)
+target_link_libraries(dcb_vfs PRIVATE dcb::warnings)
+
+# ---------------------------------------------------------------------------
 # psx_hle — native replacements: BIOS call tables, Psy-Q libraries,
 # and the hardware-register (MMIO) fallback for direct pokes.
 # ---------------------------------------------------------------------------
 file(GLOB_RECURSE PSX_HLE_SOURCES CONFIGURE_DEPENDS src/hle/*.c src/hle/*.cpp)
 add_library(psx_hle STATIC ${PSX_HLE_SOURCES})
 target_include_directories(psx_hle PUBLIC src/hle)
-target_link_libraries(psx_hle PUBLIC psx_runtime PRIVATE dcb::warnings)
+# PUBLIC: HdTextures (src/hle/gpu) is part of the interface via Gpu::install_hd().
+target_link_libraries(psx_hle PUBLIC psx_runtime dcb_vfs PRIVATE dcb::warnings)
 
 # ---------------------------------------------------------------------------
 # dcb_platform — host window / audio / input.
@@ -106,7 +119,7 @@ target_compile_definitions(dcb_recompiled PRIVATE $<$<CONFIG:Debug>:PSX_CHECK_RA
 # ---------------------------------------------------------------------------
 file(GLOB_RECURSE DCB_GAME_SOURCES CONFIGURE_DEPENDS src/game/*.c src/game/*.cpp)
 add_executable(dcb ${DCB_GAME_SOURCES})
-target_link_libraries(dcb PRIVATE dcb_recompiled dcb_platform psx_hle psx_runtime dcb::warnings)
+target_link_libraries(dcb PRIVATE dcb_recompiled dcb_platform psx_hle psx_runtime dcb_vfs dcb::warnings)
 target_compile_definitions(dcb PRIVATE DCB_GAME_ID="${DCB_GAME_ID}")
 if(MINGW)
     target_link_options(dcb PRIVATE -static)   # no libstdc++/libgcc DLLs next to the .exe
@@ -131,6 +144,11 @@ if(DCB_BUILD_TOOLS AND NOT CMAKE_CROSSCOMPILING)
 
     add_executable(dcb_recompiler tools/recomp/src/main.cpp)
     target_link_libraries(dcb_recompiler PRIVATE dcb_recomp_core dcb::warnings)
+
+    # Offline asset pipeline: DRV unpacker + TIM->PNG converter + .pak packer.
+    # Not part of any preset build dependency; run it explicitly when ripping assets.
+    add_executable(dcb_asset_ripper tools/asset_ripper.cpp)
+    target_link_libraries(dcb_asset_ripper PRIVATE dcb_vfs dcb::warnings)
 
     # `cmake --build --preset linux-debug --target recompile` regenerates generated/<id>/.
     add_custom_target(recompile

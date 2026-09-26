@@ -47,6 +47,7 @@ public:
     void vblank() { gpu_.vblank(); }
 
     const Gpu& gpu() const { return gpu_; }
+    Gpu& gpu() { return gpu_; }
 
     /// Performance counters for the overlay: display flips (GP1(05h) writes, one per finished
     /// game frame) and host time spent rasterizing GPU command lists.
