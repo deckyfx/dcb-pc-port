@@ -35,18 +35,19 @@ executable: MIPS R3000A → C, with native HLE of the kernel and Psy-Q libraries
 - [ ] US version (SLUS-01328, Digimon Digital Card Battle)
 - [x] PC options: `settings.ini` (window scale, filtering, aspect, key/gamepad rebinding, volume)
 - [x] Performance overlay (FPS, game FPS, CPU/GPU load, audio queue): F3
+- [x] Host-driven main loop: the game runs on fibers; pause (P), frame advance (N) ([design](docs/HOST_MAIN_LOOP.md))
+- [x] Input record / replay (`DCB_RECORD`, `DCB_REPLAY`): reproducible runs, bit-identical frames
 - [x] GTE commands implemented (unit-tested; awaiting in-game use)
 - [x] Memory card file API (`bu00:`) implemented and used by the game's saves
 - [x] CI: Linux tests + Windows .exe (manual trigger for now)
 - [ ] Enhance / upscale assets
 - [ ] Enhancements: widescreen, translation
-- [ ] Host-driven main loop (game on a fiber): pause, frame advance, fast-forward ([plan](docs/HOST_MAIN_LOOP.md))
+- [ ] Fast-forward hotkey
 - [ ] Save states (within a run)
 - [ ] Trainer: cheat codes, memory search
 - [ ] Network Battle
 - [ ] Custom Battle mode: pick the opponent and the arena
 - [ ] Rust port of the game logic
-- [ ] Input record / replay (reproducible bug reports)
 
 ## Layout
 
