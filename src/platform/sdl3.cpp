@@ -10,6 +10,7 @@
 #if defined(DCB_HAS_SDL3)
 
 #include "platform.hpp"
+#include "sdl3_trainer.hpp"
 #include "settings.hpp"
 
 #include <SDL3/SDL.h>
@@ -91,6 +92,10 @@ public:
     bool pump_events() override {
         SDL_Event ev;
         while (SDL_PollEvent(&ev)) {
+            if (trainer_ != nullptr && trainer_handle_event(*trainer_, window_, ev, settings_.trainer_keys)) {
+                key_held_.fill(false);  // the panel owns the keyboard; no stuck pad buttons after it
+                continue;
+            }
             switch (ev.type) {
             case SDL_EVENT_QUIT:
             case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
@@ -184,6 +189,7 @@ public:
         if (paused_) draw_label("PAUSED");
         else if (fast_forward()) draw_label("FF >>");
         if (overlay_visible_) draw_overlay();
+        if (trainer_ != nullptr && trainer_->is_open()) trainer_draw(renderer_, *trainer_);
         SDL_RenderPresent(renderer_);
     }
 
@@ -202,6 +208,7 @@ public:
             if (code >= 0 && code < static_cast<int>(SDL_SCANCODE_COUNT) && key_held_[static_cast<size_t>(code)]) return true;
         return false;
     }
+    void attach_trainer(trainer::Trainer* trainer) override { trainer_ = trainer; }
 
     bool take_any_press() override {
         const bool pressed = any_press_;
@@ -417,6 +424,7 @@ private:
     bool any_press_ = false;
     uint32_t commands_ = 0;  ///< HostCommand bits since take_commands()
     bool paused_ = false;
+    trainer::Trainer* trainer_ = nullptr;  ///< [hotkeys] trainer panel (owned by the host loop)
     std::array<bool, SDL_SCANCODE_COUNT> key_held_{};    ///< keys down now (from key events)
     /// Frames a key still counts as pressed after going down, so a tap shorter than the game's own
     /// pad sampling interval is not lost.

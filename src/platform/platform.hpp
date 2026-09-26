@@ -7,6 +7,10 @@
 #include <filesystem>
 #include <memory>
 
+namespace trainer {
+class Trainer;
+}
+
 namespace platform {
 
 /// PS1 VRAM geometry: 1024x512 16-bit words.
@@ -79,6 +83,9 @@ public:
     virtual void set_paused(bool paused) { (void)paused; }
     /// Whether the fast-forward hotkey is held (the game should run unthrottled).
     virtual bool fast_forward() const { return false; }
+    /// The trainer panel ([hotkeys] trainer) to route keys to and draw; backends without a
+    /// window ignore it. The host loop keeps the game paused while trainer->is_open().
+    virtual void attach_trainer(trainer::Trainer* trainer) { (void)trainer; }
 };
 
 /// Headless backend: no window, no audio, nothing pressed (tests / CI / batch runs).

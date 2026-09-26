@@ -10,6 +10,7 @@
 #include "input_log.hpp"
 #include "platform.hpp"
 #include "settings.hpp"
+#include "trainer.hpp"
 
 #include <psx/runtime.hpp>
 
@@ -159,6 +160,9 @@ int main(int argc, char** argv) {
         if (!host) host = platform::make_headless();
         // DCB_RECORD / DCB_REPLAY: input record and replay (static: std::exit must close the log).
         static platform::InputLog input_log = platform::InputLog::from_env(DCB_GAME_ID);
+        // Trainer: cheats/<serial>.txt (DCB_CHEATS) applied at each frame boundary, F4 panel.
+        const std::unique_ptr<trainer::Trainer> cheats = trainer::make_trainer(machine.ctx().ram, DCB_GAME_ID);
+        host->attach_trainer(cheats.get());
         // Host work after each game frame (the game is suspended at its VBLANK): input for the
         // next frame, present, audio, overlay numbers, debug dumps.
         platform::DisplayArea area;
@@ -251,11 +255,12 @@ int main(int argc, char** argv) {
                 host->set_paused(paused);
                 if (!paused) system.resync_pacing();  // don't rush to make up the paused time
             }
-            if (paused && !(commands & platform::kFrameAdvance)) {
+            if ((paused || cheats->is_open()) && !(commands & platform::kFrameAdvance)) {
                 host->present(mmio.gpu().vram(), area);  // the frozen picture (window resizes, overlay)
                 std::this_thread::sleep_for(std::chrono::milliseconds(16));
                 continue;
             }
+            cheats->apply_frame();
             if (!system.resume_guest()) {
                 if (!system.error().empty()) throw std::runtime_error(system.error());
                 std::printf("[dcb] the game's main program returned\n");

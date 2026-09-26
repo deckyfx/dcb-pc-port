@@ -118,6 +118,7 @@ struct Settings {
     std::vector<int> frame_advance_keys;  ///< [hotkeys] frame_advance: while paused, run one frame
     std::vector<int> fast_forward_keys;   ///< [hotkeys] fast_forward: held, the game runs unthrottled
     std::vector<int> scale_mode_keys;     ///< [hotkeys] scale_mode: switches fit / integer scaling
+    std::vector<int> trainer_keys;        ///< [hotkeys] trainer: opens / closes the cheats + memory search panel
 };
 
 /// Maps one binding name to an input code, or nullopt if the name is unknown.

@@ -1,7 +1,7 @@
 # Host-driven main loop (game on a fiber)
 
-Status: **implemented**: the host loop, pause, frame advance, fast-forward and input record/replay.
-Save states, trainer and custom menus are still planned. "Today" below describes
+Status: **implemented**: the host loop, pause, frame advance, fast-forward, input record/replay and the
+trainer (cheats + memory search). Save states and custom menus are still planned. "Today" below describes
 the design *before* this change; "The change" is what the code does now.
 
 Move the game's main code path onto a fiber so the PC side owns the frame loop. The game then
@@ -109,8 +109,8 @@ clean point. None of them has to cope with the game being halfway through a fram
 | **Fast-forward** | Skip pacing while held (like `DCB_FAST=1`); the pacing clock is resynced afterwards so nothing is slept off or rushed. | hold `Tab` (`[hotkeys] fast_forward`) |
 | **Input record / replay** | Log pad state per frame; feed it back. Guest time is virtual, so a replay reproduces a run exactly, headless and across rebuilds. | `DCB_RECORD=run.inp`, `DCB_REPLAY=run.inp` |
 | **Save states** (same run) | Copy out guest RAM, scratchpad, VRAM, SPU RAM, device and BIOS state, the task list, and the game fiber stacks; copy back to load. Valid within one process. | `F5` save, `F7` load, slots `1`–`4` |
-| **Trainer / cheats** | Write guest RAM every frame (GameShark-style codes), or override recompiled functions in C for behaviour cheats. | `[cheats]` in `settings.ini` |
-| **Memory search** | Pause, frame-advance and compare RAM between frames or save states to find the address of a value (HP, money, card counts). | debug overlay |
+| **Trainer / cheats** | Write guest RAM every frame (GameShark-style codes), or override recompiled functions in C for behaviour cheats. | `F4` panel, `cheats/<serial>.txt` |
+| **Memory search** | Pause and compare RAM between frames to find the address of a value (HP, money, card counts). | `F4` panel, Search page |
 | **PC menus** | Settings, save states, trainer and custom modes drawn by the host on top of the frozen game. | `F1` |
 | **Threaded rendering / audio** | Frame work can move off the game's critical path and overlap the next frame. This change enables it; it does not deliver the speedup by itself. | — |
 
@@ -177,7 +177,8 @@ upscaled backgrounds would come from the asset pipeline (`docs/ASSETS_RIP_UPSCAL
 3. ~~Input record / replay~~: done (`DCB_RECORD`, `DCB_REPLAY`, `DCB_REPLAY_EXIT`); replays are
    bit-identical to the recorded run.
 4. Save states within a run (all device and HLE state serialisable).
-5. Trainer: RAM codes from `settings.ini`, memory search in a debug overlay.
+5. ~~Trainer~~: done; GameShark codes from `cheats/<serial>.txt` applied at the frame boundary
+   (`src/platform/trainer*.cpp`), memory search and the `F4` panel.
 6. Custom Battle: approach A, then B.
 7. Optional: save states that survive a restart (debug builds only: fixed stack addresses, build
    id check), rewind, in-game settings menu, threaded rendering.

@@ -27,3 +27,5 @@ __pycache__/
 
 # Local PC options (created on first run; ./settings.ini is found first)
 /settings.ini
+# Player cheat files (template: docs/cheats.example.txt)
+/cheats/

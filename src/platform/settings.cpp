@@ -361,6 +361,8 @@ IniDocument default_settings_ini() {
     doc.add_comment("hotkeys", "fast_forward: hold to run the game unthrottled. scale_mode: switch fit / integer.");
     doc.set("hotkeys", "fast_forward", "Tab");
     doc.set("hotkeys", "scale_mode", "F8");
+    doc.add_comment("hotkeys", "trainer: cheat codes (cheats/<serial>.txt) and memory search; pauses the game.");
+    doc.set("hotkeys", "trainer", "F4");
     return doc;
 }
 
@@ -398,6 +400,7 @@ Settings parse_settings(const IniDocument& doc, const BindingResolvers& resolver
     s.frame_advance_keys = hotkey("frame_advance", "N");
     s.fast_forward_keys = hotkey("fast_forward", "Tab");
     s.scale_mode_keys = hotkey("scale_mode", "F8");
+    s.trainer_keys = hotkey("trainer", "F4");
     return s;
 }
 
