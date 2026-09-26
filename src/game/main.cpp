@@ -243,7 +243,7 @@ int main(int argc, char** argv) {
         // The host loop: the game runs on its own fibers, one frame per resume_guest(), and this
         // thread owns everything in between (docs/HOST_MAIN_LOOP.md).
         system.start(exe.pc0);
-        bool paused = false;
+        bool paused = false, frozen = false;  // frozen: the host held the game (pause, trainer panel)
         for (;;) {
             if (!host->pump_events()) {
                 std::printf("[dcb] window closed\n");
@@ -253,11 +253,11 @@ int main(int argc, char** argv) {
             if (commands & platform::kTogglePause) {
                 paused = !paused;
                 host->set_paused(paused);
-                if (!paused) system.resync_pacing();  // don't rush to make up the paused time
             }
             if ((paused || cheats->is_open()) && !(commands & platform::kFrameAdvance)) {
                 host->present(mmio.gpu().vram(), area);  // the frozen picture (window resizes, overlay)
                 std::this_thread::sleep_for(std::chrono::milliseconds(16));
+                frozen = true;
                 continue;
             }
             cheats->apply_frame();
@@ -267,8 +267,11 @@ int main(int argc, char** argv) {
                 break;
             }
             guest_frame();
-            if (paused || host->fast_forward()) system.resync_pacing();  // unthrottled; no catch-up later
+            // After a hold or while unthrottled, line the clocks up instead of sleeping off the time
+            // gained or rushing to make up the time lost.
+            if (paused || frozen || host->fast_forward()) system.resync_pacing();
             else system.pace();
+            frozen = false;
         }
     } catch (const std::exception& e) {
         std::fprintf(stderr, "[dcb] fatal: %s\n", e.what());
