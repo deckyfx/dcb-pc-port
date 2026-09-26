@@ -32,7 +32,9 @@ executable: MIPS R3000A → C, with native HLE of the kernel and Psy-Q libraries
 - [ ] Windows x64 release build tested on Windows
 - [ ] US version (SLUS-01328, Digimon Digital Card Battle)
 - [ ] PC options: resolution scaling, filtering, key rebinding
-- [ ] Enhancements: widescreen, HD textures, translation
+- [ ] Enhance / upscale assets
+- [ ] Enhancements: widescreen, translation
+- [ ] Network Battle
 - [ ] Rust port of the game logic
 
 ## Layout
