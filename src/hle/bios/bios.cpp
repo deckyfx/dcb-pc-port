@@ -23,6 +23,7 @@
 
 #include "system.hpp"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -185,10 +186,14 @@ void Bios::b0_get_b0_table(PsxContext& ctx) { ctx.r[kV0] = 0x00000874u; }
 void Bios::b0_write(PsxContext& ctx) {
     const uint32_t fd = ctx.r[kA0], buf = ctx.r[kA1], len = ctx.r[kA2];
     if (fd > 1) {  // a memory-card file
-        std::vector<uint8_t> data(len);
-        for (uint32_t i = 0; i < len; ++i) data[i] = psx_read8(&ctx, buf + i);
-        const int n = card_fs_.write(static_cast<int>(fd), data.data(), len);
-        ctx.r[kV0] = static_cast<uint32_t>(n);
+        {
+            // Scoped: the completion event below runs guest callbacks, which can reach a frame
+            // boundary; no heap memory may be owned by this frame then (save states).
+            std::vector<uint8_t> data(len);
+            for (uint32_t i = 0; i < len; ++i) data[i] = psx_read8(&ctx, buf + i);
+            const int n = card_fs_.write(static_cast<int>(fd), data.data(), len);
+            ctx.r[kV0] = static_cast<uint32_t>(n);
+        }
         file_async_event(ctx);
         return;
     }
@@ -254,11 +259,14 @@ void Bios::b0_lseek(PsxContext& ctx) {
 }
 
 void Bios::b0_read(PsxContext& ctx) {
-    const uint32_t len = ctx.r[kA2];
-    std::vector<uint8_t> data(len);
-    const int n = card_fs_.read(static_cast<int>(ctx.r[kA0]), data.data(), len);
-    for (int i = 0; i < n; ++i) psx_write8(&ctx, ctx.r[kA1] + static_cast<uint32_t>(i), data[static_cast<size_t>(i)]);
-    ctx.r[kV0] = static_cast<uint32_t>(n);
+    {
+        // Scoped like b0_write: nothing heap-owned may be live when the completion event runs.
+        const uint32_t len = ctx.r[kA2];
+        std::vector<uint8_t> data(len);
+        const int n = card_fs_.read(static_cast<int>(ctx.r[kA0]), data.data(), len);
+        for (int i = 0; i < n; ++i) psx_write8(&ctx, ctx.r[kA1] + static_cast<uint32_t>(i), data[static_cast<size_t>(i)]);
+        ctx.r[kV0] = static_cast<uint32_t>(n);
+    }
     file_async_event(ctx);
 }
 
@@ -439,13 +447,25 @@ void Bios::b0_return_from_exception(PsxContext& ctx) {
 
 void Bios::c0_sys_enq_int_rp(PsxContext& ctx) {
     // The kernel links new blocks at the head of their priority's chain.
-    int_handlers_.insert(int_handlers_.begin(), {ctx.r[kA0], ctx.r[kA1]});
+    if (int_handler_count_ == kMaxIntHandlers) {
+        std::fprintf(stderr, "[bios] SysEnqIntRP: more than %zu interrupt handlers\n", kMaxIntHandlers);
+        std::abort();
+    }
+    std::copy_backward(int_handlers_.begin(), int_handlers_.begin() + static_cast<std::ptrdiff_t>(int_handler_count_),
+                       int_handlers_.begin() + static_cast<std::ptrdiff_t>(int_handler_count_ + 1));
+    int_handlers_[0] = {ctx.r[kA0], ctx.r[kA1]};
+    ++int_handler_count_;
     ctx.r[kV0] = 0;
 }
 
 void Bios::run_interrupt_chains(PsxContext& ctx, uint32_t kernel_sp) {
     for (uint32_t priority = 0; priority < 4; ++priority) {
-        for (const IntHandler h : int_handlers_) {  // copy: handlers may (de)register
+        // Walk a copy on the stack: handlers may (de)register, and the guest calls can reach a
+        // frame boundary (see the member's comment).
+        const IntHandlers handlers = int_handlers_;
+        const size_t count = int_handler_count_;
+        for (size_t i = 0; i < count; ++i) {
+            const IntHandler h = handlers[i];
             if (h.priority != priority) continue;
             const uint32_t second = psx_read32(&ctx, h.block + 4);
             const uint32_t first = psx_read32(&ctx, h.block + 8);
@@ -456,8 +476,67 @@ void Bios::run_interrupt_chains(PsxContext& ctx, uint32_t kernel_sp) {
 }
 
 void Bios::c0_sys_deq_int_rp(PsxContext& ctx) {
-    std::erase_if(int_handlers_, [&](const IntHandler& h) { return h.priority == ctx.r[kA0] && h.block == ctx.r[kA1]; });
+    size_t kept = 0;
+    for (size_t i = 0; i < int_handler_count_; ++i) {
+        const IntHandler h = int_handlers_[i];
+        if (h.priority == ctx.r[kA0] && h.block == ctx.r[kA1]) continue;
+        int_handlers_[kept++] = h;
+    }
+    for (size_t i = kept; i < int_handler_count_; ++i) int_handlers_[i] = {};
+    int_handler_count_ = kept;
     ctx.r[kV0] = 0;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Save state
+
+void Bios::save_state(psx::StateWriter& w) const {
+    w.begin(psx::state_tag("BIOS"), 1);
+    w.u32(heap_.base);
+    w.u32(heap_.size);
+    w.map(heap_.used);
+    for (const Event& e : events_) {
+        w.u32(e.ev_class);
+        w.u32(e.spec);
+        w.u32(e.mode);
+        w.u32(e.func);
+        w.u32(e.status);
+    }
+    w.size(int_handler_count_);
+    for (size_t i = 0; i < int_handler_count_; ++i) {
+        w.u32(int_handlers_[i].priority);
+        w.u32(int_handlers_[i].block);
+    }
+    w.u32(hook_entry_int_);
+    w.u32(clear_pad_);
+    w.pod(clear_rcnt_);
+    card_fs_.save_state(w);
+    w.end();
+}
+
+void Bios::load_state(psx::StateReader& r) {
+    r.begin(psx::state_tag("BIOS"), 1);
+    heap_.base = r.u32();
+    heap_.size = r.u32();
+    r.map(heap_.used, 1u << 20);
+    for (Event& e : events_) {
+        e.ev_class = r.u32();
+        e.spec = r.u32();
+        e.mode = r.u32();
+        e.func = r.u32();
+        e.status = r.u32();
+    }
+    int_handlers_ = {};
+    int_handler_count_ = r.size(kMaxIntHandlers);
+    for (size_t i = 0; i < int_handler_count_; ++i) {
+        int_handlers_[i].priority = r.u32();
+        int_handlers_[i].block = r.u32();
+    }
+    hook_entry_int_ = r.u32();
+    clear_pad_ = r.u32();
+    r.pod(clear_rcnt_);
+    card_fs_.load_state(r);
+    r.end();
 }
 
 }  // namespace hle

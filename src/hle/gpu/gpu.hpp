@@ -6,6 +6,8 @@
 // and Command/Status Registers; GPU Render Polygon/Line/Rectangle Commands; GPU Rendering
 // Attributes; GPU Memory Transfer Commands; GPU Other Commands; GPU Display Control Commands).
 
+#include <psx/state.hpp>
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -53,6 +55,10 @@ public:
     bool receiving_vram() const { return mode_ == Mode::CpuToVram; }
     /// True while a GP0(C0h) download still has data to hand out through gpuread().
     bool sending_vram() const { return read_.remaining != 0; }
+
+    /// Save state: VRAM, command assembly, drawing environment and display control ("GPU ").
+    void save_state(psx::StateWriter& w) const;
+    void load_state(psx::StateReader& r);
 
 private:
     /// A vertex after draw-offset application, with 8-bit color and texture coordinates.

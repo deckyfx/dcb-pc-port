@@ -4,6 +4,8 @@
 // Reference: psx-spx "CDROM XA Subheader, File, Channel, Interleave" and "CDROM XA Audio ADPCM
 // Compression" (sector layout, 4/8-bit, mono/stereo, 37800/18900 Hz, 25-point zigzag resampling).
 
+#include <psx/state.hpp>
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -25,6 +27,10 @@ public:
     bool decode(const uint8_t* sector, std::vector<int16_t>& out);
     /// Forget filter history and resampler state (new stream, seek).
     void reset();
+
+    /// Save state: filter history and resampler position (chunk "XADC").
+    void save_state(psx::StateWriter& w) const;
+    void load_state(psx::StateReader& r);
 
     /// Mode 2 sector with the Audio and Form2 submode bits set.
     static bool is_audio_sector(const uint8_t* sector);

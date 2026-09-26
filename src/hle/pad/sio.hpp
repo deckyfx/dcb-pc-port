@@ -4,6 +4,8 @@
 // Memory cards are served by the BIOS layer, so card addresses (81h) get no answer here.
 // Reference: psx-spx "Controllers and Memory Cards" (I/O ports, controller protocol).
 
+#include <psx/state.hpp>
+
 #include <array>
 #include <cstdint>
 #include <functional>
@@ -30,6 +32,10 @@ public:
     void set_buttons(unsigned port, uint16_t buttons) { buttons_[port & 1u] = buttons; }
     /// Last button bytes the game actually read for port 1 (lo | hi << 8), for tracing.
     uint16_t last_sent() const { return last_sent_; }
+
+    /// Save state: port registers, the byte in flight and the pad protocol position ("SIO0").
+    void save_state(psx::StateWriter& w) const;
+    void load_state(psx::StateReader& r);
 
 private:
     std::function<void()> raise_irq7_;

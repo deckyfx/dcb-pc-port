@@ -662,4 +662,81 @@ Gpu::Display Gpu::display() const {
     return d;
 }
 
+// ---------------------------------------------------------------------------------------------
+// Save state
+// ---------------------------------------------------------------------------------------------
+
+void Gpu::save_state(psx::StateWriter& w) const {
+    w.begin(psx::state_tag("GPU "), 1);
+    w.vec(vram_);
+    w.pod(mode_);
+    w.pod(fifo_);
+    w.size(fifo_len_);
+    w.size(fifo_need_);
+    w.pod(write_);
+    w.pod(read_);
+    w.pod(poly_last_);
+    w.u32(poly_color_);
+    w.boolean(poly_gouraud_);
+    w.boolean(poly_have_color_);
+    w.pod(poly_prim_);
+    w.u32(draw_mode_);
+    w.u32(tex_window_);
+    w.u32(area_tl_);
+    w.u32(area_br_);
+    w.u32(offset_raw_);
+    for (const int32_t v : {area_x1_, area_y1_, area_x2_, area_y2_, offset_x_, offset_y_}) w.pod(v);
+    for (const uint32_t v : {tw_and_x_, tw_or_x_, tw_and_y_, tw_or_y_}) w.u32(v);
+    w.boolean(set_mask_);
+    w.boolean(check_mask_);
+    w.u32(display_mode_);
+    w.u32(display_start_);
+    w.u32(hrange_);
+    w.u32(vrange_);
+    w.u32(dma_dir_);
+    w.boolean(display_disabled_);
+    w.boolean(irq_);
+    w.boolean(allow_tex_disable_);
+    w.boolean(field_);
+    w.u32(gpuread_latch_);
+    w.end();
+}
+
+void Gpu::load_state(psx::StateReader& r) {
+    r.begin(psx::state_tag("GPU "), 1);
+    r.vec(vram_, vram_.size(), static_cast<std::size_t>(kVramWidth) * kVramHeight);
+    r.pod(mode_);
+    if (mode_ != Mode::Command && mode_ != Mode::CpuToVram && mode_ != Mode::Polyline) r.fail("bad GPU mode");
+    r.pod(fifo_);
+    fifo_len_ = r.size(fifo_.size(), 0);
+    fifo_need_ = r.size(fifo_.size(), 0);
+    r.pod(write_);
+    r.pod(read_);
+    r.pod(poly_last_);
+    poly_color_ = r.u32();
+    poly_gouraud_ = r.boolean();
+    poly_have_color_ = r.boolean();
+    r.pod(poly_prim_);
+    draw_mode_ = r.u32();
+    tex_window_ = r.u32();
+    area_tl_ = r.u32();
+    area_br_ = r.u32();
+    offset_raw_ = r.u32();
+    for (int32_t* v : {&area_x1_, &area_y1_, &area_x2_, &area_y2_, &offset_x_, &offset_y_}) r.pod(*v);
+    for (uint32_t* v : {&tw_and_x_, &tw_or_x_, &tw_and_y_, &tw_or_y_}) *v = r.u32();
+    set_mask_ = r.boolean();
+    check_mask_ = r.boolean();
+    display_mode_ = r.u32();
+    display_start_ = r.u32();
+    hrange_ = r.u32();
+    vrange_ = r.u32();
+    dma_dir_ = r.u32();
+    display_disabled_ = r.boolean();
+    irq_ = r.boolean();
+    allow_tex_disable_ = r.boolean();
+    field_ = r.boolean();
+    gpuread_latch_ = r.u32();
+    r.end();
+}
+
 }  // namespace hle

@@ -125,4 +125,20 @@ void apply_cd_volume(int16_t* stereo, size_t frames, uint8_t l_to_l, uint8_t l_t
     }
 }
 
+void XaDecoder::save_state(psx::StateWriter& w) const {
+    w.begin(psx::state_tag("XADC"), 1);
+    w.pod(ch_);
+    w.u32(ring_pos_);
+    w.pod(six_step_);
+    w.end();
+}
+
+void XaDecoder::load_state(psx::StateReader& r) {
+    r.begin(psx::state_tag("XADC"), 1);
+    r.pod(ch_);
+    ring_pos_ = r.u32();
+    r.pod(six_step_);
+    r.end();
+}
+
 }  // namespace hle

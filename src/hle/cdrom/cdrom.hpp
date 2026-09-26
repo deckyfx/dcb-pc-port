@@ -9,6 +9,8 @@
 #include "cdrom/disc.hpp"
 #include "spu/xa_adpcm.hpp"
 
+#include <psx/state.hpp>
+
 #include <array>
 #include <cstdint>
 #include <deque>
@@ -41,6 +43,12 @@ public:
 
     /// DMA channel 3: take `count` words from the data FIFO.
     void dma_read(uint32_t* words, uint32_t count);
+
+    /// Save state: registers, FIFOs, drive position and timing, queued responses, the sector
+    /// buffers, XA decoder and CD volume (chunk "CDRM"). The disc itself is not saved (sectors
+    /// are read on demand, with no cache); the state is only valid with the same disc inserted.
+    void save_state(psx::StateWriter& w) const;
+    void load_state(psx::StateReader& r);
 
 private:
     struct Response {

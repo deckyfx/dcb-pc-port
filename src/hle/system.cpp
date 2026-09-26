@@ -71,15 +71,21 @@ void System::reap_dead_tasks() {
 void System::task_main(void* arg) {
     auto* self = static_cast<System*>(arg);
     PsxContext& ctx = self->ctx_;
-    Task& me = *self->current_;
     try {
         self->reap_dead_tasks();
-        self->apply_resume(ctx, me.resume_tcb, true);
-        psx_dispatch(&ctx, me.start_pc);
+        uint32_t start_pc = 0;
+        {
+            const Task& me = *self->current_;  // not held while the task runs (see switch_context)
+            self->apply_resume(ctx, me.resume_tcb, true);
+            start_pc = me.start_pc;
+        }
+        psx_dispatch(&ctx, start_pc);
         // The entry returned: MIPS would jump to $ra, which a task system points at its exit routine.
         psx_dispatch(&ctx, ctx.r[31]);
     } catch (const std::exception& e) {
         self->guest_finished(e.what());  // exceptions cannot cross fibers: hand them to the host
+    } catch (...) {
+        self->guest_finished("unknown exception in a game task");
     }
     std::fprintf(stderr, "[task] exit routine %08X returned into a finished task\n", ctx.r[31]);
     std::abort();
@@ -94,6 +100,8 @@ void System::main_fiber(void* arg) {
         psx_dispatch(&self->ctx_, self->main_entry_);
     } catch (const std::exception& e) {
         self->guest_finished(e.what());
+    } catch (...) {
+        self->guest_finished("unknown exception in the game");
     }
     self->guest_finished("");  // the boot executable returned
 }
@@ -165,15 +173,24 @@ void System::switch_context(PsxContext& ctx, uint32_t tcb, bool full) {
     target->resume_tcb = tcb;
     target->resume_full = full;
     current_ = target;
+    const uint32_t my_cookie = me.cookie;
     target->fiber->resume();
 
     // Something resumed us: restore our registers, then apply what the resumer asked for.
-    current_ = &me;
-    std::memcpy(ctx.r, me.regs, sizeof me.regs);
-    ctx.hi = me.hi;
-    ctx.lo = me.lo;
-    ctx.cop0[12] = me.sr;
-    apply_resume(ctx, me.resume_tcb, me.resume_full);
+    // Only the cookie survives the switch: loading a save state while this fiber was suspended
+    // replaces every Task object (this frame's `me` and `target` would dangle).
+    const auto self = tasks_.find(my_cookie);
+    if (self == tasks_.end()) {
+        std::fprintf(stderr, "[task] resumed task %08X is not in the task list\n", my_cookie);
+        std::abort();
+    }
+    Task& back = *self->second;
+    current_ = &back;
+    std::memcpy(ctx.r, back.regs, sizeof back.regs);
+    ctx.hi = back.hi;
+    ctx.lo = back.lo;
+    ctx.cop0[12] = back.sr;
+    apply_resume(ctx, back.resume_tcb, back.resume_full);
     reap_dead_tasks();
 }
 
@@ -318,6 +335,172 @@ void System::return_from_exception() {
         std::abort();
     }
     std::longjmp(*irq_env_, 1);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Save states. At a frame boundary every game fiber is suspended: the one that reached VBLANK
+// inside yield_to_host(), the others inside switch_context(). Their stacks hold recompiled frames
+// and HLE frames that own no heap memory (docs/HOST_MAIN_LOOP.md, "Save states"), so the stack
+// bytes plus the saved registers are the whole native side of a task.
+
+namespace {
+constexpr uint32_t kSysVersion = 1;
+constexpr size_t kMaxTasks = 4096;
+constexpr size_t kMaxStackImage = 64u << 20;
+constexpr size_t kMaxContext = 64u << 10;
+
+void write_image(psx::StateWriter& w, const psx::Fiber::Image& image) {
+    w.u64(image.stack_base);
+    w.u64(image.stack_bytes);
+    w.u64(image.data_base);
+    w.vec(image.data);
+    w.vec(image.context);
+    w.u64(image.entry);
+    w.u64(image.arg);
+}
+
+psx::Fiber::Image read_image(psx::StateReader& r) {
+    psx::Fiber::Image image;
+    image.stack_base = r.u64();
+    image.stack_bytes = r.u64();
+    image.data_base = r.u64();
+    r.vec(image.data, kMaxStackImage);
+    r.vec(image.context, kMaxContext);
+    image.entry = r.u64();
+    image.arg = r.u64();
+    return image;
+}
+}  // namespace
+
+bool System::can_save_state(std::string* why) const {
+    const auto no = [&](const char* reason) {
+        if (why) *why = reason;
+        return false;
+    };
+    if (!psx::Fiber::snapshots_supported()) return no("save states are not supported on this platform");
+    if (!host_ || !guest_ || guest_done_) return no("the game is not running");
+    if (psx::Fiber::current() != host_) return no("save states are taken by the host, between frames");
+    if (!current_ || current_->fiber != guest_) return no("the suspended fiber is not the current task");
+    for (const auto& [cookie, task] : tasks_)
+        if (!task->owned) return no("a task runs on the thread's own stack");
+    return true;
+}
+
+void System::save_state(psx::StateWriter& w) const {
+    std::string why;
+    if (!can_save_state(&why)) throw psx::StateError("save state: " + why);
+    w.begin(psx::state_tag("SYS "), kSysVersion);
+    w.u64(vblanks_);
+    w.u64(vblank_event_sent_);
+    w.boolean(in_irq_);
+    w.u64(reinterpret_cast<uintptr_t>(irq_env_));  // points into a saved stack: same address on load
+    w.u32(dispatcher_hook_);
+    w.u32(dispatcher_);
+    w.u32(next_cookie_);
+    w.u32(main_entry_);
+    w.u32(current_->cookie);
+    w.size(tasks_.size());
+    for (const auto& [cookie, t] : tasks_) {
+        w.u32(t->cookie);
+        w.u32(t->start_pc);
+        w.pod(t->regs);
+        w.u32(t->hi);
+        w.u32(t->lo);
+        w.u32(t->sr);
+        w.u32(t->resume_tcb);
+        w.boolean(t->resume_full);
+        w.boolean(t->dead);
+        write_image(w, t->owned->capture());
+    }
+    w.end();
+}
+
+void System::load_state(psx::StateReader& r) {
+    std::string why;
+    if (!can_save_state(&why)) throw psx::StateError("load state: " + why);
+
+    // Read and check everything first; nothing changes until the chunk is known to be good.
+    struct Saved {
+        Task task;
+        psx::Fiber::Image image;
+    };
+    r.begin(psx::state_tag("SYS "), kSysVersion);
+    const uint64_t vblanks = r.u64();
+    const uint64_t vblank_event_sent = r.u64();
+    const bool in_irq = r.boolean();
+    const uint64_t irq_env = r.u64();
+    const uint32_t dispatcher_hook = r.u32();
+    const uint32_t dispatcher = r.u32();
+    const uint32_t next_cookie = r.u32();
+    const uint32_t main_entry = r.u32();
+    const uint32_t current = r.u32();
+    const size_t count = r.size(kMaxTasks);
+    std::vector<Saved> saved(count);
+    bool have_current = false;
+    for (Saved& s : saved) {
+        s.task.cookie = r.u32();
+        s.task.start_pc = r.u32();
+        r.pod(s.task.regs);
+        s.task.hi = r.u32();
+        s.task.lo = r.u32();
+        s.task.sr = r.u32();
+        s.task.resume_tcb = r.u32();
+        s.task.resume_full = r.boolean();
+        s.task.dead = r.boolean();
+        s.image = read_image(r);
+        if (!is_cookie(s.task.cookie)) r.fail("bad task cookie");
+        if (s.task.cookie == current) have_current = !s.task.dead;
+    }
+    if (!have_current) r.fail("the running task is missing");
+    for (size_t i = 1; i < saved.size(); ++i)
+        if (saved[i].task.cookie <= saved[i - 1].task.cookie) r.fail("task list out of order");
+    r.end();
+
+    // Commit. Destroying the current fibers returns their stacks to the free list, from which
+    // each saved fiber claims its own stack back by address.
+    current_ = nullptr;
+    guest_ = nullptr;
+    tasks_.clear();
+    for (Saved& s : saved) {
+        auto t = std::make_unique<Task>();
+        t->cookie = s.task.cookie;
+        t->start_pc = s.task.start_pc;
+        std::memcpy(t->regs, s.task.regs, sizeof t->regs);
+        t->hi = s.task.hi;
+        t->lo = s.task.lo;
+        t->sr = s.task.sr;
+        t->resume_tcb = s.task.resume_tcb;
+        t->resume_full = s.task.resume_full;
+        t->dead = s.task.dead;
+        t->owned = psx::Fiber::restore(s.image);
+        t->fiber = t->owned.get();
+        tasks_[t->cookie] = std::move(t);
+    }
+    vblanks_ = vblanks;
+    vblank_event_sent_ = vblank_event_sent;
+    in_irq_ = in_irq;
+    irq_env_ = reinterpret_cast<std::jmp_buf*>(static_cast<uintptr_t>(irq_env));
+    dispatcher_hook_ = dispatcher_hook;
+    dispatcher_ = dispatcher;
+    next_cookie_ = next_cookie;
+    main_entry_ = main_entry;
+    current_ = tasks_.at(current).get();
+    guest_ = current_->fiber;
+}
+
+std::string System::describe_tasks() const {
+    std::string s = std::to_string(tasks_.size()) + (tasks_.size() == 1 ? " task:" : " tasks:");
+    for (const auto& [cookie, t] : tasks_) {
+        char buf[16];
+        std::snprintf(buf, sizeof buf, " %08X%s", cookie, t.get() == current_ ? "*" : "");
+        s += buf;
+    }
+    return s;
+}
+
+void System::reset_pacing() {
+    const auto guest = std::chrono::duration<double>(static_cast<double>(ctx_.cycles) / kCpuHz);
+    start_ = std::chrono::steady_clock::now() - std::chrono::duration_cast<std::chrono::steady_clock::duration>(guest);
 }
 
 }  // namespace hle
