@@ -20,3 +20,6 @@ compile_commands.json
 .cache/
 __pycache__/
 /logs/
+
+# Claude Code agent worktrees
+/.claude/worktrees/
