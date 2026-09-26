@@ -1,16 +1,236 @@
 #include "hw/mmio.hpp"
 
+#include "system.hpp"
+
 #include <cstdio>
+#include <vector>
 
 namespace hle {
 
+namespace {
+
+constexpr uint32_t kIStat = 0x1F801070, kIMask = 0x1F801074;
+constexpr uint32_t kDmaBase = 0x1F801080, kDpcr = 0x1F8010F0, kDicr = 0x1F8010F4;
+constexpr uint32_t kTimerBase = 0x1F801100;
+constexpr uint32_t kGp0 = 0x1F801810, kGp1 = 0x1F801814;
+
+constexpr uint32_t kChcrBusy = 1u << 24;        // start/busy
+constexpr uint32_t kChcrTrigger = 1u << 28;     // manual trigger (cleared when the transfer starts)
+
+constexpr unsigned kLogLimit = 4;
+
+}  // namespace
+
+uint32_t Mmio::gpustat() const {
+    // Always ready: bit 26 cmd word, 27 VRAM->CPU, 28 DMA block. Display-enable is bit 23 (1 = off).
+    uint32_t s = (1u << 26) | (1u << 27) | (1u << 28);
+    s |= gp1_display_mode_;  // stored already in GPUSTAT bit positions (16-22)
+    if (display_disabled_) s |= 1u << 23;
+    return s;
+}
+
+uint64_t Mmio::timer_clock(unsigned index) const {
+    if (!system_) return 0;
+    const uint32_t source = (timer_[index].mode >> 8) & 3u;
+    switch (index) {
+        case 1: return (source & 1u) ? system_->hblanks() : system_->cpu_cycles();
+        case 2: return (source & 2u) ? system_->cpu_cycles() / 8 : system_->cpu_cycles();
+        default: return system_->cpu_cycles();  // dot clock approximated by the CPU clock
+    }
+}
+
+uint32_t Mmio::timer_counter(unsigned index) const {
+    const Timer& t = timer_[index];
+    uint64_t ticks = timer_clock(index) - t.base;
+    // Mode bit 3: counter resets after reaching the target; otherwise it wraps at 0xFFFF.
+    const uint64_t period = (t.mode & 8u) && t.target ? t.target + 1ull : 0x10000ull;
+    return static_cast<uint32_t>(ticks % period);
+}
+
+void Mmio::gp0(uint32_t word) {
+    (void)word;  // Drawing commands go to the GPU layer once it exists.
+}
+
+void Mmio::gp1(uint32_t word) {
+    const uint32_t cmd = word >> 24;
+    switch (cmd) {
+        case 0x00:  // reset GPU
+            display_disabled_ = true;
+            gp1_display_mode_ = 0;
+            break;
+        case 0x03:  // display enable (bit 0: 1 = off)
+            display_disabled_ = word & 1u;
+            break;
+        case 0x08:  // display mode
+            gp1_display_mode_ = (word & 0x3Fu) << 17 | (word & 0x40u) << 10;
+            break;
+        case 0x10: case 0x11: case 0x12: case 0x13: case 0x14: case 0x15: case 0x16: case 0x17:
+        case 0x18: case 0x19: case 0x1A: case 0x1B: case 0x1C: case 0x1D: case 0x1E: case 0x1F:
+            // GPU info: index 7 = GPU version (2 on the retail GPUs Psy-Q targets).
+            gpuread_ = (word & 7u) == 7u ? 2u : 0u;
+            break;
+        default:
+            break;
+    }
+}
+
+void Mmio::dma_write(unsigned channel, unsigned reg, uint32_t value) {
+    dma_[channel][reg] = value;
+    if (reg == 2 && (value & kChcrBusy)) {
+        // Transfers run to completion immediately, then signal like the DMA controller does.
+        dma_run(channel);
+        dma_[channel][2] &= ~(kChcrBusy | kChcrTrigger);
+        const bool master = dicr_ & (1u << 23);
+        if (master && (dicr_ & (1u << (16 + channel)))) {
+            dicr_ |= 1u << (24 + channel) | 1u << 31;
+            raise_irq(3);
+        }
+    }
+}
+
+void Mmio::dma_gpu_linked_list(uint32_t addr) {
+    // Each node: header (word count << 24 | next), then that many GP0 words. Bit 23 ends the list.
+    for (uint32_t nodes = 0; nodes < (1u << 20); ++nodes) {
+        const uint32_t header = psx_read32(ctx_, addr & 0x1FFFFCu);
+        const uint32_t words = header >> 24;
+        for (uint32_t k = 1; k <= words; ++k) gp0(psx_read32(ctx_, (addr & 0x1FFFFCu) + 4 * k));
+        if (header & 0x800000u) return;
+        addr = header & 0xFFFFFFu;
+    }
+    std::fprintf(stderr, "[dma] GPU linked list does not terminate (cycle?) - stopped\n");
+}
+
+void Mmio::dma_run(unsigned channel) {
+    if (!ctx_) return;
+    const uint32_t madr = dma_[channel][0] & 0x1FFFFCu;
+    const uint32_t bcr = dma_[channel][1];
+    const uint32_t chcr = dma_[channel][2];
+    const bool from_ram = chcr & 1u;
+    const int32_t step = (chcr & 2u) ? -4 : 4;
+    const uint32_t sync = (chcr >> 9) & 3u;
+    uint32_t words = sync == 0 ? ((bcr & 0xFFFFu) ? (bcr & 0xFFFFu) : 0x10000u)
+                               : (bcr & 0xFFFFu) * (bcr >> 16);
+
+    switch (channel) {
+        case 2:  // GPU
+            if (sync == 2) {
+                dma_gpu_linked_list(madr);
+            } else if (from_ram) {
+                for (uint32_t i = 0, a = madr; i < words; ++i, a += static_cast<uint32_t>(step)) gp0(psx_read32(ctx_, a));
+            } else {
+                for (uint32_t i = 0, a = madr; i < words; ++i, a += static_cast<uint32_t>(step)) psx_write32(ctx_, a, gpuread_);
+            }
+            return;
+        case 4: {  // SPU
+            std::vector<uint32_t> buf(words);
+            if (from_ram) {
+                for (uint32_t i = 0; i < words; ++i) buf[i] = psx_read32(ctx_, madr + 4 * i);
+                spu_.dma_write(buf.data(), words);
+            } else {
+                spu_.dma_read(buf.data(), words);
+                for (uint32_t i = 0; i < words; ++i) psx_write32(ctx_, madr + 4 * i, buf[i]);
+            }
+            return;
+        }
+        case 6:  // OTC: build an empty ordering table backwards; the last entry ends the list
+            for (uint32_t i = 0, a = madr; i < words; ++i, a -= 4) {
+                psx_write32(ctx_, a, i + 1 == words ? 0x00FFFFFFu : ((a - 4) & 0x1FFFFFu));
+            }
+            return;
+        default: {
+            static bool warned[7] = {};
+            if (!warned[channel]) {
+                warned[channel] = true;
+                std::fprintf(stderr, "[dma] channel %u transfer not implemented yet (chcr %08X)\n", channel, chcr);
+            }
+            return;
+        }
+    }
+}
+
 uint32_t Mmio::read(uint32_t phys, unsigned width) {
-    std::fprintf(stderr, "[mmio] read%u  %08X\n", width * 8, phys);
-    return 0;
+    // Status registers are what games spin on: let time advance and interrupts arrive.
+    if (system_ && (phys == kIStat || phys == kGp1 || (phys >= kTimerBase && phys < kTimerBase + 0x30)))
+        system_->io_poll();
+    switch (phys) {
+        case kIStat: return i_stat_;
+        case kIMask: return i_mask_;
+        case kDpcr: return dpcr_;
+        case kDicr: return dicr_;
+        case kGp0: return gpuread_;
+        case kGp1: return gpustat();
+        default: break;
+    }
+    if (phys >= Spu::kBase && phys < Spu::kEnd) {
+        const uint32_t lo = spu_.read16(phys & ~1u);
+        return width == 4 ? lo | static_cast<uint32_t>(spu_.read16((phys & ~1u) + 2)) << 16 : lo;
+    }
+    if (phys >= kDmaBase && phys < kDpcr) return dma_[(phys - kDmaBase) >> 4][((phys & 0xF) >> 2) % 3];
+    if (phys >= kTimerBase && phys < kTimerBase + 0x30) {
+        const unsigned index = (phys - kTimerBase) >> 4;
+        switch ((phys & 0xF) >> 2) {
+            case 0: return timer_counter(index);
+            case 1: return timer_[index].mode;
+            default: return timer_[index].target;
+        }
+    }
+    const auto it = misc_.find(phys);
+    note(phys, false, 0, width);
+    return it == misc_.end() ? 0 : it->second;
 }
 
 void Mmio::write(uint32_t phys, uint32_t value, unsigned width) {
-    std::fprintf(stderr, "[mmio] write%u %08X = %08X\n", width * 8, phys, value);
+    switch (phys) {
+        case kIStat: i_stat_ &= value; return;  // writing 0 acknowledges
+        case kIMask: i_mask_ = value & 0x7FFu; return;
+        case kDpcr: dpcr_ = value; return;
+        case kDicr:  // bits 24-30 acknowledge by writing 1; the rest is plain
+            dicr_ = (dicr_ & 0x7F000000u & ~value) | (value & 0x00FF803Fu);
+            return;
+        case kGp0: gp0(value); return;
+        case kGp1: gp1(value); return;
+        default: break;
+    }
+    if (phys >= Spu::kBase && phys < Spu::kEnd) {
+        spu_.write16(phys & ~1u, static_cast<uint16_t>(value));
+        if (width == 4) spu_.write16((phys & ~1u) + 2, static_cast<uint16_t>(value >> 16));
+        return;
+    }
+    if (phys >= kDmaBase && phys < kDpcr) {
+        dma_write((phys - kDmaBase) >> 4, ((phys & 0xF) >> 2) % 3, value);
+        return;
+    }
+    if (phys >= kTimerBase && phys < kTimerBase + 0x30) {
+        const unsigned index = (phys - kTimerBase) >> 4;
+        Timer& t = timer_[index];
+        switch ((phys & 0xF) >> 2) {
+            case 0:  // set counter value
+                t.base = timer_clock(index) - (value & 0xFFFFu);
+                break;
+            case 1:  // mode write also resets the counter
+                t.mode = value & 0x3FFu;
+                t.base = timer_clock(index);
+                break;
+            default:
+                t.target = value & 0xFFFFu;
+                break;
+        }
+        return;
+    }
+    misc_[phys] = value;
+    note(phys, true, value, width);
+}
+
+void Mmio::note(uint32_t phys, bool write, uint32_t value, unsigned width) {
+    unsigned& n = logged_[{phys, write}];
+    if (n >= kLogLimit) return;
+    if (++n == kLogLimit) {
+        std::fprintf(stderr, "[mmio] %s%u %08X ... (further accesses not logged)\n", write ? "write" : "read", width * 8, phys);
+    } else if (write) {
+        std::fprintf(stderr, "[mmio] write%u %08X = %08X\n", width * 8, phys, value);
+    } else {
+        std::fprintf(stderr, "[mmio] read%u  %08X\n", width * 8, phys);
+    }
 }
 
 }  // namespace hle

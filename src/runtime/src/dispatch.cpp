@@ -35,6 +35,24 @@ static RecompFunc find_overlay_function(PsxContext* ctx, uint32_t addr) {
     return nullptr;
 }
 
+uint32_t call_guest(PsxContext& ctx, uint32_t addr, uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3) {
+    uint32_t saved[32];
+    std::memcpy(saved, ctx.r, sizeof saved);
+    const uint32_t hi = ctx.hi, lo = ctx.lo;
+    ctx.r[4] = a0;
+    ctx.r[5] = a1;
+    ctx.r[6] = a2;
+    ctx.r[7] = a3;
+    ctx.r[29] = (ctx.r[29] - 0x100u) & ~7u;  // fresh frame below the interrupted code's stack
+    ctx.r[31] = 0;                           // guest `jr ra` returns to us through the C stack
+    psx_dispatch(&ctx, addr);
+    const uint32_t result = ctx.r[2];
+    std::memcpy(ctx.r, saved, sizeof saved);
+    ctx.hi = hi;
+    ctx.lo = lo;
+    return result;
+}
+
 }  // namespace psx
 
 extern "C" {
@@ -68,13 +86,35 @@ void psx_dispatch(PsxContext* ctx, uint32_t target) {
 }
 
 void psx_syscall(PsxContext* ctx, uint32_t code) {
-    // SYSCALL with $a0: 1 = EnterCriticalSection, 2 = ExitCriticalSection, 3 = ChangeThread.
-    std::fprintf(stderr, "[syscall] code=%X a0=%X at %08X (not yet implemented)\n", code, ctx->r[4], ctx->pc);
+    // SYSCALL with $a0: 1 = EnterCriticalSection, 2 = ExitCriticalSection (psx-spx "SYSCALL
+    // Functions"). Critical sections are modelled with the COP0 SR interrupt-enable bits
+    // (IEc bit 0 + IM2 bit 10), which the native interrupt source honours.
+    constexpr uint32_t kIrqEnable = 0x401u;
+    uint32_t& sr = ctx->cop0[12];
+    switch (ctx->r[4]) {
+        case 0:  // NoFunction
+            return;
+        case 1:  // EnterCriticalSection: returns 1 if interrupts were enabled
+            ctx->r[2] = (sr & kIrqEnable) == kIrqEnable ? 1u : 0u;
+            sr &= ~kIrqEnable;
+            return;
+        case 2:  // ExitCriticalSection
+            sr |= kIrqEnable;
+            return;
+        default:
+            std::fprintf(stderr, "[syscall] unimplemented a0=%X (code %X) at %08X\n", ctx->r[4], code, ctx->pc);
+            std::abort();
+    }
 }
 
 void psx_break(PsxContext* ctx, uint32_t code) {
     std::fprintf(stderr, "[break] code=%X at %08X\n", code, ctx->pc);
     std::abort();
+}
+
+void psx_poll(PsxContext* ctx) {
+    ctx->poll_budget = 256;
+    if (auto* handler = psx::Machine::from(ctx).poll_handler()) handler->poll(*ctx);
 }
 
 void psx_invalid(PsxContext* ctx, uint32_t pc) {

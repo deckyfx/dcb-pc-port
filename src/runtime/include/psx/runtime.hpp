@@ -25,6 +25,12 @@ struct BiosHandler {
     virtual void call(PsxContext& ctx, uint32_t table, uint32_t function) = 0;
 };
 
+/// Periodic hook for timing and interrupt delivery (called from generated loops and I/O polls).
+struct PollHandler {
+    virtual ~PollHandler() = default;
+    virtual void poll(PsxContext& ctx) = 0;
+};
+
 /// Parsed PS-EXE header fields the runtime needs to start the game.
 struct ExeInfo {
     uint32_t pc0 = 0, gp0 = 0, t_addr = 0, t_size = 0, b_addr = 0, b_size = 0, s_addr = 0, s_size = 0;
@@ -44,6 +50,8 @@ public:
 
     void set_mmio_handler(MmioHandler* handler) { mmio_ = handler; }
     void set_bios_handler(BiosHandler* handler) { bios_ = handler; }
+    void set_poll_handler(PollHandler* handler) { poll_ = handler; }
+    PollHandler* poll_handler() const { return poll_; }
     MmioHandler* mmio() const { return mmio_; }
     BiosHandler* bios() const { return bios_; }
 
@@ -56,9 +64,15 @@ private:
     std::array<uint8_t, PSX_SCRATCH_SIZE> scratch_{};
     MmioHandler* mmio_ = nullptr;
     BiosHandler* bios_ = nullptr;
+    PollHandler* poll_ = nullptr;
 };
 
 /// Look up a recompiled function by guest address (binary search over the generated table).
 RecompFunc find_function(uint32_t addr);
+
+/// Call guest code from native code the way the kernel does (event callbacks, interrupt
+/// handlers): all CPU registers are preserved around the call; returns the guest's $v0.
+uint32_t call_guest(PsxContext& ctx, uint32_t addr, uint32_t a0 = 0, uint32_t a1 = 0, uint32_t a2 = 0,
+                    uint32_t a3 = 0);
 
 }  // namespace psx

@@ -1,0 +1,75 @@
+{
+  // Pipeline tasks for SLPS-03101. Run from the Command Palette: "Tasks: Run Task".
+  // Ctrl+Shift+B runs the default build ("dcb: build").
+  "version": "2.0.0",
+  "options": { "cwd": "${workspaceFolder}" },
+  "tasks": [
+    {
+      "label": "disc: extract (SLPS-03101)",
+      "type": "shell",
+      "command": "python3 tools/disc/extract_disc.py disc/SLPS-03101/dcb_jp.cue -o extracted/SLPS-03101 --force && python3 tools/disc/pdrv_segments.py SLPS-03101",
+      "problemMatcher": []
+    },
+    {
+      "label": "cmake: configure (linux-debug)",
+      "type": "shell",
+      "command": "cmake --preset linux-debug",
+      "problemMatcher": []
+    },
+    {
+      "label": "recomp: generate C (SLPS-03101)",
+      "type": "shell",
+      "command": "cmake --build --preset linux-debug --target recompile",
+      "dependsOn": "cmake: configure (linux-debug)",
+      "problemMatcher": "$gcc"
+    },
+    {
+      "label": "dcb: build",
+      "type": "shell",
+      "command": "cmake --build --preset linux-debug",
+      "dependsOn": "cmake: configure (linux-debug)",
+      "problemMatcher": "$gcc",
+      "group": { "kind": "build", "isDefault": true }
+    },
+    {
+      "label": "dcb: recompile + build",
+      "dependsOrder": "sequence",
+      "dependsOn": ["recomp: generate C (SLPS-03101)", "dcb: build"],
+      "problemMatcher": []
+    },
+    {
+      "label": "dcb: run",
+      "type": "shell",
+      "command": "./build/linux-debug/dcb extracted/SLPS-03101/exe/boot.exe",
+      "dependsOn": "dcb: build",
+      "problemMatcher": []
+    },
+    {
+      "label": "dcb: test",
+      "type": "shell",
+      "command": "ctest --preset linux-debug",
+      "dependsOn": "dcb: build",
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "dcb: build windows (cross)",
+      "type": "shell",
+      "command": "cmake --preset windows-cross && cmake --build --preset windows-cross",
+      "problemMatcher": "$gcc"
+    },
+    {
+      "label": "ghidra: start GUI (PyGhidra + MCP scripts)",
+      "type": "shell",
+      "command": "tools/ghidra/ghidra_gui.sh",
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "ghidra: apply discovery (headless, close GUI first)",
+      "type": "shell",
+      "command": "../ghidra_12.1.2_PUBLIC/support/analyzeHeadless ghidra/project DCB/SLPS-03101 -process SLPS_031.01 -noanalysis -scriptPath ghidra/scripts -postScript ApplyDiscovered.java \"${workspaceFolder}\"",
+      "problemMatcher": []
+    }
+  ]
+}

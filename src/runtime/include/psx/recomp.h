@@ -29,6 +29,7 @@ typedef struct PsxContext {
     uint8_t* ram;          /* PSX_RAM_SIZE bytes */
     uint8_t* scratch;      /* PSX_SCRATCH_SIZE bytes */
     void*    host;         /* owning psx::Machine; opaque to generated code */
+    int32_t  poll_budget;  /* loop back-edges left before the next interrupt/timing poll */
 } PsxContext;
 
 typedef void (*RecompFunc)(PsxContext* ctx);
@@ -107,6 +108,10 @@ typedef struct RecompOverlay {
 
 extern const RecompOverlay recomp_overlays[];
 extern const uint32_t      recomp_overlay_count;
+
+/* ---- interrupts: generated loops poll so spin-waits on RAM flags let VBLANK etc. through ---- */
+void psx_poll(PsxContext* ctx);
+#define PSX_POLL(ctx) do { if (--(ctx)->poll_budget < 0) psx_poll(ctx); } while (0)
 
 /* ---- traps (runtime/src/dispatch.cpp) ---- */
 void psx_invalid(PsxContext* ctx, uint32_t pc);

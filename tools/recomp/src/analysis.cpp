@@ -99,7 +99,18 @@ private:
         for (uint32_t pc : f.instrs) coverage_[s][(pc - seg.base) / 4] = 1;
     }
 
+    std::set<std::pair<size_t, uint32_t>> called_;  ///< targets of jal/bltzal/bgezal from any segment
+
     bool is_entry(size_t seg, uint32_t addr) const { return seeds_.count({seg, addr}) != 0; }
+
+    /// A `j` is a tail call only into a genuine function entry: something calls it, or it is the
+    /// program entry / a code address stored in data or built in code. Addresses Ghidra merely
+    /// listed (often shared epilogues reached by `j`) stay internal jumps.
+    bool is_tail_target(size_t seg, uint32_t addr) const {
+        if (called_.count({seg, addr})) return true;
+        const auto it = seeds_.find({seg, addr});
+        return it != seeds_.end() && it->second != Origin::Ghidra && it->second != Origin::Call;
+    }
 
     void add_seed(size_t seg, uint32_t addr, Origin origin) {
         if (!prog_.segments[seg].in_code(addr)) return;
@@ -115,14 +126,17 @@ private:
     /// that has a plausible function start there qualifies.
     void add_call_target(size_t from_seg, uint32_t target) {
         const Segment& from = prog_.segments[from_seg];
+        auto add = [&](size_t s) {
+            called_.emplace(s, target);
+            add_seed(s, target, Origin::Call);
+        };
         if (prog_.main().in_code(target)) {
-            add_seed(0, target, Origin::Call);
+            add(0);
         } else if (from.overlay && from.in_code(target)) {
-            add_seed(from_seg, target, Origin::Call);
+            add(from_seg);
         } else if (prog_.in_overlay_window(target)) {
             for (size_t s = 1; s < prog_.segments.size(); ++s) {
-                if (plausible_start(prog_.segments[s], target) && explore(s, target, true).invalid_at.empty())
-                    add_seed(s, target, Origin::Call);
+                if (plausible_start(prog_.segments[s], target) && explore(s, target, true).invalid_at.empty()) add(s);
             }
         }
     }
@@ -168,6 +182,8 @@ private:
         for (uint32_t pc : f.instrs) {
             const Instr in = f.seg->instr(pc);
             if (in.op == Op::Jal) add_call_target(seg, in.jump_target());
+            else if ((in.op == Op::Bltzal || in.op == Op::Bgezal)) add_call_target(seg, in.branch_target());
+            // Cross-segment `j` (EXE <-> overlay window) is always a tail call.
             else if (in.op == Op::J && !f.instrs.count(in.jump_target())) add_call_target(seg, in.jump_target());
         }
     }
@@ -217,7 +233,7 @@ private:
                     break;
                 case Op::J: {
                     const uint32_t t = in.jump_target();
-                    if (!is_entry(seg_idx, t) && seg.in_code(t)) visit(t);  // otherwise a tail call
+                    if (seg.in_code(t) && !is_tail_target(seg_idx, t)) visit(t);  // otherwise a tail call
                     break;
                 }
                 case Op::Jr:

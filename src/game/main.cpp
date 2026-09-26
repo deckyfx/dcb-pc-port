@@ -3,14 +3,44 @@
 
 #include "bios/bios.hpp"
 #include "hw/mmio.hpp"
+#include "system.hpp"
 
 #include <psx/runtime.hpp>
 
+#include <csignal>
 #include <cstdio>
+#include <cstdlib>
 #include <exception>
 #include <filesystem>
 
+#ifndef _WIN32
+#include <unistd.h>
+#endif
+
+namespace {
+
+/// DCB_WATCHDOG=<seconds>: abort after that long, so a debugger stops inside whatever loop the
+/// game is spinning in (the call stack names the guest functions).
+void arm_watchdog() {
+#ifndef _WIN32
+    if (const char* s = std::getenv("DCB_WATCHDOG")) {
+        std::signal(SIGALRM, [](int) {
+            static const char msg[] = "[dcb] watchdog expired\n";
+            (void)!write(2, msg, sizeof msg - 1);
+            std::abort();
+        });
+        alarm(static_cast<unsigned>(std::atoi(s)));
+    }
+#endif
+}
+
+}  // namespace
+
 int main(int argc, char** argv) {
+    // The runtime stops with abort() on anything unimplemented; never lose buffered log lines.
+    std::setvbuf(stdout, nullptr, _IOLBF, 0);
+    arm_watchdog();
+
     const std::filesystem::path exe_path =
         argc > 1 ? argv[1] : std::filesystem::path("extracted") / DCB_GAME_ID / "exe" / "boot.exe";
 
@@ -18,8 +48,12 @@ int main(int argc, char** argv) {
         static psx::Machine machine;  // 2 MiB of guest RAM lives on the heap; the machine is long-lived
         hle::Bios bios;
         hle::Mmio mmio;
+        hle::System system(machine.ctx(), mmio, bios);
+        bios.attach(&system);
+        mmio.attach(&system, machine.ctx());
         machine.set_bios_handler(&bios);
         machine.set_mmio_handler(&mmio);
+        machine.set_poll_handler(&system);
 
         const psx::ExeInfo exe = machine.load_exe(exe_path);
         std::printf("[dcb] %s: text %08X+%X, entry %08X, %u recompiled functions\n", DCB_GAME_ID, exe.t_addr,

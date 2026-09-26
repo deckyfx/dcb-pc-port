@@ -83,6 +83,11 @@ private:
 
     void label(uint32_t pc) { out_ << "L_" << hexlabel(pc) << ":;\n"; }
 
+    /// Loops poll for interrupts on their back-edge: spin-waits must let VBLANK etc. happen.
+    static std::string back_edge(const Instr& in, uint32_t target) {
+        return target <= in.pc ? "PSX_POLL(ctx); " : "";
+    }
+
     void collect_labels() {
         for (uint32_t pc : fn_.instrs) {
             const Instr in = seg_.instr(pc);
@@ -206,7 +211,7 @@ private:
             case Op::Beq: case Op::Bne: case Op::Blez: case Op::Bgtz: case Op::Bltz: case Op::Bgez:
                 out_ << "    { const int c = " << cond << ";  /* " << hexlabel(in.pc) << ": " << disasm(in) << " */\n";
                 delay();
-                out_ << "    if (c) goto L_" << hexlabel(in.branch_target()) << "; }\n";
+                out_ << "    if (c) { " << back_edge(in, in.branch_target()) << "goto L_" << hexlabel(in.branch_target()) << "; } }\n";
                 break;
             case Op::Bltzal: case Op::Bgezal:
                 out_ << "    { const int c = " << cond << "; " << reg(31) << " = " << hex32(in.pc + 8)
@@ -222,7 +227,8 @@ private:
             case Op::J:
                 line(in, "/* jump */");
                 delay();
-                if (fn_.instrs.count(in.jump_target())) out_ << "    goto L_" << hexlabel(in.jump_target()) << ";\n";
+                if (fn_.instrs.count(in.jump_target()))
+                    out_ << "    { " << back_edge(in, in.jump_target()) << "goto L_" << hexlabel(in.jump_target()) << "; }\n";
                 else out_ << "    " << call(in.jump_target()) << " return;  /* tail call */\n";
                 break;
             case Op::Jr:
