@@ -218,7 +218,7 @@ void Bios::insert_cards(const std::filesystem::path& save_dir) {
 
 // ---------------------------------------------------------------------------------------------
 // Memory-card files (bu00:/bu10:) through hle::CardFs. Guest strings and buffers are copied in and
-// out; FASYNC operations also deliver a HwCARD completion event.
+// out; FASYNC operations also deliver completion events.
 
 namespace {
 std::string guest_string(PsxContext& ctx, uint32_t addr, size_t max = 128) {
@@ -237,7 +237,11 @@ void put_dirent(PsxContext& ctx, uint32_t addr, const CardFs::DirEntry& e) {
 }  // namespace
 
 void Bios::file_async_event(PsxContext& ctx) {
-    if (card_fs_.last_was_async()) deliver_event(ctx, kHwCard, card_fs_.async_spec());
+    // The sector transfer (HwCARD) and the file operation (SwCARD) both complete. Games wait on
+    // SwCARD: DCB's save loop polls it after every write and gives up ("card not detected").
+    if (!card_fs_.last_was_async()) return;
+    deliver_event(ctx, kHwCard, card_fs_.async_spec());
+    deliver_event(ctx, kSwCard, card_fs_.async_spec());
 }
 
 void Bios::b0_open(PsxContext& ctx) {
