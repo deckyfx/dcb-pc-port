@@ -11,9 +11,9 @@
 //   todo   B0:12 InitPAD  B0:13 StartPAD  B0:15 OutdatedPadInitAndStart
 //   part   B0:35 write (TTY fds 0/1 -> host stdout)
 //   todo   B0:32 open  B0:33 lseek  B0:34 read  B0:36 close  B0:42 firstfile  B0:43 nextfile
-//   todo   A0:70 _bu_init  A0:AB _card_info  A0:AC _card_load  B0:4A InitCard  B0:4B StartCard
+//   done   A0:70 _bu_init  A0:AB _card_info  A0:AC _card_load  B0:4A InitCard  B0:4B StartCard
 //          B0:4C StopCard  B0:4E write_card_sector  B0:4F read_card_sector  B0:50 allow_new_card
-//          B0:5C get_card_status
+//          B0:5C get_card_status                   (raw .mcd images in saves/<serial>/)
 //   done   A0:49 GPU_cw (-> GP0 port)
 //   done   B0:56 GetC0Table  B0:57 GetB0Table (kernel patchers find nothing to patch)
 //   todo   A0:51 LoadExec (switch to PSX2.EXE)
@@ -51,6 +51,16 @@ Bios::Bios() {
         {key(0xA0, 0x71), &Bios::a0_96_init},
         {key(0xA0, 0x72), &Bios::a0_cd_remove},
         {key(0xA0, 0x49), &Bios::a0_gpu_cw},
+        {key(0xA0, 0x70), &Bios::a0_bu_init},
+        {key(0xA0, 0xAB), &Bios::a0_card_info},
+        {key(0xA0, 0xAC), &Bios::a0_card_load},
+        {key(0xB0, 0x4A), &Bios::b0_init_card},
+        {key(0xB0, 0x4B), &Bios::b0_start_card},
+        {key(0xB0, 0x4C), &Bios::b0_stop_card},
+        {key(0xB0, 0x4E), &Bios::b0_write_card_sector},
+        {key(0xB0, 0x4F), &Bios::b0_read_card_sector},
+        {key(0xB0, 0x50), &Bios::b0_allow_new_card},
+        {key(0xB0, 0x5C), &Bios::b0_get_card_status},
         {key(0xB0, 0x07), &Bios::b0_deliver_event},
         {key(0xB0, 0x08), &Bios::b0_open_event},
         {key(0xB0, 0x09), &Bios::b0_close_event},
@@ -174,6 +184,65 @@ void Bios::b0_write(PsxContext& ctx) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Memory cards. Operations complete immediately and report through the kernel's card events:
+// SwCARD (F4000001h) for _card_info/_card_load, HwCARD (F0000011h) for sector transfers, with
+// spec 0004h done, 8000h error, 0100h timeout (no card), 2000h new card.
+
+namespace {
+constexpr uint32_t kSwCard = 0xF4000001u, kHwCard = 0xF0000011u;
+constexpr uint32_t kCardDone = 0x0004u, kCardTimeout = 0x0100u, kCardError = 0x8000u;
+}  // namespace
+
+void Bios::insert_cards(const std::filesystem::path& save_dir) {
+    cards_[0] = std::make_unique<MemoryCard>(save_dir / "card1.mcd");
+    cards_[1].reset();
+}
+
+MemoryCard* Bios::card(uint32_t port) { return cards_[(port >> 4) & 1u].get(); }
+
+void Bios::card_result(PsxContext& ctx, uint32_t ev_class, MemoryCard* c) {
+    deliver_event(ctx, ev_class, c ? kCardDone : kCardTimeout);
+}
+
+void Bios::a0_bu_init(PsxContext&) {}
+void Bios::b0_init_card(PsxContext&) {}
+void Bios::b0_start_card(PsxContext&) {}
+void Bios::b0_stop_card(PsxContext&) {}
+void Bios::b0_allow_new_card(PsxContext&) {}
+
+void Bios::a0_card_info(PsxContext& ctx) {
+    card_result(ctx, kSwCard, card(ctx.r[kA0]));
+    ctx.r[kV0] = 1;
+}
+
+void Bios::a0_card_load(PsxContext& ctx) {
+    card_result(ctx, kSwCard, card(ctx.r[kA0]));
+    ctx.r[kV0] = 1;
+}
+
+void Bios::b0_read_card_sector(PsxContext& ctx) {
+    MemoryCard* c = card(ctx.r[kA0]);
+    uint8_t frame[MemoryCard::kFrameSize];
+    const bool ok = c && c->read_frame(ctx.r[kA1], frame);
+    if (ok) {
+        for (uint32_t i = 0; i < MemoryCard::kFrameSize; ++i) psx_write8(&ctx, ctx.r[kA2] + i, frame[i]);
+    }
+    deliver_event(ctx, kHwCard, !c ? kCardTimeout : ok ? kCardDone : kCardError);
+    ctx.r[kV0] = 1;
+}
+
+void Bios::b0_write_card_sector(PsxContext& ctx) {
+    MemoryCard* c = card(ctx.r[kA0]);
+    uint8_t frame[MemoryCard::kFrameSize];
+    for (uint32_t i = 0; i < MemoryCard::kFrameSize; ++i) frame[i] = psx_read8(&ctx, ctx.r[kA2] + i);
+    const bool ok = c && c->write_frame(ctx.r[kA1], frame);
+    deliver_event(ctx, kHwCard, !c ? kCardTimeout : ok ? kCardDone : kCardError);
+    ctx.r[kV0] = 1;
+}
+
+void Bios::b0_get_card_status(PsxContext& ctx) { ctx.r[kV0] = 0x01; }  // ready (never busy)
+
+// ---------------------------------------------------------------------------------------------
 // Events.
 
 Bios::Event* Bios::event(uint32_t handle) {
@@ -230,7 +299,7 @@ void Bios::b0_wait_event(PsxContext& ctx) {
         // interrupts run until it does. A few seconds without it means nothing will deliver it.
         const uint64_t give_up = system_->cpu_cycles() + static_cast<uint64_t>(5 * System::kCpuHz);
         while (ev->status == kEvEnabled) {
-            system_->io_poll();
+            system_->idle(ctx);  // no guest code runs here: let guest time reach the next event
             if (system_->cpu_cycles() > give_up) {
                 std::fprintf(stderr, "[bios] WaitEvent(%08X class=%08X spec=%X): never delivered (ra=%08X)\n",
                              ctx.r[kA0], ev->ev_class, ev->spec, ctx.r[kRa]);

@@ -99,6 +99,16 @@ Program load_program(const fs::path& root, const std::string& game_id, uint32_t 
             if (prog.main().in_code(e)) prog.known_functions.push_back(e);
         }
     }
+    const fs::path ov_native = root / "config" / game_id / "overrides.json";
+    if (fs::exists(ov_native)) {
+        const json cfg = read_json(ov_native);
+        for (const auto& o : cfg.at("overrides")) {
+            const uint32_t addr = hex(o.at("addr"));
+            if (!prog.main().in_code(addr)) throw std::runtime_error("override outside boot EXE code: " + o.at("addr").get<std::string>());
+            prog.overrides[addr] = o.at("symbol").get<std::string>();
+            prog.known_functions.push_back(addr);  // must exist as an entry
+        }
+    }
     return prog;
 }
 

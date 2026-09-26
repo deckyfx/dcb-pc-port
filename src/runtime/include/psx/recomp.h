@@ -30,6 +30,7 @@ typedef struct PsxContext {
     uint8_t* scratch;      /* PSX_SCRATCH_SIZE bytes */
     void*    host;         /* owning psx::Machine; opaque to generated code */
     int32_t  poll_budget;  /* loop back-edges left before the next interrupt/timing poll */
+    uint64_t cycles;       /* guest time: estimated R3000A cycles executed (drives VBLANK/timers) */
 } PsxContext;
 
 typedef void (*RecompFunc)(PsxContext* ctx);
@@ -109,9 +110,11 @@ typedef struct RecompOverlay {
 extern const RecompOverlay recomp_overlays[];
 extern const uint32_t      recomp_overlay_count;
 
-/* ---- interrupts: generated loops poll so spin-waits on RAM flags let VBLANK etc. through ---- */
+/* ---- guest time + interrupts. Every loop back-edge charges the loop body's estimated cycles,
+ * so cycle-counted waits (Psy-Q timeouts, delay loops) take as long in guest time as on the
+ * console, and periodically polls so spin-waits on RAM flags let VBLANK etc. through. ---- */
 void psx_poll(PsxContext* ctx);
-#define PSX_POLL(ctx) do { if (--(ctx)->poll_budget < 0) psx_poll(ctx); } while (0)
+#define PSX_POLL(ctx, cyc) do { (ctx)->cycles += (cyc); if (--(ctx)->poll_budget < 0) psx_poll(ctx); } while (0)
 
 /* ---- traps (runtime/src/dispatch.cpp) ---- */
 void psx_invalid(PsxContext* ctx, uint32_t pc);

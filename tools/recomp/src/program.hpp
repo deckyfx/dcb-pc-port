@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -32,6 +33,7 @@ struct Program {
     uint32_t entry = 0;
     std::vector<Segment> segments;   ///< [0] is the boot EXE
     std::vector<uint32_t> known_functions;  ///< main-EXE entries from Ghidra (functions.json)
+    std::map<uint32_t, std::string> overrides;  ///< main-EXE entry -> native replacement symbol
 
     const Segment& main() const { return segments.front(); }
     /// Overlay window shared by all overlays: [lo, hi).

@@ -70,6 +70,13 @@ void psx_dispatch(PsxContext* ctx, uint32_t target) {
         std::abort();
     }
 
+    // Suspended-task cookies (hle::System) are only resumed by the context switcher.
+    if ((target & 0xFFF00000u) == 0xDCB00000u) {
+        std::fprintf(stderr, "[dispatch] jump to task cookie %08X outside the context switcher (ra=%08X)\n", target,
+                     ctx->r[31]);
+        std::abort();
+    }
+
     // Guest code addresses are canonicalised to KSEG0.
     const uint32_t canonical = (target & 0x1FFFFFFFu) | 0x80000000u;
     if (RecompFunc fn = psx::find_function(canonical)) {
@@ -113,7 +120,7 @@ void psx_break(PsxContext* ctx, uint32_t code) {
 }
 
 void psx_poll(PsxContext* ctx) {
-    ctx->poll_budget = 256;
+    ctx->poll_budget = 64;
     if (auto* handler = psx::Machine::from(ctx).poll_handler()) handler->poll(*ctx);
 }
 

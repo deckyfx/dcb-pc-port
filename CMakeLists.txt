@@ -136,11 +136,22 @@ if(DCB_BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(test_runtime_memory PRIVATE psx_runtime dcb::warnings)
     add_test(NAME runtime.memory COMMAND test_runtime_memory)
 
+    add_executable(test_runtime_fiber tests/runtime/test_fiber.cpp)
+    target_link_libraries(test_runtime_fiber PRIVATE psx_runtime dcb::warnings)
+    add_test(NAME runtime.fiber COMMAND test_runtime_fiber)
+
     if(TARGET dcb_recomp_core)
         add_executable(test_recomp_decoder tests/recomp/test_decoder.cpp)
         target_link_libraries(test_recomp_decoder PRIVATE dcb_recomp_core dcb::warnings)
         add_test(NAME recomp.decoder COMMAND test_recomp_decoder)
     endif()
+
+    # Each module registers its own tests in tests/<module>/tests.cmake (keeps parallel work
+    # from colliding in this file).
+    file(GLOB DCB_MODULE_TESTS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tests/*/tests.cmake)
+    foreach(module_tests IN LISTS DCB_MODULE_TESTS)
+        include(${module_tests})
+    endforeach()
 
     find_package(Python3 COMPONENTS Interpreter)
     if(Python3_FOUND)

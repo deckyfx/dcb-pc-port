@@ -50,6 +50,7 @@ int main(int argc, char** argv) {
         hle::Mmio mmio;
         hle::System system(machine.ctx(), mmio, bios);
         bios.attach(&system);
+        bios.insert_cards(std::filesystem::path("saves") / DCB_GAME_ID);
         mmio.attach(&system, machine.ctx());
         machine.set_bios_handler(&bios);
         machine.set_mmio_handler(&mmio);

@@ -5,11 +5,15 @@
 // The game's full BIOS surface (40 functions, found by scanning its call stubs) is listed at the
 // top of bios.cpp with its implementation status.
 
+#include "mcrd/memcard.hpp"
+
 #include <psx/runtime.hpp>
 
 #include <array>
 #include <cstdint>
+#include <filesystem>
 #include <map>
+#include <memory>
 #include <vector>
 
 namespace hle {
@@ -28,6 +32,9 @@ public:
     uint32_t interrupt_hook() const { return hook_entry_int_; }
 
     void attach(System* system) { system_ = system; }
+
+    /// Slot 1 is a card image in `save_dir` (created formatted when missing); slot 2 is empty.
+    void insert_cards(const std::filesystem::path& save_dir);
 
 private:
     using Handler = void (Bios::*)(PsxContext& ctx);
@@ -61,8 +68,11 @@ private:
     std::array<uint32_t, 4> clear_rcnt_{1, 1, 1, 1};
     bool trace_ = false;
     System* system_ = nullptr;
+    std::array<std::unique_ptr<MemoryCard>, 2> cards_;
 
     Event* event(uint32_t handle);
+    MemoryCard* card(uint32_t port);  ///< port: 0x00 slot 1, 0x10 slot 2
+    void card_result(PsxContext& ctx, uint32_t ev_class, MemoryCard* card);
 
     // A0 table
     void a0_malloc(PsxContext& ctx);
@@ -74,6 +84,9 @@ private:
     void a0_96_init(PsxContext& ctx);
     void a0_cd_remove(PsxContext& ctx);
     void a0_gpu_cw(PsxContext& ctx);
+    void a0_bu_init(PsxContext& ctx);
+    void a0_card_info(PsxContext& ctx);
+    void a0_card_load(PsxContext& ctx);
 
     // B0 table
     void b0_deliver_event(PsxContext& ctx);
@@ -90,6 +103,13 @@ private:
     void b0_write(PsxContext& ctx);
     void b0_get_c0_table(PsxContext& ctx);
     void b0_get_b0_table(PsxContext& ctx);
+    void b0_init_card(PsxContext& ctx);
+    void b0_start_card(PsxContext& ctx);
+    void b0_stop_card(PsxContext& ctx);
+    void b0_write_card_sector(PsxContext& ctx);
+    void b0_read_card_sector(PsxContext& ctx);
+    void b0_allow_new_card(PsxContext& ctx);
+    void b0_get_card_status(PsxContext& ctx);
 
     // C0 table
     void c0_sys_enq_int_rp(PsxContext& ctx);

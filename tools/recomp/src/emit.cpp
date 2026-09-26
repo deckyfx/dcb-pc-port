@@ -83,9 +83,12 @@ private:
 
     void label(uint32_t pc) { out_ << "L_" << hexlabel(pc) << ":;\n"; }
 
-    /// Loops poll for interrupts on their back-edge: spin-waits must let VBLANK etc. happen.
+    /// Loop back-edges charge the loop body's cycles (~2 per instruction, a typical R3000A CPI
+    /// with load/cache stalls) and poll for interrupts: spin-waits must let VBLANK etc. happen.
     static std::string back_edge(const Instr& in, uint32_t target) {
-        return target <= in.pc ? "PSX_POLL(ctx); " : "";
+        if (target > in.pc) return "";
+        const uint32_t instructions = (in.pc - target) / 4 + 2;  // body + branch + delay slot
+        return "PSX_POLL(ctx, " + std::to_string(2 * instructions) + "); ";
     }
 
     void collect_labels() {
@@ -114,6 +117,7 @@ private:
         if (seg_.overlay) {
             if (an_.find(seg_idx_, target)) return function_symbol(seg_, target) + "(ctx);";
         }
+        if (const auto it = prog_.overrides.find(target); it != prog_.overrides.end()) return it->second + "(ctx);";
         if (prog_.main().in_code(target) && an_.find(0, target)) return function_symbol(prog_.main(), target) + "(ctx);";
         return "psx_dispatch(ctx, " + hex32(target) + ");";
     }
@@ -323,6 +327,10 @@ EmitStats emit_program(const Program& prog, const Analysis& analysis, const fs::
         }
         flush();
     }
+    if (!prog.overrides.empty()) {
+        decls << "\n/* Native overrides (src/game/overrides): calls to these guest addresses go here. */\n";
+        for (const auto& [addr, sym] : prog.overrides) decls << "void " << sym << "(PsxContext* ctx);  /* " << hex32(addr) << " */\n";
+    }
     write_if_changed(out_dir / "recomp_funcs.h", decls.str());
     written.insert(out_dir / "recomp_funcs.h");
 
@@ -331,8 +339,11 @@ EmitStats emit_program(const Program& prog, const Analysis& analysis, const fs::
     std::ostringstream table;
     table << file_header();
     table << "const RecompFunctionEntry recomp_function_table[] = {\n";
-    for (const auto& [entry, fn] : analysis.functions[0])
-        table << "    {" << hex32(entry) << ", " << function_symbol(prog.main(), entry) << "},\n";
+    for (const auto& [entry, fn] : analysis.functions[0]) {
+        const auto ov = prog.overrides.find(entry);
+        table << "    {" << hex32(entry) << ", " << (ov != prog.overrides.end() ? ov->second : function_symbol(prog.main(), entry))
+              << "},\n";
+    }
     table << "};\nconst uint32_t recomp_function_count = " << analysis.functions[0].size() << "u;\n\n";
 
     std::ostringstream overlays;
