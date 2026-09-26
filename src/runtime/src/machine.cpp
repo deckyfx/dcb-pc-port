@@ -65,4 +65,36 @@ ExeInfo Machine::load_exe(const std::vector<uint8_t>& data) {
     return exe;
 }
 
+void Machine::save_state(StateWriter& w) const {
+    w.begin(state_tag("CPU "), 1);
+    w.pod(ctx_.r);
+    w.u32(ctx_.hi);
+    w.u32(ctx_.lo);
+    w.u32(ctx_.pc);
+    w.pod(ctx_.cop0);
+    w.pod(ctx_.gte_data);
+    w.pod(ctx_.gte_ctrl);
+    w.pod(ctx_.poll_budget);
+    w.u64(ctx_.cycles);
+    w.bytes(ram_->data(), PSX_RAM_SIZE);
+    w.bytes(scratch_.data(), PSX_SCRATCH_SIZE);
+    w.end();
+}
+
+void Machine::load_state(StateReader& r) {
+    r.begin(state_tag("CPU "), 1);
+    r.pod(ctx_.r);
+    ctx_.hi = r.u32();
+    ctx_.lo = r.u32();
+    ctx_.pc = r.u32();
+    r.pod(ctx_.cop0);
+    r.pod(ctx_.gte_data);
+    r.pod(ctx_.gte_ctrl);
+    r.pod(ctx_.poll_budget);
+    ctx_.cycles = r.u64();
+    r.bytes(ram_->data(), PSX_RAM_SIZE);
+    r.bytes(scratch_.data(), PSX_SCRATCH_SIZE);
+    r.end();
+}
+
 }  // namespace psx
