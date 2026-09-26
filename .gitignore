@@ -5,6 +5,7 @@
 /saves/
 /assets/raw/*
 /assets/converted/*
+/assets/*.pak
 /generated/*
 !**/.gitkeep
 

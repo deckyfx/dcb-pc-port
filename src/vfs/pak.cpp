@@ -6,6 +6,8 @@
 
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <unordered_set>
 
 namespace vfs {
@@ -119,16 +121,17 @@ bool PakWriter::write(const std::string& path) const {
 bool PakReader::open(const std::string& path) {
     path_.clear();
     entries_.clear();
+    index_.clear();
     error_.clear();
     FILE* f = std::fopen(path.c_str(), "rb");
     if (!f) {
         error_ = "cannot open " + path;
         return false;
     }
-    std::fseek(f, 0, SEEK_END);
-    const long total = std::ftell(f);
-    std::fseek(f, 0, SEEK_SET);
-    if (total < 12) {
+    // file_size, not ftell: `long` is 32-bit on Windows and packs of upscaled art pass 2 GiB.
+    std::error_code size_ec;
+    const uint64_t total = std::filesystem::file_size(path, size_ec);
+    if (size_ec || total < 12) {
         error_ = "truncated header in " + path;
         std::fclose(f);
         return false;
@@ -168,12 +171,13 @@ bool PakReader::open(const std::string& path) {
             return false;
         }
         // Offsets must be inside the file and ranges must not wrap.
-        if (offset > static_cast<uint64_t>(total) || size > static_cast<uint64_t>(total) ||
-            offset + size < offset || offset + size > static_cast<uint64_t>(total)) {
+        if (offset > total || size > total ||
+            offset + size < offset || offset + size > total) {
             error_ = "entry out of range in " + path + ": " + name;
             std::fclose(f);
             return false;
         }
+        index_.emplace(name, entries_.size());
         entries_.push_back({std::move(name), offset, size, hash});
     }
     std::fclose(f);
@@ -182,28 +186,24 @@ bool PakReader::open(const std::string& path) {
 }
 
 bool PakReader::find(const std::string& name, PakEntry& out) const {
-    for (const auto& e : entries_) {
-        if (e.name == name) {
-            out = e;
-            return true;
-        }
-    }
-    return false;
+    const auto it = index_.find(name);
+    if (it == index_.end()) return false;
+    out = entries_[it->second];
+    return true;
 }
 
 bool PakReader::read(const std::string& name, std::vector<uint8_t>& out) const {
     PakEntry entry{"", 0, 0, 0};
     if (!find(name, entry)) return false;
     if (entry.size > (1ull << 32)) return false;
-    FILE* f = std::fopen(path_.c_str(), "rb");
-    if (!f) return false;
+    std::ifstream in(path_, std::ios::binary);  // 64-bit seeks on every platform
+    if (!in) return false;
     out.resize(static_cast<size_t>(entry.size));
     bool ok = true;
     if (entry.size > 0) {
-        if (std::fseek(f, static_cast<long>(entry.offset), SEEK_SET) != 0) ok = false;
-        else if (std::fread(out.data(), 1, out.size(), f) != out.size()) ok = false;
+        in.seekg(static_cast<std::streamoff>(entry.offset));
+        ok = in.read(reinterpret_cast<char*>(out.data()), static_cast<std::streamsize>(out.size())).good();
     }
-    std::fclose(f);
     if (ok && fnv1a64(out.data(), out.size()) != entry.hash) ok = false;  // corrupt pak/data
     if (!ok) out.clear();
     return ok;

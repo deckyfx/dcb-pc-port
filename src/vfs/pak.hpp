@@ -13,6 +13,7 @@
 
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace vfs {
@@ -55,6 +56,7 @@ public:
 private:
     std::string path_;
     std::vector<PakEntry> entries_;
+    std::unordered_map<std::string, size_t> index_;  ///< name -> entries_ position
     std::string error_;
 };
 
