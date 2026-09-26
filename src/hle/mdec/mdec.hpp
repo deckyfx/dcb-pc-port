@@ -5,6 +5,8 @@
 // arrives, so the device is never "busy" between commands and output is ready immediately.
 // Reference: psx-spx "Macroblock Decoder (MDEC)".
 
+#include <psx/state.hpp>
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -45,6 +47,10 @@ public:
     const std::array<uint8_t, 64>& luma_quant() const { return quant_y_; }
     const std::array<uint8_t, 64>& chroma_quant() const { return quant_uv_; }
     const std::array<int16_t, 64>& scale_table() const { return scale_; }
+
+    /// Save state: command state, tables, the block being decoded and the output FIFO ("MDEC").
+    void save_state(psx::StateWriter& w) const;
+    void load_state(psx::StateReader& r);
 
 private:
     enum class State : uint8_t { Idle, Decode, QuantTable, ScaleTable };

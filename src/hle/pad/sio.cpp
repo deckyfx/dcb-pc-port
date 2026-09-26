@@ -150,4 +150,50 @@ void Sio0::write(uint32_t phys, uint32_t value, unsigned width) {
     }
 }
 
+void Sio0::save_state(psx::StateWriter& w) const {
+    w.begin(psx::state_tag("SIO0"), 1);
+    w.pod(buttons_);
+    w.u16(ctrl_);
+    w.u16(mode_);
+    w.u16(baud_);
+    w.u8(rx_);
+    w.boolean(rx_full_);
+    w.boolean(irq_);
+    w.boolean(busy_);
+    w.boolean(ack_pending_);
+    w.boolean(rx_pending_);
+    w.u8(rx_next_);
+    w.u64(done_at_);
+    w.u64(ack_at_);
+    w.u64(ack_end_);
+    w.u16(last_sent_);
+    w.u32(index_);
+    w.boolean(selected_);
+    w.boolean(talking_to_pad_);
+    w.end();
+}
+
+void Sio0::load_state(psx::StateReader& r) {
+    r.begin(psx::state_tag("SIO0"), 1);
+    r.pod(buttons_);
+    ctrl_ = r.u16();
+    mode_ = r.u16();
+    baud_ = r.u16();
+    rx_ = r.u8();
+    rx_full_ = r.boolean();
+    irq_ = r.boolean();
+    busy_ = r.boolean();
+    ack_pending_ = r.boolean();
+    rx_pending_ = r.boolean();
+    rx_next_ = r.u8();
+    done_at_ = r.u64();
+    ack_at_ = r.u64();
+    ack_end_ = r.u64();
+    last_sent_ = r.u16();
+    index_ = r.u32();
+    selected_ = r.boolean();
+    talking_to_pad_ = r.boolean();
+    r.end();
+}
+
 }  // namespace hle

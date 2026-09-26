@@ -1,5 +1,7 @@
 #include "gpu/gpu.hpp"
 
+#include "gpu/hd_textures.hpp"
+
 #include <algorithm>
 #include <cstdlib>
 #include <utility>
@@ -66,6 +68,8 @@ constexpr int64_t kInterpBias = int64_t{1} << 11;
 }  // namespace
 
 Gpu::Gpu() : vram_(static_cast<std::size_t>(kVramWidth) * kVramHeight, 0) { reset(); }
+
+Gpu::~Gpu() = default;
 
 // ---------------------------------------------------------------------------------------------
 // GP0
@@ -315,6 +319,11 @@ void Gpu::copy_vram() {
     }
 }
 
+HdTextures* Gpu::install_hd() {
+    if (!hd_) hd_ = std::make_unique<HdTextures>();
+    return hd_.get();
+}
+
 void Gpu::begin_cpu_to_vram() {
     // psx-spx "GP0(A0h)": destination, size (0 = max), then ceil(w*h/2) data words.
     write_.x = static_cast<int32_t>(fifo_[1] & 0x3FFu);
@@ -324,9 +333,46 @@ void Gpu::begin_cpu_to_vram() {
     write_.cx = write_.cy = 0;
     write_.remaining = static_cast<uint32_t>(write_.w * write_.h);
     mode_ = Mode::CpuToVram;
+    // When HD replacement is armed, stage the words instead of writing through:
+    // commit_staged_upload() hashes the full rect before anything hits VRAM.
+    hd_staging_ = hd_ && hd_->enabled();
+    if (hd_staging_) {
+        const size_t pixels = static_cast<size_t>(write_.w) * static_cast<size_t>(write_.h);
+        // Cap staging at 1M words (512x1024 max rect is 256K words); bigger rects
+        // can only come from corrupt headers, so fall back to direct writes.
+        if (pixels <= (1u << 20) * 2) {
+            staged_.clear();
+            staged_.reserve((pixels + 1) / 2);
+        } else {
+            hd_staging_ = false;
+        }
+    }
 }
 
-void Gpu::write_transfer_word(uint32_t word) {
+void Gpu::commit_staged_upload() {
+    mode_ = Mode::Command;
+    const std::vector<uint16_t>* replacement =
+        hd_ ? hd_->maybe_replace(write_.x, write_.y, write_.w, write_.h, staged_.data(), staged_.size())
+            : nullptr;
+    if (replacement) {
+        // HD hit: commit the substitute pixels through the same masked path.
+        size_t i = 0;
+        for (int32_t row = 0; row < write_.h; ++row) {
+            for (int32_t col = 0; col < write_.w; ++col) put_masked(write_.x + col, write_.y + row, (*replacement)[i++]);
+        }
+    } else {
+        // Miss or disabled mid-transfer: replay the original words verbatim.
+        // write_transfer_word() zeroed write_.remaining when staging completed,
+        // so restore the cursor before replaying.
+        write_.cx = write_.cy = 0;
+        write_.remaining = static_cast<uint32_t>(static_cast<size_t>(write_.w) * static_cast<size_t>(write_.h));
+        for (uint32_t word : staged_) write_transfer_word_direct(word);
+    }
+    staged_.clear();
+    hd_staging_ = false;
+}
+
+void Gpu::write_transfer_word_direct(uint32_t word) {
     for (int half = 0; half < 2 && write_.remaining != 0; ++half) {
         put_masked(write_.x + write_.cx, write_.y + write_.cy, static_cast<uint16_t>(word >> (16 * half)));
         if (++write_.cx == write_.w) {
@@ -336,6 +382,18 @@ void Gpu::write_transfer_word(uint32_t word) {
         --write_.remaining;
     }
     if (write_.remaining == 0) mode_ = Mode::Command;
+}
+
+void Gpu::write_transfer_word(uint32_t word) {
+    if (hd_staging_) {
+        staged_.push_back(word);
+        // ceil(pixels/2) words complete the rect; odd rects pad the last half.
+        const size_t pixels = static_cast<size_t>(write_.w) * static_cast<size_t>(write_.h);
+        write_.remaining = pixels > staged_.size() * 2 ? static_cast<uint32_t>(pixels - staged_.size() * 2) : 0;
+        if (write_.remaining == 0) commit_staged_upload();
+        return;
+    }
+    write_transfer_word_direct(word);
 }
 
 void Gpu::begin_vram_to_cpu() {
@@ -573,11 +631,47 @@ void Gpu::draw_sprite(const Vertex& o, int32_t w, int32_t h, const Prim& p) {
 // GP1 / status
 // ---------------------------------------------------------------------------------------------
 
+Gpu::UploadSnapshot Gpu::save_upload() const {
+    UploadSnapshot snap;
+    snap.x = write_.x;
+    snap.y = write_.y;
+    snap.w = write_.w;
+    snap.h = write_.h;
+    snap.cx = write_.cx;
+    snap.cy = write_.cy;
+    snap.remaining = write_.remaining;
+    snap.staged = staged_;
+    snap.hd_staging = hd_staging_;
+    snap.active = mode_ == Mode::CpuToVram;
+    return snap;
+}
+
+void Gpu::load_upload(const UploadSnapshot& snap) {
+    write_.x = snap.x;
+    write_.y = snap.y;
+    write_.w = snap.w;
+    write_.h = snap.h;
+    write_.cx = snap.cx;
+    write_.cy = snap.cy;
+    write_.remaining = snap.remaining;
+    staged_ = snap.staged;
+    // A snapshot taken with HD armed but loaded without it (or vice versa)
+    // still replays the same words; the flag only selects staged vs direct.
+    hd_staging_ = snap.hd_staging && hd_ && hd_->enabled();
+    mode_ = snap.active ? Mode::CpuToVram : Mode::Command;
+    if (mode_ != Mode::CpuToVram) {
+        staged_.clear();
+        hd_staging_ = false;
+    }
+}
+
 void Gpu::reset_command_buffer() {
     fifo_len_ = 0;
     mode_ = Mode::Command;
     write_.remaining = 0;
     read_.remaining = 0;
+    staged_.clear();  // drop any half-staged HD upload (GP1(01h) mid-transfer)
+    hd_staging_ = false;
 }
 
 void Gpu::reset() {
@@ -660,6 +754,125 @@ Gpu::Display Gpu::display() const {
     d.interlaced = (display_mode_ & 0x20u) != 0;
     d.enabled = !display_disabled_;
     return d;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Save state
+// ---------------------------------------------------------------------------------------------
+
+void Gpu::save_state(psx::StateWriter& w) const {
+    w.begin(psx::state_tag("GPU "), 2);
+    w.vec(vram_);
+    w.pod(mode_);
+    w.pod(fifo_);
+    w.size(fifo_len_);
+    w.size(fifo_need_);
+    w.pod(write_);
+    w.pod(read_);
+    w.pod(poly_last_);
+    w.u32(poly_color_);
+    w.boolean(poly_gouraud_);
+    w.boolean(poly_have_color_);
+    w.pod(poly_prim_);
+    w.u32(draw_mode_);
+    w.u32(tex_window_);
+    w.u32(area_tl_);
+    w.u32(area_br_);
+    w.u32(offset_raw_);
+    for (const int32_t v : {area_x1_, area_y1_, area_x2_, area_y2_, offset_x_, offset_y_}) w.pod(v);
+    for (const uint32_t v : {tw_and_x_, tw_or_x_, tw_and_y_, tw_or_y_}) w.u32(v);
+    w.boolean(set_mask_);
+    w.boolean(check_mask_);
+    w.u32(display_mode_);
+    w.u32(display_start_);
+    w.u32(hrange_);
+    w.u32(vrange_);
+    w.u32(dma_dir_);
+    w.boolean(display_disabled_);
+    w.boolean(irq_);
+    w.boolean(allow_tex_disable_);
+    w.boolean(field_);
+    w.u32(gpuread_latch_);
+    // HD texture replacement: an upload staged mid-transfer (a VBLANK yield can land between
+    // its data words) and the replacer's palette sniffer; fitted art is re-derived, not saved.
+    w.vec(staged_);
+    w.boolean(hd_staging_);
+    const bool hd = hd_ != nullptr;
+    w.boolean(hd);
+    if (hd) {
+        const HdTextures::Snapshot snap = hd_->save();
+        w.u64(snap.last_clut);
+        w.boolean(snap.have_clut);
+        w.size(snap.clut_lru.size());  // cache contents in eviction order (front first)
+        for (const uint64_t hash : snap.clut_lru) {
+            w.u64(hash);
+            w.vec(snap.clut_cache.at(hash));
+        }
+        for (const uint64_t v : {snap.hits, snap.misses, snap.fit_hits, snap.miss_shape, snap.miss_no_palette,
+                                 snap.miss_palette_not_live, snap.miss_palette_shape})
+            w.u64(v);
+    }
+    w.end();
+}
+
+void Gpu::load_state(psx::StateReader& r) {
+    r.begin(psx::state_tag("GPU "), 2);
+    r.vec(vram_, vram_.size(), static_cast<std::size_t>(kVramWidth) * kVramHeight);
+    r.pod(mode_);
+    if (mode_ != Mode::Command && mode_ != Mode::CpuToVram && mode_ != Mode::Polyline) r.fail("bad GPU mode");
+    r.pod(fifo_);
+    fifo_len_ = r.size(fifo_.size(), 0);
+    fifo_need_ = r.size(fifo_.size(), 0);
+    r.pod(write_);
+    r.pod(read_);
+    r.pod(poly_last_);
+    poly_color_ = r.u32();
+    poly_gouraud_ = r.boolean();
+    poly_have_color_ = r.boolean();
+    r.pod(poly_prim_);
+    draw_mode_ = r.u32();
+    tex_window_ = r.u32();
+    area_tl_ = r.u32();
+    area_br_ = r.u32();
+    offset_raw_ = r.u32();
+    for (int32_t* v : {&area_x1_, &area_y1_, &area_x2_, &area_y2_, &offset_x_, &offset_y_}) r.pod(*v);
+    for (uint32_t* v : {&tw_and_x_, &tw_or_x_, &tw_and_y_, &tw_or_y_}) *v = r.u32();
+    set_mask_ = r.boolean();
+    check_mask_ = r.boolean();
+    display_mode_ = r.u32();
+    display_start_ = r.u32();
+    hrange_ = r.u32();
+    vrange_ = r.u32();
+    dma_dir_ = r.u32();
+    display_disabled_ = r.boolean();
+    irq_ = r.boolean();
+    allow_tex_disable_ = r.boolean();
+    field_ = r.boolean();
+    gpuread_latch_ = r.u32();
+    // Upload staging: at most a full-VRAM rect of words (see begin_cpu_to_vram).
+    r.vec(staged_, static_cast<std::size_t>(kVramWidth) * kVramHeight);
+    hd_staging_ = r.boolean();
+    if (r.boolean()) {
+        HdTextures::Snapshot snap;
+        snap.last_clut = r.u64();
+        snap.have_clut = r.boolean();
+        const std::size_t cluts = r.size(1024);
+        for (std::size_t i = 0; i < cluts; ++i) {
+            const uint64_t hash = r.u64();
+            std::vector<uint16_t> pal;
+            r.vec(pal, 4096);
+            snap.clut_lru.push_back(hash);
+            snap.clut_cache[hash] = std::move(pal);
+        }
+        for (uint64_t* v : {&snap.hits, &snap.misses, &snap.fit_hits, &snap.miss_shape, &snap.miss_no_palette,
+                            &snap.miss_palette_not_live, &snap.miss_palette_shape})
+            *v = r.u64();
+        if (hd_) hd_->load_snapshot(snap);  // same process: the replacer is configured as when saved
+    } else if (hd_) {
+        hd_->reset_runtime();
+    }
+    if (hd_staging_ && !(hd_ && hd_->enabled())) r.fail("state has an HD upload in flight but HD replacement is off");
+    r.end();
 }
 
 }  // namespace hle

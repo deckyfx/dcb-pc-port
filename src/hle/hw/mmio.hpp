@@ -47,6 +47,7 @@ public:
     void vblank() { gpu_.vblank(); }
 
     const Gpu& gpu() const { return gpu_; }
+    Gpu& gpu() { return gpu_; }
 
     /// Performance counters for the overlay: display flips (GP1(05h) writes, one per finished
     /// game frame) and host time spent rasterizing GPU command lists.
@@ -54,6 +55,12 @@ public:
     uint64_t gpu_ns() const { return gpu_ns_; }
     /// MDEC output transfers so far: it moves while a movie plays.
     uint64_t mdec_transfers() const { return mdec_transfers_; }
+
+    /// Save state: interrupt controller, DMA, timers, plain registers, pending audio and the
+    /// counters the host reads, then every device (chunk "MMIO" around GPU, SPU, CD-ROM, SIO0,
+    /// MDEC). Host-only statistics (GPU time, log throttling) are left out.
+    void save_state(psx::StateWriter& w) const;
+    void load_state(psx::StateReader& r);
 
     void attach(System* system, PsxContext& ctx) {
         system_ = system;

@@ -326,4 +326,91 @@ void CdRom::dma_read(uint32_t* words, uint32_t count) {
     }
 }
 
+// ---------------------------------------------------------------------------------------------
+// Save state
+
+namespace {
+constexpr size_t kMaxQueue = 4096;    // responses waiting (a few in practice)
+constexpr size_t kMaxFifo = 4096;     // parameter / response FIFO bytes
+}  // namespace
+
+void CdRom::save_state(psx::StateWriter& w) const {
+    w.begin(psx::state_tag("CDRM"), 1);
+    w.u64(now_);
+    w.u8(index_);
+    w.u8(irq_enable_);
+    w.u8(irq_flags_);
+    w.u64(hold_until_);
+    w.deque(params_);
+    w.deque(response_);
+    w.vec(data_);
+    w.size(data_pos_);
+    w.boolean(data_loaded_);
+    w.u8(mode_);
+    w.u8(stat_);
+    w.u32(setloc_lba_);
+    w.u32(read_lba_);
+    w.boolean(setloc_pending_);
+    w.boolean(reading_);
+    w.u8(filter_file_);
+    w.u8(filter_channel_);
+    w.pod(sector_);
+    w.pod(ready_);
+    w.u64(next_sector_);
+    w.size(queue_.size());
+    for (const Response& q : queue_) {
+        w.u8(q.irq);
+        w.vec(q.bytes);
+        w.u64(q.due);
+        w.boolean(q.sector);
+    }
+    xa_.save_state(w);
+    w.pod(atv_pending_);
+    w.pod(atv_);
+    w.boolean(muted_);
+    w.boolean(xa_muted_);
+    w.end();
+}
+
+void CdRom::load_state(psx::StateReader& r) {
+    r.begin(psx::state_tag("CDRM"), 1);
+    now_ = r.u64();
+    index_ = r.u8();
+    irq_enable_ = r.u8();
+    irq_flags_ = r.u8();
+    hold_until_ = r.u64();
+    r.deque(params_, kMaxFifo);
+    r.deque(response_, kMaxFifo);
+    r.vec(data_, Disc::kRawSector);
+    data_pos_ = r.size(data_.size(), 0);
+    data_loaded_ = r.boolean();
+    mode_ = r.u8();
+    stat_ = r.u8();
+    setloc_lba_ = r.u32();
+    read_lba_ = r.u32();
+    setloc_pending_ = r.boolean();
+    reading_ = r.boolean();
+    filter_file_ = r.u8();
+    filter_channel_ = r.u8();
+    r.pod(sector_);
+    r.pod(ready_);
+    next_sector_ = r.u64();
+    const size_t n = r.size(kMaxQueue);
+    queue_.clear();
+    for (size_t i = 0; i < n; ++i) {
+        Response q;
+        q.irq = r.u8();
+        r.vec(q.bytes, kMaxFifo);
+        q.due = r.u64();
+        q.sector = r.boolean();
+        queue_.push_back(std::move(q));
+    }
+    xa_.load_state(r);
+    r.pod(atv_pending_);
+    r.pod(atv_);
+    muted_ = r.boolean();
+    xa_muted_ = r.boolean();
+    r.end();
+}
+
 }  // namespace hle

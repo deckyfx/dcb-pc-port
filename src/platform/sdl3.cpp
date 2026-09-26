@@ -10,6 +10,7 @@
 #if defined(DCB_HAS_SDL3)
 
 #include "platform.hpp"
+#include "sdl3_trainer.hpp"
 #include "settings.hpp"
 
 #include <SDL3/SDL.h>
@@ -17,6 +18,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdlib>
+#include <cstring>
 #include <cstdio>
 #include <string>
 #include <system_error>
@@ -90,6 +92,10 @@ public:
     bool pump_events() override {
         SDL_Event ev;
         while (SDL_PollEvent(&ev)) {
+            if (trainer_ != nullptr && trainer_handle_event(*trainer_, window_, ev, settings_.trainer_keys)) {
+                key_held_.fill(false);  // the panel owns the keyboard; no stuck pad buttons after it
+                continue;
+            }
             switch (ev.type) {
             case SDL_EVENT_QUIT:
             case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
@@ -113,6 +119,12 @@ public:
                     commands_ |= kTogglePause;
                 } else if (bound(settings_.frame_advance_keys, ev.key.scancode)) {
                     commands_ |= kFrameAdvance;  // key repeat steps frame by frame while held
+                } else if (bound(settings_.fast_forward_keys, ev.key.scancode)) {
+                    // held state is read from key_held_ by fast_forward()
+                } else if (!ev.key.repeat && bound(settings_.scale_mode_keys, ev.key.scancode)) {
+                    toggle_scale_mode();
+                } else if (const uint32_t state = state_command(ev.key.scancode)) {
+                    if (!ev.key.repeat) commands_ |= state;
                 } else if (!ev.key.repeat) {
                     any_press_ = true;
                 }
@@ -176,8 +188,11 @@ public:
         } else if (!paused_) {
             draw_loading();
         }
-        if (paused_) draw_paused();
+        if (paused_) draw_label("PAUSED");
+        else if (fast_forward()) draw_label("FF >>");
+        draw_message();
         if (overlay_visible_) draw_overlay();
+        if (trainer_ != nullptr && trainer_->is_open()) trainer_draw(renderer_, *trainer_);
         SDL_RenderPresent(renderer_);
     }
 
@@ -190,6 +205,13 @@ public:
     }
 
     void set_paused(bool paused) override { paused_ = paused; }
+
+    bool fast_forward() const override {
+        for (const int code : settings_.fast_forward_keys)
+            if (code >= 0 && code < static_cast<int>(SDL_SCANCODE_COUNT) && key_held_[static_cast<size_t>(code)]) return true;
+        return false;
+    }
+    void attach_trainer(trainer::Trainer* trainer) override { trainer_ = trainer; }
 
     bool take_any_press() override {
         const bool pressed = any_press_;
@@ -225,24 +247,68 @@ public:
     /// While the game keeps its display off (boot, loading between scenes), show an animated
     /// "Loading..." after half a second so a black window doesn't look like a hang. Host-side
     /// only: the game's picture is never touched.
-    /// "PAUSED" in the top-left corner while the host holds the game.
-    void draw_paused() {
+    /// A short status label ("PAUSED", "FF >>") in the top-left corner.
+    void draw_label(const char* text) {
         int ww = 0, wh = 0;
         SDL_GetRenderOutputSize(renderer_, &ww, &wh);
         const float scale = std::max(1.0f, static_cast<float>(wh) / 240.0f);
         SDL_SetRenderScale(renderer_, scale, scale);
         SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
         SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 170);
-        const SDL_FRect panel{4.0f, 4.0f, 8.0f * 6.0f + 8.0f, 16.0f};
+        const SDL_FRect panel{4.0f, 4.0f, 8.0f * static_cast<float>(std::strlen(text)) + 8.0f, 16.0f};
         SDL_RenderFillRect(renderer_, &panel);
         SDL_SetRenderDrawColor(renderer_, 255, 220, 120, 255);
-        SDL_RenderDebugText(renderer_, 8.0f, 8.0f, "PAUSED");
+        SDL_RenderDebugText(renderer_, 8.0f, 8.0f, text);
         SDL_SetRenderScale(renderer_, 1.0f, 1.0f);
     }
 
     static bool bound(const std::vector<int>& keys, SDL_Scancode sc) {
         return std::find(keys.begin(), keys.end(), static_cast<int>(sc)) != keys.end();
     }
+
+    // ---- Save states: hotkeys and the on-screen notice ------------------------------------------
+
+    /// HostCommand bit for a save-state hotkey, or 0.
+    uint32_t state_command(SDL_Scancode sc) const {
+        if (bound(settings_.save_state_keys, sc)) return kSaveState;
+        if (bound(settings_.load_state_keys, sc)) return kLoadState;
+        if (bound(settings_.state_slot_keys, sc)) return kNextStateSlot;
+        return 0;
+    }
+
+    void show_message(const std::string& text) override {
+        message_ = text;
+        message_until_ = SDL_GetTicks() + kMessageMs;
+    }
+
+    void clear_audio() override {
+        if (audio_ != nullptr) SDL_ClearAudioStream(audio_);
+    }
+
+    /// The last notice, below the PAUSED label, drawn the same way, until it expires.
+    void draw_message() {
+        if (message_.empty()) return;
+        if (SDL_GetTicks() >= message_until_) {
+            message_.clear();
+            return;
+        }
+        int ww = 0, wh = 0;
+        SDL_GetRenderOutputSize(renderer_, &ww, &wh);
+        const float scale = std::max(1.0f, static_cast<float>(wh) / 240.0f);
+        SDL_SetRenderScale(renderer_, scale, scale);
+        SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 170);
+        const float y = paused_ ? 24.0f : 4.0f;
+        const SDL_FRect panel{4.0f, y, 8.0f * static_cast<float>(message_.size()) + 8.0f, 16.0f};
+        SDL_RenderFillRect(renderer_, &panel);
+        SDL_SetRenderDrawColor(renderer_, 255, 255, 255, 255);
+        SDL_RenderDebugText(renderer_, 8.0f, y + 4.0f, message_.c_str());
+        SDL_SetRenderScale(renderer_, 1.0f, 1.0f);
+    }
+
+    static constexpr uint64_t kMessageMs = 2000;
+    std::string message_;
+    uint64_t message_until_ = 0;
 
     void draw_loading() {
         if (++blank_frames_ < 30) return;
@@ -287,6 +353,14 @@ private:
         for (const std::string& w : warnings) SDL_Log("dcb: %s", w.c_str());
         SDL_Log("dcb: settings %s", path.string().c_str());
         if (trace_input_) SDL_Log("dcb: input trace on (keys, pad state, what the game reads)");
+    }
+
+    /// scale_mode hotkey: switch fit / integer scaling and remember the choice in settings.ini.
+    void toggle_scale_mode() {
+        const bool fit = settings_.display.scale_mode != ScaleMode::Fit;
+        settings_.display.scale_mode = fit ? ScaleMode::Fit : ScaleMode::Integer;
+        if (!settings_file_.set_and_save("display", "scale_mode", fit ? "fit" : "integer"))
+            SDL_Log("dcb: cannot save %s", settings_file_.path().string().c_str());
     }
 
     /// Alt+Enter: flip fullscreen and remember the choice in settings.ini.
@@ -397,6 +471,7 @@ private:
     bool any_press_ = false;
     uint32_t commands_ = 0;  ///< HostCommand bits since take_commands()
     bool paused_ = false;
+    trainer::Trainer* trainer_ = nullptr;  ///< [hotkeys] trainer panel (owned by the host loop)
     std::array<bool, SDL_SCANCODE_COUNT> key_held_{};    ///< keys down now (from key events)
     /// Frames a key still counts as pressed after going down, so a tap shorter than the game's own
     /// pad sampling interval is not lost.

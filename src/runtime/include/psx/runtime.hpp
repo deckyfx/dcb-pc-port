@@ -3,6 +3,7 @@
 // plug in behind MMIO and BIOS calls without the runtime depending on it.
 
 #include <psx/recomp.h>
+#include <psx/state.hpp>
 
 #include <array>
 #include <cstdint>
@@ -57,6 +58,10 @@ public:
     PollHandler* poll_handler() const { return poll_; }
     MmioHandler* mmio() const { return mmio_; }
     BiosHandler* bios() const { return bios_; }
+
+    /// Save state: CPU/GTE registers, guest time, main RAM and the scratchpad (chunk "CPU ").
+    void save_state(StateWriter& w) const;
+    void load_state(StateReader& r);
 
     /// The machine the C entry points (psx_slow_*, psx_dispatch) operate on.
     static Machine& from(PsxContext* ctx);

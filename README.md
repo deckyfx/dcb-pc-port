@@ -30,21 +30,21 @@ executable: MIPS R3000A → C, with native HLE of the kernel and Psy-Q libraries
 - [ ] Remaining game modes and overlays (EVOSEG, SAISEG, SUBSEG, SUGSEG, ENDSEG)
 - [x] Memory card saves verified in game (`saves/<serial>/card1.mcd`, raw 128 KB `.mcd` image)
 - [ ] `PSX2.EXE` mode (`LoadExec`)
-- [ ] One-time asset import from the player's own dump: no disc needed afterwards, no copyrighted data in the download
+- [x] One-time asset import from the player's own dump: no disc needed afterwards, no copyrighted data in the download (`dcb --import`, or a file picker on first run)
 - [ ] Windows x64 release build tested on Windows
-- [ ] US version (SLUS-01328, Digimon Digital Card Battle)
-- [x] PC options: `settings.ini` (window scale, filtering, aspect, key/gamepad rebinding, volume)
+- [ ] English build: JP code + English assets from the player's US dump (SLUS-01328) ([research and plan](docs/HYBRID_EN_ASSETS.md))
+- [x] PC options: `settings.ini` (window scale, filtering, aspect, key/gamepad rebinding, volume); resizable window, picture fits it (F8: fit / integer)
 - [x] Performance overlay (FPS, game FPS, CPU/GPU load, audio queue): F3
-- [x] Host-driven main loop: the game runs on fibers; pause (P), frame advance (N) ([design](docs/HOST_MAIN_LOOP.md))
+- [x] Host-driven main loop: the game runs on fibers; pause (P), frame advance (N), fast-forward (hold Tab) ([design](docs/HOST_MAIN_LOOP.md))
 - [x] Input record / replay (`DCB_RECORD`, `DCB_REPLAY`): reproducible runs, bit-identical frames
+- [x] Save states within a run: F5 save, F7 load, F6 slot 1-4 (Linux, Windows MinGW build)
 - [x] GTE commands implemented (unit-tested; awaiting in-game use)
 - [x] Memory card file API (`bu00:`) implemented and used by the game's saves
 - [x] CI: Linux tests + Windows .exe (manual trigger for now)
 - [ ] Enhance / upscale assets
 - [ ] Enhancements: widescreen, translation
-- [ ] Fast-forward hotkey
-- [ ] Save states (within a run)
-- [ ] Trainer: cheat codes, memory search
+- [x] Save states within a run: F5 save, F7 load, F6 slot (bit-identical after a load)
+- [x] Trainer: GameShark-style cheat codes (`cheats/<serial>.txt`) and memory search, F4 panel
 - [ ] Network Battle
 - [ ] Custom Battle mode: pick the opponent and the arena
 - [ ] Rust port of the game logic
@@ -54,7 +54,8 @@ executable: MIPS R3000A → C, with native HLE of the kernel and Psy-Q libraries
 ```
 disc/<serial>/          disc images (.bin/.cue), one folder per serial       [ignored]
 bios/                   retail BIOS dumps: reference and diff-testing only   [ignored]
-extracted/<serial>/     extract_disc.py output: fs/, exe/boot.*, manifest    [ignored]
+extracted/<serial>/     imported game data: layout.txt, iso_meta.bin, fs/    [ignored]
+                        (extract_disc.py adds exe/boot.*, manifest for dev)
 assets/raw|converted/   asset pipeline in/out                                [ignored]
 generated/<serial>/     MIPS→C output of tools/recomp; never hand-edited     [ignored]
 config/<serial>/        recompiler inputs: functions.json, overlays, overrides
@@ -65,7 +66,7 @@ src/runtime/            CPU context, memory bus, dispatch, GTE (the C ABI of gen
 src/hle/                kernel + Psy-Q replacements, MMIO fallback (see src/hle/README.md)
 src/platform/           host seam: SDL3 window, input, audio (+ headless)
 src/game/               entry point + hand-written overrides of recompiled functions
-tools/disc/             extract_disc.py (+ tests)
+tools/disc/             extract_disc.py (+ tests), verify_import.sh
 tools/ghidra/           setup_ghidra_mcp.sh, import_ghidra.sh
 tools/recomp/           the MIPS→C recompiler (C++ host tool)
 tools/assets/           TIM / VAB / XA / STR converters
@@ -75,7 +76,8 @@ tests/                  runtime unit tests (ctest)
 ## Workflow
 
 ```bash
-# 1. Disc → filesystem + boot EXE
+# 1. Disc → filesystem + boot EXE (dev tool: also writes exe/boot.* for Ghidra and a manifest;
+#    players use the native importer instead, see "Game data" below — same layout.txt/fs/iso_meta.bin)
 python3 tools/disc/extract_disc.py disc/SLPS-03101/dcb_jp.cue -o extracted/SLPS-03101
 
 # 2. Boot EXE → Ghidra (ghidra_psx_ldr loader + Psy-Q signatures), ~3 min
@@ -101,10 +103,36 @@ cmake --preset windows-cross && cmake --build --preset windows-cross
 ./build/linux-debug/dcb            # or ./dcb.sh
 ```
 
-**Game data.** `dcb [extracted-dir | disc.cue | disc.bin]`. Without an argument it uses, in order:
-`DCB_DISC`, `extracted/<serial>/` (native extracted data: `layout.txt` + `fs/` + `iso_meta.bin`,
-written by step 1), then a `.cue`/`.bin` in `disc/<serial>/` or the current directory. Extracted data
-rebuilds every CD sector on demand, so the disc image is not needed once it has been extracted.
+**Game data.** The program ships without any game data. The player imports a dump of their own
+disc once, natively (no Python needed):
+
+```bash
+dcb --import <disc.cue|disc.bin> [dest-dir] [--force]   # default dest-dir: ./extracted
+```
+
+This reads a raw `.cue`/`.bin` dump (Mode 2, 2352-byte sectors; a `.bin` without its `.cue` works
+too), identifies the game from `SYSTEM.CNF` and writes `extracted/<serial>/`: `layout.txt`,
+`iso_meta.bin` and `fs/` (XA/STR files as whole sectors, `*.raw2352`). The output is byte-identical
+to `tools/disc/extract_disc.py` (checked by `ctest` on a synthetic disc, and on a real dump with
+`tools/disc/verify_import.sh <disc.cue>`). The import goes to a temporary directory that is renamed
+into place only when complete, checks free space first, and rejects wrong input with a clear
+message: cooked `.iso`/`.chd`/`.pbp`, an audio track, a non-PlayStation disc, a truncated dump, or
+another game. Accepted discs: SLPS-03101 (the version this port plays) and SLUS-01328 (kept for a
+future "Japanese code + English assets" build). Other serials are refused: this build could not run
+them, so importing would only fill the disk.
+
+**First run.** When no game data is found, the SDL build explains what is needed, opens the system
+file dialog (`.cue`/`.bin`), imports with a progress window ("Importing… NN%", close it to cancel)
+and boots. Picking the US disc imports it and asks again for the Japanese one. Headless runs
+(`DCB_HEADLESS=1`) print these instructions and exit with status 1. After the import the disc image
+is no longer needed. (`DCB_IMPORT_IMAGE=<path>` skips the explanation and the dialog, for automated
+tests of the flow.)
+
+**Where data is found.** `dcb [extracted-dir | disc.cue | disc.bin]`. Without an argument it uses, in
+order: `DCB_DISC`, `extracted/<serial>/` (imported data), then a `.cue`/`.bin` in `disc/<serial>/`
+or the current directory. Extracted data rebuilds every CD sector on demand, so the game runs from
+it alone (frame-for-frame identical to the disc image), and individual files can later be replaced
+(translation, enhanced assets).
 
 Select the target with `-DDCB_GAME_ID=SLUS-01328` (default: `SLPS-03101`).
 
@@ -129,6 +157,55 @@ point instead. Guest time is virtual, so a replay reproduces the run frame for f
 stores only changes, starts with a `DCB-INPUT <version> <game id>` header (logs for another
 version or game are rejected) and is flushed about once a second, so a crash still leaves a
 usable file. Both variables can be combined to re-record a replay.
+
+**Trainer (cheats and memory search).** `F4` (`[hotkeys] trainer`) opens a panel over the game,
+which stays paused while it is open; `F4` or `Esc` closes it, `Tab` switches between its two pages.
+Cheats live in `cheats/<serial>.txt` (e.g. `cheats/SLPS-03101.txt`), looked up in the current
+directory, then next to the executable (`DCB_CHEATS=<file>` overrides); the folder is gitignored
+and [`docs/cheats.example.txt`](docs/cheats.example.txt) is a template. The format is a name in
+brackets with `on`/`off`, then PS1 GameShark / Action Replay lines:
+
+```
+# comment
+[Infinite money] on
+800B1234 270F      ; 16-bit write
+```
+
+Supported code types: `80` / `30` (16 / 8-bit write), `10` / `11` and `20` / `21` (16 / 8-bit
+increment / decrement), `D0`–`D3` and `E0`–`E3` (16 / 8-bit ==, !=, <, > conditions on the next
+line; consecutive conditions must all hold), `C0` (gate the rest of the cheat) and `50` (serial
+repeater). `C1`, `C2`, `D4`–`D6`, `1F` and any other type are rejected with a message and the
+cheat is never half-applied. Enabled cheats are written once per frame at the frame boundary.
+`DCB_TRACE_CHEATS=1` logs each frame's writes (and how many bytes the game had changed back).
+
+- *Cheats page*: `Up`/`Down` select, `Enter`/`Space` on/off, `Del` remove, `R` reload the file,
+  `S` save it (toggles, removals and frozen values; your comments are kept).
+- *Search page*: pick the value size (8/16/32-bit) and signed or unsigned with `Left`/`Right`, type a
+  value (decimal, `-5`, `0x1F` or `$1F`), pick a filter (`= != > <` value, or `changed`,
+  `unchanged`, `increased`, `decreased` since the last filter) and press `Enter`. Workflow: search
+  the current amount, close the panel, let it change in game, reopen and filter again until a few
+  addresses remain. On a result, `F` freezes it (adds an enabled cheat holding the typed value, or
+  the current one if the field is empty; `S` on the Cheats page saves it) and `W` writes the
+  typed value once. The first 500 results are listed; the count is always shown.
+
+**Save states.** While playing, `F5` saves the game into the selected slot, `F7` loads it and `F6`
+selects the next slot (1-4); a short notice confirms each ("State 2 saved", "Slot 3", "No state in
+slot 1"). They work while paused too. The keys are `save_state`, `load_state` and `state_slot` under
+`[hotkeys]` in `settings.ini`. Limits:
+- States live in memory for the current run only: they are gone when the game closes, and cannot
+  be written to disk or moved to another machine (they contain host stack addresses).
+- Memory cards are not part of a state: loading an older state does not undo a save written to
+  `card1.mcd` since. Avoid loading a state taken in the middle of a memory-card save.
+- Supported by the Linux build (glibc, x86-64 / ARM64) and the Windows build made with MinGW (the
+  release `.exe`). An MSVC build or macOS shows "save states are not supported on this platform".
+
+For scripted checks, `DCB_STATE_SAVE_AT=<frame>[,...]` / `DCB_STATE_LOAD_AT=<frame>[,...]` save and
+load the selected slot after that many frames, `DCB_EXIT_AT=<frame>` quits cleanly, and
+`DCB_STATE_STRESS=<n>` saves, runs *n* frames, loads and runs them again, and aborts if the
+machine differs (every frame boundary with `n=1`). Frame numbers count every frame run, as the
+`DCB_SNAPSHOT` file names do: after a load at *M* of a state saved at *N*, snapshot *M+k* equals
+snapshot *N+k* of a run without the load. With `DCB_RECORD`, loading a state rewinds the recording
+to the loaded frame, so the log replays the timeline that was finally played.
 
 ## Ghidra MCP
 

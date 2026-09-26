@@ -3,12 +3,16 @@
 
 #include "bios/bios.hpp"
 #include "cdrom/disc.hpp"
+#include "gpu/hd_textures.hpp"
 #include "hw/mmio.hpp"
 #include "system.hpp"
 
+#include "first_run.hpp"
 #include "input_log.hpp"
 #include "platform.hpp"
+#include "save_states.hpp"
 #include "settings.hpp"
+#include "trainer.hpp"
 
 #include <psx/runtime.hpp>
 
@@ -119,6 +123,9 @@ int main(int argc, char** argv) {
     std::setvbuf(stdout, nullptr, _IOLBF, 0);
     arm_watchdog();
 
+    // dcb --import <disc.cue|disc.bin> [dest]: one-time import of the player's dump, then exit.
+    if (argc > 1 && std::string(argv[1]) == "--import") return platform::import_command(argc, argv, DCB_GAME_ID);
+
     // Usage: dcb [extracted-dir|disc.cue|disc.bin]   (a PS-EXE path is also accepted, for development)
     std::filesystem::path disc_hint, exe_override;
     if (argc > 1) {
@@ -135,12 +142,35 @@ int main(int argc, char** argv) {
         hle::System system(machine.ctx(), mmio, bios);
         bios.attach(&system);
         bios.insert_cards(std::filesystem::path("saves") / DCB_GAME_ID);
-        const auto disc_path = hle::Disc::locate(DCB_GAME_ID, disc_hint);
+        // No game data yet: the SDL build asks for the player's dump and imports it (first run).
+        const auto disc_path = platform::locate_or_import(DCB_GAME_ID, disc_hint, !std::getenv("DCB_HEADLESS"));
         // The boot executable's code is compiled in; its data comes from the disc, like everything else.
         auto disc = hle::Disc::open(disc_path);
         const std::vector<uint8_t> boot = exe_override.empty() ? disc->read_boot_exe() : std::vector<uint8_t>{};
         std::printf("[dcb] game data: %s\n", disc->describe().c_str());
         mmio.insert_disc(std::move(disc));
+        // HD texture replacement. Defaults read from the project folder
+        // (assets/converted/<id>/assets_manifest.json + textures, written by
+        // dcb_asset_ripper); DCB_HD_MANIFEST / DCB_HD_PACK override them.
+        // Without both halves the game runs exactly as before (all uploads
+        // commit verbatim).
+        {
+            const char* env_manifest = std::getenv("DCB_HD_MANIFEST");
+            const char* env_pack = std::getenv("DCB_HD_PACK");
+            const std::string def_manifest =
+                std::string("assets/converted/") + DCB_GAME_ID + "/assets_manifest.json";
+            const std::string def_pack = std::string("assets/converted/") + DCB_GAME_ID + "/textures";
+            const std::string manifest = env_manifest ? env_manifest : def_manifest;
+            const std::string art = env_pack ? env_pack : def_pack;
+            std::error_code hd_ec;
+            if (std::filesystem::is_regular_file(manifest, hd_ec)) {
+                if (mmio.gpu().install_hd()->load(manifest, art)) {
+                    std::printf("[dcb] HD textures armed (%s)\n", manifest.c_str());
+                } else {
+                    std::printf("[dcb] HD textures unavailable (continuing without them)\n");
+                }
+            }
+        }
         mmio.attach(&system, machine.ctx());
         machine.set_bios_handler(&bios);
         machine.set_mmio_handler(&mmio);
@@ -154,13 +184,26 @@ int main(int argc, char** argv) {
         if (!host) host = platform::make_headless();
         // DCB_RECORD / DCB_REPLAY: input record and replay (static: std::exit must close the log).
         static platform::InputLog input_log = platform::InputLog::from_env(DCB_GAME_ID);
+        // Trainer: cheats/<serial>.txt (DCB_CHEATS) applied at each frame boundary, F4 panel.
+        const std::unique_ptr<trainer::Trainer> cheats = trainer::make_trainer(machine.ctx().ram, DCB_GAME_ID);
+        host->attach_trainer(cheats.get());
         // Host work after each game frame (the game is suspended at its VBLANK): input for the
         // next frame, present, audio, overlay numbers, debug dumps.
         platform::DisplayArea area;
+        const auto read_display = [&] {
+            const hle::Gpu::Display d = mmio.gpu().display();
+            area.x = d.x;
+            area.y = d.y;
+            area.width = d.width;
+            area.height = d.height;
+            area.rgb24 = d.rgb24;
+            area.enabled = d.enabled;
+        };
+        dcb::HostFrameState frame_state;  // guest-visible host values: part of every save state
         const auto guest_frame = [&] {
             // Input. While a movie plays (the MDEC is busy), any key or button skips it: the game
             // itself only accepts Start, so a press becomes a short Start tap.
-            static uint64_t pad_frame = 0, mdec_seen = 0, movie_until = 0, skip_until = 0;
+            auto& [pad_frame, mdec_seen, movie_until, skip_until] = frame_state;
             bool any_press = host->take_any_press();
             uint16_t pad = static_cast<uint16_t>(host->pad_buttons(0) & scripted_pad(pad_frame, &any_press));
             if (mmio.mdec_transfers() != mdec_seen) {
@@ -180,13 +223,7 @@ int main(int argc, char** argv) {
                              static_cast<unsigned long long>(pad_frame), sent_seen);
             }
             ++pad_frame;
-            const hle::Gpu::Display d = mmio.gpu().display();
-            area.x = d.x;
-            area.y = d.y;
-            area.width = d.width;
-            area.height = d.height;
-            area.rgb24 = d.rgb24;
-            area.enabled = d.enabled;
+            read_display();
             const auto present_start = std::chrono::steady_clock::now();
             host->present(mmio.gpu().vram(), area);
             // Performance overlay: once per second, turn the counters into rates and shares.
@@ -234,29 +271,45 @@ int main(int argc, char** argv) {
         // The host loop: the game runs on its own fibers, one frame per resume_guest(), and this
         // thread owns everything in between (docs/HOST_MAIN_LOOP.md).
         system.start(exe.pc0);
-        bool paused = false;
+        dcb::SaveStates states({machine, mmio, bios, system}, frame_state, input_log, *host);
+        bool paused = false, frozen = false;  // frozen: the host held the game (pause, trainer panel)
         for (;;) {
             if (!host->pump_events()) {
                 std::printf("[dcb] window closed\n");
                 break;
             }
             const uint32_t commands = host->take_commands();
+            if (states.handle(commands)) {  // save states: between frames, also while paused
+                read_display();
+                host->present(mmio.gpu().vram(), area);
+            }
             if (commands & platform::kTogglePause) {
                 paused = !paused;
                 host->set_paused(paused);
             }
-            if (paused && !(commands & platform::kFrameAdvance)) {
+            if ((paused || cheats->is_open()) && !(commands & platform::kFrameAdvance)) {
                 host->present(mmio.gpu().vram(), area);  // the frozen picture (window resizes, overlay)
                 std::this_thread::sleep_for(std::chrono::milliseconds(16));
+                frozen = true;
                 continue;
             }
+            cheats->apply_frame();
             if (!system.resume_guest()) {
                 if (!system.error().empty()) throw std::runtime_error(system.error());
                 std::printf("[dcb] the game's main program returned\n");
                 break;
             }
             guest_frame();
-            if (!paused) system.pace();
+            states.frame_done();
+            if (states.exit_requested()) {
+                std::printf("[dcb] DCB_EXIT_AT: stopping after %s frames\n", std::getenv("DCB_EXIT_AT"));
+                break;
+            }
+            // After a hold or while unthrottled, line the clocks up instead of sleeping off the time
+            // gained or rushing to make up the time lost.
+            if (paused || frozen || host->fast_forward()) system.resync_pacing();
+            else system.pace();
+            frozen = false;
         }
     } catch (const std::exception& e) {
         std::fprintf(stderr, "[dcb] fatal: %s\n", e.what());

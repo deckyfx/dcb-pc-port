@@ -42,6 +42,11 @@ public:
     /// Slot 1 is a card image in `save_dir` (created formatted when missing); slot 2 is empty.
     void insert_cards(const std::filesystem::path& save_dir);
 
+    /// Save state: heap bookkeeping, events, interrupt chains and hooks, card file system
+    /// (chunk "BIOS"). Memory-card images are not included (they are files on disk).
+    void save_state(psx::StateWriter& w) const;
+    void load_state(psx::StateReader& r);
+
 private:
     using Handler = void (Bios::*)(PsxContext& ctx);
 
@@ -68,7 +73,13 @@ private:
     std::map<uint32_t, Handler> handlers_;  ///< key: table << 8 | function
     Heap heap_;
     std::array<Event, kMaxEvents> events_{};
-    std::vector<IntHandler> int_handlers_;
+    /// Registered chain entries, most recent first. A fixed array, not a vector: the chains run
+    /// guest code that can reach a frame boundary, and the running copy of this list sits on
+    /// the game's stack then (save states restore stack bytes; heap memory would dangle).
+    static constexpr size_t kMaxIntHandlers = 32;
+    using IntHandlers = std::array<IntHandler, kMaxIntHandlers>;
+    IntHandlers int_handlers_{};
+    size_t int_handler_count_ = 0;
     uint32_t hook_entry_int_ = 0;
     uint32_t clear_pad_ = 1;
     std::array<uint32_t, 4> clear_rcnt_{1, 1, 1, 1};

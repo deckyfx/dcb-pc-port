@@ -6,6 +6,11 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <string>
+
+namespace trainer {
+class Trainer;
+}
 
 namespace platform {
 
@@ -56,6 +61,9 @@ struct FrameStats {
 enum HostCommand : uint32_t {
     kTogglePause = 1u << 0,   ///< [hotkeys] pause
     kFrameAdvance = 1u << 1,  ///< [hotkeys] frame_advance
+    kSaveState = 1u << 2,     ///< [hotkeys] save_state: into the selected slot
+    kLoadState = 1u << 3,     ///< [hotkeys] load_state: from the selected slot
+    kNextStateSlot = 1u << 4, ///< [hotkeys] state_slot: select the next slot
 };
 
 class Platform {
@@ -77,6 +85,15 @@ public:
     virtual uint32_t take_commands() { return 0; }
     /// Whether the game is paused (the backend shows it).
     virtual void set_paused(bool paused) { (void)paused; }
+    /// Whether the fast-forward hotkey is held (the game should run unthrottled).
+    virtual bool fast_forward() const { return false; }
+    /// The trainer panel ([hotkeys] trainer) to route keys to and draw; backends without a
+    /// window ignore it. The host loop keeps the game paused while trainer->is_open().
+    virtual void attach_trainer(trainer::Trainer* trainer) { (void)trainer; }
+    /// Show a short notice (e.g. "State 2 saved") for a couple of seconds.
+    virtual void show_message(const std::string& text) { (void)text; }
+    /// Drop audio queued for playback (it belongs to a timeline that was just replaced).
+    virtual void clear_audio() {}
 };
 
 /// Headless backend: no window, no audio, nothing pressed (tests / CI / batch runs).

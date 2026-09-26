@@ -299,4 +299,56 @@ void Mdec::emit_mono() {
     }
 }
 
+// ---------------------------------------------------------------------------------------------
+// Save state
+
+void Mdec::save_state(psx::StateWriter& w) const {
+    w.begin(psx::state_tag("MDEC"), 1);
+    w.pod(state_);
+    w.u32(command_);
+    w.u32(remaining_);
+    w.u16(param_field_);
+    w.u32(table_pos_);
+    w.boolean(dma_in_enabled_);
+    w.boolean(dma_out_enabled_);
+    w.pod(quant_y_);
+    w.pod(quant_uv_);
+    w.pod(scale_);
+    w.pod(blk_);
+    w.u32(coef_);
+    w.u32(q_scale_);
+    w.u32(block_);
+    w.pod(cr_);
+    w.pod(cb_);
+    w.pod(rgb_);
+    w.vec(out_);
+    w.size(out_pos_);
+    w.end();
+}
+
+void Mdec::load_state(psx::StateReader& r) {
+    r.begin(psx::state_tag("MDEC"), 1);
+    r.pod(state_);
+    if (state_ > State::ScaleTable) r.fail("bad MDEC state");
+    command_ = r.u32();
+    remaining_ = r.u32();
+    param_field_ = r.u16();
+    table_pos_ = r.u32();
+    dma_in_enabled_ = r.boolean();
+    dma_out_enabled_ = r.boolean();
+    r.pod(quant_y_);
+    r.pod(quant_uv_);
+    r.pod(scale_);
+    r.pod(blk_);
+    coef_ = r.u32();
+    q_scale_ = r.u32();
+    block_ = r.u32();
+    r.pod(cr_);
+    r.pod(cb_);
+    r.pod(rgb_);
+    r.vec(out_, size_t{1} << 24);
+    out_pos_ = r.size(out_.size(), 0);
+    r.end();
+}
+
 }  // namespace hle

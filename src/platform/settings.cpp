@@ -328,8 +328,9 @@ IniDocument default_settings_ini() {
     doc.set("display", "scale", std::to_string(kScaleDefault));
     doc.add_comment("display", "Start fullscreen (Alt+Enter toggles it and is remembered here).");
     doc.set("display", "fullscreen", "false");
-    doc.add_comment("display", "integer = whole multiples of 320x240 (sharpest), fit = fill the window.");
-    doc.set("display", "scale_mode", "integer");
+    doc.add_comment("display", "fit = fill the window (follows resizes), integer = whole multiples of 320x240");
+    doc.add_comment("display", "(sharpest, black borders in between). The scale_mode hotkey switches it.");
+    doc.set("display", "scale_mode", "fit");
     doc.add_comment("display", "nearest = crisp pixels, linear = smoothed.");
     doc.set("display", "filter", "nearest");
     doc.add_comment("display", "4:3 = original shape, stretch = fill the window.");
@@ -357,6 +358,16 @@ IniDocument default_settings_ini() {
     doc.add_comment("hotkeys", "pause: freeze / resume the game. frame_advance: while paused, run one frame.");
     doc.set("hotkeys", "pause", "P, Pause");
     doc.set("hotkeys", "frame_advance", "N");
+    doc.add_comment("hotkeys", "fast_forward: hold to run the game unthrottled. scale_mode: switch fit / integer.");
+    doc.set("hotkeys", "fast_forward", "Tab");
+    doc.set("hotkeys", "scale_mode", "F8");
+    doc.add_comment("hotkeys", "trainer: cheat codes (cheats/<serial>.txt) and memory search; pauses the game.");
+    doc.set("hotkeys", "trainer", "F4");
+    doc.add_comment("hotkeys", "Save states (kept in memory for this run): save_state / load_state use the selected");
+    doc.add_comment("hotkeys", "slot, state_slot selects the next one (1-4).");
+    doc.set("hotkeys", "save_state", "F5");
+    doc.set("hotkeys", "load_state", "F7");
+    doc.set("hotkeys", "state_slot", "F6");
     return doc;
 }
 
@@ -366,7 +377,7 @@ Settings parse_settings(const IniDocument& doc, const BindingResolvers& resolver
     s.display.scale = r.integer("display", "scale", kScaleDefault, kScaleMin, kScaleMax);
     s.display.fullscreen = r.boolean("display", "fullscreen", false);
     s.display.scale_mode =
-        r.choice("display", "scale_mode", ScaleMode::Integer, "integer", ScaleMode::Integer, "fit", ScaleMode::Fit);
+        r.choice("display", "scale_mode", ScaleMode::Fit, "integer", ScaleMode::Integer, "fit", ScaleMode::Fit);
     s.display.filter =
         r.choice("display", "filter", FilterMode::Nearest, "nearest", FilterMode::Nearest, "linear", FilterMode::Linear);
     s.display.aspect =
@@ -392,6 +403,12 @@ Settings parse_settings(const IniDocument& doc, const BindingResolvers& resolver
     s.overlay_keys = hotkey("overlay", "F3");
     s.pause_keys = hotkey("pause", "P, Pause");
     s.frame_advance_keys = hotkey("frame_advance", "N");
+    s.fast_forward_keys = hotkey("fast_forward", "Tab");
+    s.scale_mode_keys = hotkey("scale_mode", "F8");
+    s.trainer_keys = hotkey("trainer", "F4");
+    s.save_state_keys = hotkey("save_state", "F5");
+    s.load_state_keys = hotkey("load_state", "F7");
+    s.state_slot_keys = hotkey("state_slot", "F6");
     return s;
 }
 

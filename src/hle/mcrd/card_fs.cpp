@@ -375,4 +375,50 @@ bool CardFs::format(const std::string& device) {
     return true;
 }
 
+// ---------------------------------------------------------------------------------------------
+// Save state
+
+void CardFs::save_state(psx::StateWriter& w) const {
+    w.begin(psx::state_tag("CDFS"), 1);
+    for (const File& f : files_) {
+        w.boolean(f.used);
+        w.pod(f.slot);
+        w.u32(f.head);
+        w.u32(f.size);
+        w.u32(f.pos);
+        w.u32(f.mode);
+        w.u32(f.error);
+        w.pod(f.chain);
+        w.u32(f.chain_len);
+    }
+    w.u32(last_error_);
+    w.boolean(last_async_);
+    w.pod(find_slot_);
+    w.str(find_pattern_);
+    w.u32(find_next_);
+    w.end();
+}
+
+void CardFs::load_state(psx::StateReader& r) {
+    r.begin(psx::state_tag("CDFS"), 1);
+    for (File& f : files_) {
+        f.used = r.boolean();
+        r.pod(f.slot);
+        f.head = r.u32();
+        f.size = r.u32();
+        f.pos = r.u32();
+        f.mode = r.u32();
+        f.error = r.u32();
+        r.pod(f.chain);
+        f.chain_len = r.u32();
+        if (f.slot < 0 || f.slot > 1 || f.chain_len > kDirBlocks) r.fail("bad memory-card file");
+    }
+    last_error_ = r.u32();
+    last_async_ = r.boolean();
+    r.pod(find_slot_);
+    r.str(find_pattern_, 1024);
+    find_next_ = r.u32();
+    r.end();
+}
+
 }  // namespace hle

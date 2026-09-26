@@ -1,0 +1,35 @@
+# Cheat file template for the DCB PC port. Copy it to cheats/<serial>.txt next to settings.ini
+# (the current directory or the executable's folder), e.g. cheats/SLPS-03101.txt, or point
+# DCB_CHEATS=<file> at it. F4 in game opens the trainer: toggle cheats, reload this file, search
+# memory and freeze what you find (S saves the list back here, comments kept).
+#
+# A cheat is a name in brackets, "on" or "off", then PS1 GameShark / Action Replay code lines:
+#   80aaaaaa vvvv   write 16-bit       30aaaaaa 00vv   write 8-bit
+#   10aaaaaa vvvv   add (16-bit)       11aaaaaa vvvv   subtract (16-bit)
+#   20aaaaaa 00vv   add (8-bit)        21aaaaaa 00vv   subtract (8-bit)
+#   D0/D1/D2/D3aaaaaa vvvv   run the next line only if the 16-bit value is ==, !=, <, > vvvv
+#   E0/E1/E2/E3aaaaaa 00vv   the same for an 8-bit value
+#   C0aaaaaa vvvv   run the rest of this cheat only if the 16-bit value == vvvv
+#   5000nnss iiii   repeat the next 80/30 line nn times, address +ss and value +iiii each time
+# Addresses are 80000000-801FFFFF (main RAM). Enabled cheats are applied once per frame.
+# Not supported (the cheat is rejected with a message): C1, C2, D4, D5, D6, 1F and anything else.
+# Comments start with '#' or ';' (also after a code line).
+
+# --- Found by memory search, UNVERIFIED --------------------------------------------------------
+# 800DF1E8 is a 32-bit counter inside the loaded save data (RAM 800DEFC4 holds the save image)
+# that the game increments every frame, both in menus and in the field; probably the play-time
+# counter shown on the load screen. Found with the trainer's search engine on RAM dumps of a
+# scripted run ("increased" filter over six snapshots); holding it was checked headless (the game
+# increments it, the cheat puts it back every frame), its meaning was not.
+[Play time counter held at 0 (unverified)] off
+800DF1E8 0000
+800DF1EA 0000
+
+# --- Examples of the code types (addresses are placeholders; keep them off) --------------------
+[Example: set a value only while it is below 100] off
+D2012340 0064
+80012340 03E7
+
+[Example: fill 16 bytes with 0x04] off
+50001001 0000
+30012400 0004

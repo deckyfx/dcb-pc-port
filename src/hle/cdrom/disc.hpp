@@ -2,7 +2,8 @@
 // Where the game's data comes from. The CD-ROM model asks for raw 2352-byte sectors by LBA; two
 // sources can answer:
 //   ImageDisc      the original .cue/.bin dump
-//   ExtractedDisc  files extracted by tools/disc/extract_disc.py (layout.txt + fs/ + iso_meta.bin):
+//   ExtractedDisc  files imported from the dump by `dcb --import` / the first-run import
+//                  (importer.hpp) or tools/disc/extract_disc.py (layout.txt + fs/ + iso_meta.bin):
 //                  sectors are rebuilt on demand, so the game runs without the disc image and
 //                  individual files can later be replaced (translation, enhanced assets).
 
@@ -38,7 +39,10 @@ public:
 
     /// Find the game data: `hint` (command-line argument), DCB_DISC, extracted/<serial>/ (native
     /// data, preferred), then a .cue/.bin under disc/<serial>/ or in the current directory.
+    /// Throws with instructions (import the dump) when nothing is found.
     static std::filesystem::path locate(const std::string& serial, const std::filesystem::path& hint = {});
+    /// As locate(), but returns an empty path when nothing is found.
+    static std::filesystem::path find(const std::string& serial, const std::filesystem::path& hint = {});
 };
 
 /// The original dump: first data track of a .cue, or a raw .bin.
@@ -55,7 +59,7 @@ private:
     uint32_t sectors_ = 0;
 };
 
-/// Sectors rebuilt from extracted files (see tools/disc/extract_disc.py write_layout()).
+/// Sectors rebuilt from extracted files (see importer.hpp / tools/disc/extract_disc.py write_layout()).
 class ExtractedDisc final : public Disc {
 public:
     explicit ExtractedDisc(const std::filesystem::path& dir);

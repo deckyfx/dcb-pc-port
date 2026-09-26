@@ -97,12 +97,19 @@ public:
     /// Write the `end` line and close. Idempotent; the destructor calls it.
     void close();
 
+    /// A save state was loaded: forget everything recorded for `frame` and later (the file is
+    /// rewritten) and continue recording from `frame`.
+    void rewind(uint64_t frame);
+
     /// Number of event lines written so far.
     size_t events_written() const { return events_; }
 
 private:
     void write_line(const std::string& line);
 
+    std::filesystem::path path_;
+    std::string game_id_;
+    std::vector<InputEvent> log_;   ///< every event written, for rewind()
     std::FILE* file_ = nullptr;
     bool started_ = false;
     uint16_t last_pad_ = 0xFFFF;
@@ -130,6 +137,10 @@ public:
     /// Per frame, just before the state is handed to the game: while replaying, overwrite
     /// `pad`/`any_press` with the recorded state; then record the result.
     void apply(uint64_t frame, uint16_t& pad, bool& any_press);
+
+    /// A save state was loaded and the game continues at `frame`: a finished replay resumes if
+    /// `frame` is inside it again, and the recording drops what it logged from `frame` on.
+    void rewind(uint64_t frame);
 
     bool replaying() const { return replay_.has_value() && !replay_done_; }
     bool recording() const { return recorder_ != nullptr; }

@@ -309,4 +309,57 @@ void Mmio::note(uint32_t phys, bool write, uint32_t value, unsigned width) {
     }
 }
 
+// ---------------------------------------------------------------------------------------------
+// Save state
+
+void Mmio::save_state(psx::StateWriter& w) const {
+    w.begin(psx::state_tag("MMIO"), 1);
+    w.u32(i_stat_);
+    w.u32(i_mask_);
+    w.pod(dma_);
+    w.u32(dpcr_);
+    w.u32(dicr_);
+    for (const Timer& t : timer_) {
+        w.u32(t.mode);
+        w.u32(t.target);
+        w.u64(t.base);
+    }
+    w.u64(spu_samples_);
+    w.vec(audio_);
+    w.u64(display_flips_);
+    w.u64(mdec_transfers_);
+    w.map(misc_);
+    gpu_.save_state(w);
+    spu_.save_state(w);
+    cdrom_.save_state(w);
+    sio_.save_state(w);
+    mdec_.save_state(w);
+    w.end();
+}
+
+void Mmio::load_state(psx::StateReader& r) {
+    r.begin(psx::state_tag("MMIO"), 1);
+    i_stat_ = r.u32();
+    i_mask_ = r.u32();
+    r.pod(dma_);
+    dpcr_ = r.u32();
+    dicr_ = r.u32();
+    for (Timer& t : timer_) {
+        t.mode = r.u32();
+        t.target = r.u32();
+        t.base = r.u64();
+    }
+    spu_samples_ = r.u64();
+    r.vec(audio_, size_t{Spu::kSampleRate} * 2 * 4);
+    display_flips_ = r.u64();
+    mdec_transfers_ = r.u64();
+    r.map(misc_, 1u << 16);
+    gpu_.load_state(r);
+    spu_.load_state(r);
+    cdrom_.load_state(r);
+    sio_.load_state(r);
+    mdec_.load_state(r);
+    r.end();
+}
+
 }  // namespace hle

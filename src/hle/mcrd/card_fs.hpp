@@ -24,6 +24,8 @@
 
 #include "mcrd/memcard.hpp"
 
+#include <psx/state.hpp>
+
 #include <array>
 #include <cstdint>
 #include <string>
@@ -103,6 +105,11 @@ public:
     bool last_was_async() const { return last_async_; }
     /// Spec to deliver with that event: kSpecDone on success, kSpecError on failure.
     uint32_t async_spec() const { return last_error_ == kENoError ? kSpecDone : kSpecError; }
+
+    /// Save state: open files (positions, block chains), error codes and the firstfile/nextfile
+    /// cursor (chunk "CDFS"). The cards themselves are not part of it: their images live on disk.
+    void save_state(psx::StateWriter& w) const;
+    void load_state(psx::StateReader& r);
 
 private:
     static constexpr uint32_t kDirBlocks = 15;

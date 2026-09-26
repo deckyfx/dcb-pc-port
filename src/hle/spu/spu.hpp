@@ -7,6 +7,8 @@
 
 #include "spu/envelope.hpp"
 
+#include <psx/state.hpp>
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -51,6 +53,11 @@ public:
 
     /// Sound RAM, for tests and debugging.
     const uint8_t* ram() const { return ram_.data(); }
+
+    /// Save state: registers, sound RAM, voices (ADPCM decoder, ADSR, sweeps), noise, capture,
+    /// the CD audio queue and reverb state (chunk "SPU ").
+    void save_state(psx::StateWriter& w) const;
+    void load_state(psx::StateReader& r);
 
 private:
     enum class Phase : uint8_t { Off, Attack, Decay, Sustain, Release };

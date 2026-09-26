@@ -514,4 +514,61 @@ void Spu::process_reverb(int32_t in_l, int32_t in_r, int32_t& out_l, int32_t& ou
     reverb_phase_ = !reverb_phase_;
 }
 
+// ---------------------------------------------------------------------------------------------
+// Save state. Voices, envelopes and sweeps are plain values (no pointers): copied as they are.
+
+void Spu::save_state(psx::StateWriter& w) const {
+    w.begin(psx::state_tag("SPU "), 1);
+    w.pod(regs_);
+    w.vec(ram_);
+    w.u32(transfer_addr_);
+    w.pod(voices_);
+    w.u32(pending_kon_);
+    w.u32(pending_koff_);
+    w.u32(endx_);
+    w.pod(main_l_);
+    w.pod(main_r_);
+    w.boolean(irq_flag_);
+    w.boolean(irq_pending_);
+    w.pod(noise_timer_);
+    w.u16(noise_level_);
+    w.u32(capture_pos_);
+    w.vec(cd_buf_);
+    w.size(cd_head_);
+    w.size(cd_count_);
+    w.u32(reverb_cur_);
+    w.pod(reverb_in_);
+    w.pod(reverb_out_);
+    w.u32(reverb_pos_);
+    w.boolean(reverb_phase_);
+    w.end();
+}
+
+void Spu::load_state(psx::StateReader& r) {
+    r.begin(psx::state_tag("SPU "), 1);
+    r.pod(regs_);
+    r.vec(ram_, kRamSize, kRamSize);
+    transfer_addr_ = r.u32();
+    r.pod(voices_);
+    pending_kon_ = r.u32();
+    pending_koff_ = r.u32();
+    endx_ = r.u32();
+    r.pod(main_l_);
+    r.pod(main_r_);
+    irq_flag_ = r.boolean();
+    irq_pending_ = r.boolean();
+    r.pod(noise_timer_);
+    noise_level_ = r.u16();
+    capture_pos_ = r.u32();
+    r.vec(cd_buf_, kCdQueueFrames * 2, kCdQueueFrames * 2);
+    cd_head_ = r.size(kCdQueueFrames - 1, 0);
+    cd_count_ = r.size(kCdQueueFrames, 0);
+    reverb_cur_ = r.u32();
+    r.pod(reverb_in_);
+    r.pod(reverb_out_);
+    reverb_pos_ = r.u32();
+    reverb_phase_ = r.boolean();
+    r.end();
+}
+
 }  // namespace hle

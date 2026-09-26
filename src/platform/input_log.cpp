@@ -162,7 +162,8 @@ std::optional<InputState> InputRecording::at(uint64_t frame) const {
 // InputRecorder
 // ---------------------------------------------------------------------------------------------
 
-InputRecorder::InputRecorder(const std::filesystem::path& path, std::string_view game_id) {
+InputRecorder::InputRecorder(const std::filesystem::path& path, std::string_view game_id)
+    : path_(path), game_id_(game_id) {
     file_ = std::fopen(path.string().c_str(), "wb");
     if (!file_) throw std::runtime_error("cannot create input recording " + path.string());
     write_line(header_line(game_id));
@@ -180,6 +181,7 @@ void InputRecorder::record(uint64_t frame, InputState state) {
     if (!file_ || (started_ && frame < next_frame_)) return;
     if (!started_ || state.pad != last_pad_ || state.any_press) {
         write_line(event_line(frame, state));
+        log_.push_back({frame, state});
         ++events_;
         last_pad_ = state.pad;
         last_written_ = frame + 1;
@@ -200,6 +202,27 @@ void InputRecorder::flush() {
         last_written_ = next_frame_;
     }
     std::fflush(file_);
+}
+
+void InputRecorder::rewind(uint64_t frame) {
+    if (!file_ || !started_ || frame >= next_frame_) return;
+    while (!log_.empty() && log_.back().frame >= frame) log_.pop_back();
+    // The log only grows forward: write it again, up to the new present.
+    std::fclose(file_);
+    file_ = std::fopen(path_.string().c_str(), "wb");
+    if (!file_) {
+        std::fprintf(stderr, "[input] cannot rewrite the input recording %s\n", path_.string().c_str());
+        return;
+    }
+    write_line(header_line(game_id_));
+    for (const InputEvent& ev : log_) write_line(event_line(ev.frame, ev.state));
+    std::fflush(file_);
+    started_ = !log_.empty();
+    last_pad_ = log_.empty() ? 0xFFFF : log_.back().state.pad;
+    last_written_ = log_.empty() ? 0 : log_.back().frame + 1;
+    next_frame_ = frame;
+    last_flush_ = frame;
+    events_ = log_.size();
 }
 
 void InputRecorder::close() {
@@ -251,6 +274,11 @@ void InputLog::apply(uint64_t frame, uint16_t& pad, bool& any_press) {
         }
     }
     if (recorder_) recorder_->record(frame, InputState{pad, any_press});
+}
+
+void InputLog::rewind(uint64_t frame) {
+    if (replay_) replay_done_ = replay_done_ && frame >= replay_->end_frame();
+    if (recorder_) recorder_->rewind(frame);
 }
 
 }  // namespace platform
