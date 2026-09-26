@@ -6,6 +6,7 @@
 #include "hw/mmio.hpp"
 #include "system.hpp"
 
+#include "input_log.hpp"
 #include "platform.hpp"
 #include "settings.hpp"
 
@@ -151,6 +152,8 @@ int main(int argc, char** argv) {
         if (!std::getenv("DCB_HEADLESS")) host = platform::make_sdl3("Digimon World: Digital Card Arena (PC Port)");
 #endif
         if (!host) host = platform::make_headless();
+        // DCB_RECORD / DCB_REPLAY: input record and replay (static: std::exit must close the log).
+        static platform::InputLog input_log = platform::InputLog::from_env(DCB_GAME_ID);
         // Host work after each game frame (the game is suspended at its VBLANK): input for the
         // next frame, present, audio, overlay numbers, debug dumps.
         platform::DisplayArea area;
@@ -166,6 +169,7 @@ int main(int argc, char** argv) {
             }
             if (any_press && pad_frame < movie_until) skip_until = pad_frame + 6;
             if (pad_frame < skip_until) pad = static_cast<uint16_t>(pad & ~platform::Start);
+            input_log.apply(pad_frame, pad, any_press);
             mmio.set_pad_buttons(0, pad);
             // DCB_TRACE_INPUT: what the game's pad library last read over the port.
             static const bool trace_input = std::getenv("DCB_TRACE_INPUT") != nullptr;
