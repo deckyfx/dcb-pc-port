@@ -30,6 +30,15 @@ public:
         collect_labels();
         out_ << "void " << function_symbol(seg_, fn_.entry) << "(PsxContext* ctx) {\n";
         out_ << "    PSX_FUNCTION_PROLOGUE(ctx);\n";
+        // `jr <reg>` other than ra may be a return through a saved copy of ra (libgcc's soft-float
+        // helpers do `move t8,ra; jal ...; jr t8`): remember where this function was called from.
+        for (uint32_t pc : fn_.instrs) {
+            const Instr in = seg_.instr(pc);
+            if (in.op == Op::Jr && in.rs != 31) {
+                out_ << "    const uint32_t psx_entry_ra = ctx->r[31];\n";
+                break;
+            }
+        }
         size_t count = 0;
         uint32_t skip = 0;       // delay slot already emitted inside its branch
         bool owner_falls = false;  // that branch can continue past its delay slot
@@ -256,6 +265,7 @@ private:
                         }
                         out_ << "        default: break;\n    }\n";
                     }
+                    out_ << "    if (target == psx_entry_ra) return;  /* a return through a copy of ra */\n";
                     out_ << "    psx_dispatch(ctx, target); return; }\n";
                 }
                 break;
