@@ -25,10 +25,10 @@ executable: MIPS R3000A → C, with native HLE of the kernel and Psy-Q libraries
 - [x] Runs from the disc image alone (no BIOS, no extracted files)
 - [x] Runs from extracted game data alone (sectors rebuilt from files; verified identical to the disc)
 - [x] Input: keyboard and gamepad → PS1 digital pad (timed SIO0 model); any key skips movies
-- [ ] Main menu and navigation
-- [ ] Card battles (KAWSEG overlay)
+- [x] Main menu and navigation (title, main menu, Reception, Deck screens)
+- [x] Card battles (KAWSEG overlay): a full battle played through
 - [ ] Remaining game modes and overlays (EVOSEG, SAISEG, SUBSEG, SUGSEG, ENDSEG)
-- [ ] Memory card saves verified in game
+- [x] Memory card saves verified in game (`saves/<serial>/card1.mcd`, raw 128 KB `.mcd` image)
 - [ ] `PSX2.EXE` mode (`LoadExec`)
 - [ ] One-time asset import from the player's own dump: no disc needed afterwards, no copyrighted data in the download
 - [ ] Windows x64 release build tested on Windows
@@ -36,12 +36,17 @@ executable: MIPS R3000A → C, with native HLE of the kernel and Psy-Q libraries
 - [x] PC options: `settings.ini` (window scale, filtering, aspect, key/gamepad rebinding, volume)
 - [x] Performance overlay (FPS, game FPS, CPU/GPU load, audio queue): F3
 - [x] GTE commands implemented (unit-tested; awaiting in-game use)
-- [x] Memory card file API (`bu00:`) implemented (unit-tested; awaiting in-game use)
+- [x] Memory card file API (`bu00:`) implemented and used by the game's saves
 - [x] CI: Linux tests + Windows .exe (manual trigger for now)
 - [ ] Enhance / upscale assets
 - [ ] Enhancements: widescreen, translation
 - [ ] Network Battle
 - [ ] Rust port of the game logic
+- [ ] Host-driven main loop (game on a fiber): pause, frame advance, fast-forward ([plan](docs/HOST_MAIN_LOOP.md))
+- [ ] Input record / replay (reproducible bug reports)
+- [ ] Save states (within a run)
+- [ ] Trainer: cheat codes, memory search
+- [ ] Custom Battle mode: pick the opponent and the arena
 
 ## Layout
 
@@ -105,7 +110,9 @@ Select the target with `-DDCB_GAME_ID=SLUS-01328` (default: `SLPS-03101`).
 **Settings.** `settings.ini` (display, audio, key/gamepad bindings, hotkeys) is looked up in this
 order: `DCB_SETTINGS`, the current directory, next to the executable, then the per-user file in home
 (`~/.config/dcb-pc-port/` or `%APPDATA%\dcb-pc-port\`), where it is created on first run if none
-exists. Keep one in the project root (gitignored) while developing.
+exists. Keep one in the project root (gitignored) while developing. Memory-card saves go to
+`saves/<serial>/card1.mcd` under the current directory: a raw 128 KB card image that emulators and
+card managers also read.
 
 **Input debugging.** `DCB_TRACE_PAD=<n>` logs the first *n* controller-port register accesses.
 `DCB_PAD_SCRIPT="<from>-<to>:<Button>[+<Button>],..."` holds pad buttons during those frames (names
