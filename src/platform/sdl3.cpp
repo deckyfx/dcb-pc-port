@@ -138,8 +138,29 @@ public:
             const SDL_FRect src{0.0f, 0.0f, static_cast<float>(w), static_cast<float>(h)};
             const SDL_FRect dst = output_rect();
             SDL_RenderTexture(renderer_, texture_, &src, &dst);
+            blank_frames_ = 0;
+        } else {
+            draw_loading();
         }
         SDL_RenderPresent(renderer_);
+    }
+
+    /// While the game keeps its display off (boot, loading between scenes), show an animated
+    /// "Loading..." after half a second so a black window doesn't look like a hang. Host-side
+    /// only: the game's picture is never touched.
+    void draw_loading() {
+        if (++blank_frames_ < 30) return;
+        static constexpr const char* kText[] = {"Loading", "Loading.", "Loading..", "Loading..."};
+        const char* text = kText[(blank_frames_ / 20) % 4];
+        int ww = 0, wh = 0;
+        SDL_GetRenderOutputSize(renderer_, &ww, &wh);
+        const float scale = std::max(1.0f, static_cast<float>(wh) / 240.0f);  // ~8 px font at 240p
+        SDL_SetRenderScale(renderer_, scale, scale);
+        const float x = static_cast<float>(ww) / scale - 8.0f * 11.0f;       // room for "Loading..."
+        const float y = static_cast<float>(wh) / scale - 16.0f;
+        SDL_SetRenderDrawColor(renderer_, 150, 150, 150, 255);
+        SDL_RenderDebugText(renderer_, x, y, text);
+        SDL_SetRenderScale(renderer_, 1.0f, 1.0f);
     }
 
     void queue_audio(const int16_t* stereo, size_t frames) override {
@@ -265,6 +286,7 @@ private:
     SDL_Gamepad* gamepad_ = nullptr;
     std::vector<uint32_t> pixels_;
     uint16_t buttons_ = 0xFFFF;
+    int blank_frames_ = 0;  ///< consecutive frames with the display off
     bool integer_scale_ = true;
     bool quit_ = false;
 };
