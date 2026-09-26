@@ -65,6 +65,8 @@ public:
     virtual void queue_audio(const int16_t* stereo, size_t frames) = 0;
     /// Latest performance numbers, for the on-screen overlay (ignored by backends without one).
     virtual void set_stats(const FrameStats& stats) { (void)stats; }
+    /// Whether any key or gamepad button went down since the last call (window hotkeys excluded).
+    virtual bool take_any_press() { return false; }
 };
 
 /// Headless backend: no window, no audio, nothing pressed (tests / CI / batch runs).

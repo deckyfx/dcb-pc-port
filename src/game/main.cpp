@@ -7,6 +7,7 @@
 #include "system.hpp"
 
 #include "platform.hpp"
+#include "settings.hpp"
 
 #include <psx/runtime.hpp>
 
@@ -18,6 +19,7 @@
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
+#include <string>
 #include <vector>
 
 #ifndef _WIN32
@@ -29,6 +31,38 @@ namespace {
 /// DCB_WATCHDOG=<seconds>: abort after that long, so a debugger stops inside whatever loop the
 /// game is spinning in (the call stack names the guest functions).
 /// DCB_SNAPSHOT=<dir>: save the displayed image every 30 frames as <dir>/frame_NNNNN.ppm.
+/// DCB_PAD_SCRIPT="<from>-<to>:<Button>[+<Button>],...": hold pad buttons during those VBLANK
+/// frames (names as in settings.ini), e.g. "600-610:Start" - scripted input for headless runs.
+/// The pseudo-button "Any" stands for pressing some unbound key (sets `*any` on its first frame).
+uint16_t scripted_pad(uint64_t frame, bool* any) {
+    static const char* script = std::getenv("DCB_PAD_SCRIPT");
+    if (!script) return 0xFFFF;
+    uint16_t pad = 0xFFFF;
+    const std::string text(script);
+    size_t pos = 0;
+    while (pos < text.size()) {
+        size_t end = text.find(',', pos);
+        if (end == std::string::npos) end = text.size();
+        const std::string item = text.substr(pos, end - pos);
+        pos = end + 1;
+        unsigned long long from = 0, to = 0;
+        const size_t colon = item.find(':');
+        if (colon == std::string::npos || std::sscanf(item.c_str(), "%llu-%llu", &from, &to) != 2) continue;
+        if (frame < from || frame > to) continue;
+        size_t b = colon + 1;
+        while (b < item.size()) {
+            size_t e = item.find('+', b);
+            if (e == std::string::npos) e = item.size();
+            const std::string name = item.substr(b, e - b);
+            if (name == "Any" && frame == from) *any = true;
+            for (const platform::PadButtonInfo& info : platform::kPadButtons)
+                if (name == info.name) pad = static_cast<uint16_t>(pad & ~info.bit);
+            b = e + 1;
+        }
+    }
+    return pad;
+}
+
 void snapshot(const uint16_t* vram, const platform::DisplayArea& area, uint64_t frame) {
     static const char* dir = std::getenv("DCB_SNAPSHOT");
     if (!dir || frame % 30 != 0 || area.width <= 0 || area.height <= 0) return;
@@ -120,7 +154,19 @@ int main(int argc, char** argv) {
                 std::printf("[dcb] window closed\n");
                 std::exit(0);
             }
-            mmio.set_pad_buttons(0, host->pad_buttons(0));
+            // Input. While a movie plays (the MDEC is busy), any key or button skips it: the game
+            // itself only accepts Start, so a press becomes a short Start tap.
+            static uint64_t pad_frame = 0, mdec_seen = 0, movie_until = 0, skip_until = 0;
+            bool any_press = host->take_any_press();
+            uint16_t pad = static_cast<uint16_t>(host->pad_buttons(0) & scripted_pad(pad_frame, &any_press));
+            if (mmio.mdec_transfers() != mdec_seen) {
+                mdec_seen = mmio.mdec_transfers();
+                movie_until = pad_frame + 15;
+            }
+            if (any_press && pad_frame < movie_until) skip_until = pad_frame + 6;
+            if (pad_frame < skip_until) pad = static_cast<uint16_t>(pad & ~platform::Start);
+            mmio.set_pad_buttons(0, pad);
+            ++pad_frame;
             const hle::Gpu::Display d = mmio.gpu().display();
             platform::DisplayArea area;
             area.x = d.x;

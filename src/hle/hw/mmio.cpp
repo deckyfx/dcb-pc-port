@@ -24,12 +24,13 @@ constexpr unsigned kLogLimit = 4;
 
 }  // namespace
 
-Mmio::Mmio() : cdrom_([this] { raise_irq(2); }), sio_([this] { raise_irq(7); }) {
+Mmio::Mmio() : cdrom_([this] { raise_irq(2); }), sio_([this] { raise_irq(7); }, [this] { return system_ ? system_->cpu_cycles() : uint64_t{0}; }) {
     cdrom_.on_cd_audio([this](const int16_t* pcm, size_t frames) { spu_.push_cd_audio(pcm, frames); });
 }
 
 void Mmio::tick(uint64_t cycles) {
     cdrom_.tick(cycles);
+    sio_.tick(cycles);
     // The SPU runs at 44100 Hz = one sample per 768 CPU cycles: produce what guest time owes.
     constexpr uint64_t kCyclesPerSample = 768;
     const uint64_t due = cycles / kCyclesPerSample;
@@ -119,6 +120,7 @@ void Mmio::dma_run(unsigned channel) {
         case 1: {  // MDEC -> RAM (decoded pixels)
             std::vector<uint32_t> buf(words);
             mdec_.dma_read(buf.data(), words);
+            ++mdec_transfers_;
             for (uint32_t i = 0, a = madr; i < words; ++i, a += static_cast<uint32_t>(step)) psx_write32(ctx_, a, buf[i]);
             return;
         }

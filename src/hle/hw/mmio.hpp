@@ -51,6 +51,8 @@ public:
     /// game frame) and host time spent rasterizing GPU command lists.
     uint64_t display_flips() const { return display_flips_; }
     uint64_t gpu_ns() const { return gpu_ns_; }
+    /// MDEC output transfers so far: it moves while a movie plays.
+    uint64_t mdec_transfers() const { return mdec_transfers_; }
 
     void attach(System* system, PsxContext& ctx) {
         system_ = system;
@@ -77,7 +79,7 @@ private:
     CdRom cdrom_;
     Sio0 sio_;
     Gpu gpu_;
-    uint64_t display_flips_ = 0, gpu_ns_ = 0;
+    uint64_t display_flips_ = 0, gpu_ns_ = 0, mdec_transfers_ = 0;
     Mdec mdec_;
     // Everything else: plain storage so read-after-write works
     std::map<uint32_t, uint32_t> misc_;

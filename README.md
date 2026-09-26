@@ -24,7 +24,7 @@ executable: MIPS R3000A → C, with native HLE of the kernel and Psy-Q libraries
 - [x] Sound: SPU music and effects, XA-ADPCM movie audio
 - [x] Runs from the disc image alone (no BIOS, no extracted files)
 - [x] Runs from extracted game data alone (sectors rebuilt from files; verified identical to the disc)
-- [ ] Input map (keyboard and gamepad → PS1 pad)
+- [x] Input: keyboard and gamepad → PS1 digital pad (timed SIO0 model); any key skips movies
 - [ ] Main menu and navigation
 - [ ] Card battles (KAWSEG overlay)
 - [ ] Remaining game modes and overlays (EVOSEG, SAISEG, SUBSEG, SUGSEG, ENDSEG)
@@ -101,6 +101,11 @@ written by step 1), then a `.cue`/`.bin` in `disc/<serial>/` or the current dire
 rebuilds every CD sector on demand, so the disc image is not needed once it has been extracted.
 
 Select the target with `-DDCB_GAME_ID=SLUS-01328` (default: `SLPS-03101`).
+
+**Input debugging.** `DCB_TRACE_PAD=<n>` logs the first *n* controller-port register accesses.
+`DCB_PAD_SCRIPT="<from>-<to>:<Button>[+<Button>],..."` holds pad buttons during those frames (names
+as in `settings.ini`; `Any` = some unbound key), e.g. `DCB_HEADLESS=1 DCB_PAD_SCRIPT=2000-2000:Any`
+skips the opening movie in a headless run.
 
 ## Ghidra MCP
 

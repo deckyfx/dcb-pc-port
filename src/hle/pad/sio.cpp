@@ -1,5 +1,8 @@
 #include "pad/sio.hpp"
 
+#include <cstdio>
+#include <cstdlib>
+
 namespace hle {
 
 namespace {
@@ -12,6 +15,9 @@ constexpr uint16_t kCtrlAck = 1u << 4;        // acknowledge: clears IRQ and err
 constexpr uint16_t kCtrlReset = 1u << 6;
 constexpr uint16_t kCtrlAckIrq = 1u << 12;    // interrupt on /ACK
 constexpr uint16_t kCtrlPort2 = 1u << 13;
+
+// Pad /ACK: asserted this long after the byte ends, held low for kAckLength (psx-spx timings).
+constexpr uint64_t kAckDelay = 338, kAckLength = 100;
 
 }  // namespace
 
@@ -34,28 +40,69 @@ void Sio0::transfer(uint8_t tx) {
         }
     }
     ++index_;
-    rx_ = rx;
-    rx_full_ = true;
-    ack_ = ack;
-    if (ack && (ctrl_ & kCtrlAckIrq)) {
-        irq_ = true;
-        raise_irq7_();
+    // 8 bits at the baud reload (mode factor 1, as libpad programs it); the reply arrives when the
+    // byte has been clocked out, the ACK a little later.
+    const uint64_t now = clock_();
+    const uint64_t bits = 8ull * (baud_ ? baud_ : 0x88);
+    busy_ = true;
+    rx_pending_ = true;
+    rx_next_ = rx;
+    done_at_ = now + bits;
+    ack_pending_ = ack;
+    ack_at_ = ack ? done_at_ + kAckDelay : 0;   // no ACK: the line stays high
+    ack_end_ = ack ? ack_at_ + kAckLength : 0;
+    tick(now);
+}
+
+void Sio0::tick(uint64_t cycles) {
+    if (rx_pending_ && cycles >= done_at_) {
+        rx_pending_ = false;
+        busy_ = false;
+        rx_ = rx_next_;
+        rx_full_ = true;
+    }
+    if (ack_pending_ && cycles >= ack_at_) {
+        ack_pending_ = false;
+        if (ctrl_ & kCtrlAckIrq) {
+            irq_ = true;
+            raise_irq7_();
+        }
     }
 }
 
+namespace {
+unsigned trace_budget() {  // DCB_TRACE_PAD=N: log the first N controller-port accesses
+    static const unsigned n = std::getenv("DCB_TRACE_PAD") ? static_cast<unsigned>(std::atoi(std::getenv("DCB_TRACE_PAD"))) : 0;
+    return n;
+}
+unsigned traced = 0;
+}  // namespace
+
 uint32_t Sio0::read(uint32_t phys, unsigned width) {
+    const uint32_t v = read_reg(phys, width);
+    if (traced < trace_budget()) {
+        ++traced;
+        std::fprintf(stderr, "[pad] rd %08X/%u -> %04X\n", phys, width, v & 0xFFFFu);
+    }
+    return v;
+}
+
+uint32_t Sio0::read_reg(uint32_t phys, unsigned width) {
     switch (phys) {
         case kData: {
+            tick(clock_());
             const uint8_t v = rx_full_ ? rx_ : 0xFF;
             rx_full_ = false;
             return width == 1 ? v : (v | 0xFFFFFF00u);  // wider reads see the (empty) FIFO as FFh
         }
         case kStat: {
-            uint32_t s = (1u << 0) | (1u << 2);  // TX ready, TX finished (transfers are instant)
+            const uint64_t now = clock_();
+            tick(now);
+            uint32_t s = 1u << 0;                // TX ready: the one-byte TX buffer is free
+            if (!busy_) s |= 1u << 2;            // TX finished
             if (rx_full_) s |= 1u << 1;
-            if (ack_) s |= 1u << 7;              // /ACK input low
+            if (now >= ack_at_ && now < ack_end_) s |= 1u << 7;  // /ACK input low
             if (irq_) s |= 1u << 9;
-            ack_ = false;                        // the /ACK pulse is short
             return s;
         }
         case kMode: return mode_;
@@ -65,7 +112,11 @@ uint32_t Sio0::read(uint32_t phys, unsigned width) {
     }
 }
 
-void Sio0::write(uint32_t phys, uint32_t value, unsigned) {
+void Sio0::write(uint32_t phys, uint32_t value, unsigned width) {
+    if (traced < trace_budget()) {
+        ++traced;
+        std::fprintf(stderr, "[pad] wr %08X/%u <- %04X\n", phys, width, value & 0xFFFFu);
+    }
     switch (phys) {
         case kData:
             if (selected_) transfer(static_cast<uint8_t>(value));
@@ -75,7 +126,10 @@ void Sio0::write(uint32_t phys, uint32_t value, unsigned) {
         case kCtrl: {
             const uint16_t v = static_cast<uint16_t>(value);
             if (v & kCtrlReset) {
-                *this = Sio0(std::move(raise_irq7_));
+                // Resets the serial port only: the pads' button state is host input, not port state.
+                const std::array<uint16_t, 2> buttons = buttons_;
+                *this = Sio0(std::move(raise_irq7_), std::move(clock_));
+                buttons_ = buttons;
                 return;
             }
             if (v & kCtrlAck) irq_ = false;

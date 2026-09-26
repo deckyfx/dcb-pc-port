@@ -102,7 +102,12 @@ public:
                            std::find(settings_.overlay_keys.begin(), settings_.overlay_keys.end(),
                                      static_cast<int>(ev.key.scancode)) != settings_.overlay_keys.end()) {
                     overlay_visible_ = !overlay_visible_;
+                } else if (!ev.key.repeat) {
+                    any_press_ = true;
                 }
+                break;
+            case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+                any_press_ = true;
                 break;
             case SDL_EVENT_GAMEPAD_ADDED:
                 if (gamepad_ == nullptr) gamepad_ = SDL_OpenGamepad(ev.gdevice.which);
@@ -150,6 +155,12 @@ public:
     }
 
     void set_stats(const FrameStats& stats) override { stats_ = stats; }
+
+    bool take_any_press() override {
+        const bool pressed = any_press_;
+        any_press_ = false;
+        return pressed;
+    }
 
     /// Performance panel in the top-right corner (toggled by [hotkeys] overlay, default F3).
     void draw_overlay() {
@@ -323,6 +334,7 @@ private:
     uint16_t buttons_ = 0xFFFF;
     int blank_frames_ = 0;  ///< consecutive frames with the display off
     bool overlay_visible_ = false;
+    bool any_press_ = false;  ///< a key / gamepad button went down since take_any_press()
     FrameStats stats_;
     bool quit_ = false;
 };
