@@ -37,6 +37,10 @@
 #include <unistd.h>
 #endif
 
+namespace dcb {
+void register_code_names();  // code_names.cpp
+}
+
 namespace {
 
 /// DCB_WATCHDOG=<seconds>: abort after that long, so a debugger stops inside whatever loop the
@@ -137,6 +141,7 @@ int main(int argc, char** argv) {
     // The runtime stops with abort() on anything unimplemented; never lose buffered log lines.
     std::setvbuf(stdout, nullptr, _IOLBF, 0);
     arm_watchdog();
+    dcb::register_code_names();  // names for guest call chains in the load / texture logs
 
     // dcb --import <disc.cue|disc.bin> [dest]: one-time import of the player's dump, then exit.
     if (argc > 1 && std::string(argv[1]) == "--import") return platform::import_command(argc, argv, DCB_GAME_ID);
