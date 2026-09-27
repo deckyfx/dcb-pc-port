@@ -54,7 +54,7 @@ enum class Action : uint8_t {
     CycleAudio,        ///< settings submenu: advance volume
     ToggleFullscreen,  ///< settings submenu: flip fullscreen now
     BackupCard,        ///< copy card1.mcd to a timestamped backup
-    RestoreCard,       ///< restore the selected backup over card1.mcd
+    UseCard,           ///< make the selected file the live card (copy over card1.mcd + reload)
     PrevCard,          ///< select the previous card file/backup (wraps)
     NextCard,          ///< select the next card file/backup (wraps)
 };
@@ -123,7 +123,6 @@ private:
     SlotInfo slots_[4];
     std::vector<std::string> cards_;
     int card_active_ = 0;
-    std::vector<std::string> info_main_;
     std::vector<std::string> info_settings_;
     std::vector<std::string> info_controls_;
     std::vector<std::string> info_about_;

@@ -44,7 +44,6 @@ void Menu::set_info(Page page, std::vector<std::string> lines) {
     case Page::About: info_about_ = std::move(lines); break;
     case Page::ConfirmQuit: break;
     }
-    (void)info_main_;
 }
 
 int Menu::item_count() const {
@@ -102,7 +101,7 @@ Action Menu::activate(int item) {
             card_sel_ = item;
             return Action::None;
         }
-        return item == static_cast<int>(cards_.size()) ? Action::BackupCard : Action::RestoreCard;
+        return item == static_cast<int>(cards_.size()) ? Action::BackupCard : Action::UseCard;
     case Page::ConfirmQuit: return item == 0 ? Action::Quit : Action::Resume;
     }
     return Action::None;
@@ -230,7 +229,7 @@ void Menu::render_info(std::vector<Line>& out, const char* title) const {
             const int nb = static_cast<int>(cards_.size());
             out.push_back({std::string(sel_ == nb ? "> " : "  ") + "Back up active card",
                            sel_ == nb ? Style::Selected : Style::Normal});
-            out.push_back({std::string(sel_ == nb + 1 ? "> " : "  ") + "Restore selected backup",
+            out.push_back({std::string(sel_ == nb + 1 ? "> " : "  ") + "Use selected file as card",
                            sel_ == nb + 1 ? Style::Selected : Style::Normal});
         }
     }

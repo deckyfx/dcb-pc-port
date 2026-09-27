@@ -210,7 +210,7 @@ bool SaveStates::handle(uint32_t commands) {
     // Debug triggers: a save and a load at the same count happen in that order.
     if (take(save_at_, frames_)) save(slot_);
     if (take(load_at_, frames_)) loaded |= load(slot_);
-    // Offline analysis: dump the slot bytes for tools/re/scan_state_ptrs.py.
+    // Offline analysis: dump the slot bytes for tools/re/scan_stacks.py.
     if (take(dump_at_, frames_)) {
         if (const char* path = std::getenv("DCB_STATE_DUMP_PATH")) {
             if (FILE* f = std::fopen(path, "wb")) {

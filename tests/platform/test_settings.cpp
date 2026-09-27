@@ -125,7 +125,7 @@ void test_defaults() {
     const IniDocument doc = default_settings_ini();
     const std::string text = doc.to_string();
     CHECK(text.front() == ';');
-    CHECK(doc.get("display", "scale") == "2");
+    CHECK(doc.get("display", "scale") == "3");
     CHECK(doc.get("display", "fullscreen") == "false");
     CHECK(doc.get("display", "scale_mode") == "fit");
     CHECK(doc.get("display", "filter") == "nearest");
@@ -141,7 +141,7 @@ void test_defaults() {
     std::vector<std::string> warnings;
     const Settings s = parse_settings(IniDocument::parse(text), accepting_resolvers(), warnings);
     CHECK(warnings.empty());
-    CHECK(s.display.scale == 2 && !s.display.fullscreen);
+    CHECK(s.display.scale == 3 && !s.display.fullscreen);
     CHECK(s.display.scale_mode == ScaleMode::Fit && s.display.filter == FilterMode::Nearest);
     CHECK(s.display.aspect == AspectMode::Ratio4x3);
     CHECK(s.volume == 100 && s.stick_deadzone == 50);
@@ -152,7 +152,7 @@ void test_defaults() {
     // An empty document yields the same settings, silently.
     const Settings e = parse_settings(IniDocument{}, accepting_resolvers(), warnings);
     CHECK(warnings.empty());
-    CHECK(e.display.scale == 2 && e.volume == 100 && e.keyboard == s.keyboard && e.gamepad == s.gamepad);
+    CHECK(e.display.scale == 3 && e.volume == 100 && e.keyboard == s.keyboard && e.gamepad == s.gamepad);
 }
 
 void test_invalid_values_fall_back() {
@@ -164,7 +164,7 @@ void test_invalid_values_fall_back() {
     std::vector<std::string> warnings;
     const BindingResolvers r{fake_resolve, fake_resolve};
     const Settings s = parse_settings(doc, r, warnings);
-    CHECK(s.display.scale == 2);
+    CHECK(s.display.scale == 3);
     CHECK(!s.display.fullscreen);
     CHECK(s.display.scale_mode == ScaleMode::Fit);       // valid (case-insensitive)
     CHECK(s.display.filter == FilterMode::Nearest);

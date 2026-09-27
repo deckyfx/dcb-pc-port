@@ -33,7 +33,7 @@ executable: MIPS R3000A → C, with native HLE of the kernel and Psy-Q libraries
 - [x] One-time asset import from the player's own dump: no disc needed afterwards, no copyrighted data in the download (`dcb --import`, or a file picker on first run)
 - [ ] Windows x64 release build tested on Windows
 - [ ] English build: JP code + English assets from the player's US dump (SLUS-01328) ([research and plan](docs/HYBRID_EN_ASSETS.md))
-- [x] PC options: `settings.ini` (window resolution, filtering, aspect, key/gamepad rebinding, volume); fixed window at 1x/2x/4x/8x of 320x240, picture fits it (F8: fit / integer)
+- [x] PC options: `settings.ini` (initial window size, filtering, aspect, key/gamepad rebinding, volume); resizable window, picture fits it (F8: fit / integer)
 - [x] Native pause menu: Esc / F1 (gamepad Start+Select) with save/load slots, settings, controls, memory-card backup/restore, about, quit with confirmation
 - [x] Performance overlay (FPS, game FPS, CPU/GPU load, audio queue): F3
 - [x] Host-driven main loop: the game runs on fibers; pause (P), frame advance (N), fast-forward (hold Tab) ([design](docs/HOST_MAIN_LOOP.md))
@@ -193,12 +193,13 @@ cheat is never half-applied. Enabled cheats are written once per frame at the fr
 **Native pause menu.** `Esc` or `F1` (`[hotkeys] menu`; gamepad Start+Select) freezes the game
 and opens the menu; Esc no longer quits directly (Quit is a menu item with confirmation). Items:
 Resume; Save / Load state (slots 1-4 with thumbnails and timestamps, same slots as the F5/F7
-hotkeys); Settings (resolution 1x/2x/4x/8x with dimensions, scale mode, filter, aspect, volume,
-fullscreen — applied live and saved to `settings.ini`); Controls (keyboard + gamepad bindings and
-all hotkeys, always accurate); Memory card (back up `card1.mcd` to a timestamped copy, restore a
-backup, switch between card files); About (version, build, credits); Quit. Keyboard: arrows / Enter
-/ Esc back. Gamepad: d-pad / south / east. The window has a fixed size (Display → Resolution);
-fullscreen stays borderless desktop.
+hotkeys); Settings (initial resolution 1x/2x/4x/8x with dimensions, scale mode, filter, aspect,
+volume, fullscreen — applied live and saved to `settings.ini`); Controls (keyboard + gamepad
+bindings and all hotkeys, always accurate); Memory card (back up `card1.mcd` to a timestamped
+copy, use any card file as the live card, switch between files); About (version, build, credits);
+Quit. Keyboard: arrows / Enter / Esc back. Gamepad: d-pad / south / east. The window is resizable
+and the picture adapts (Resolution sets the initial size); fullscreen stays borderless desktop.
+Card restores refuse while the game holds card files open; best done on the title screen.
 
 **Save states.** While playing, `F5` saves the game into the selected slot, `F7` loads it and `F6`
 selects the next slot (1-4); a short notice confirms each ("State 2 saved", "Slot 3", "No state in

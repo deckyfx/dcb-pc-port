@@ -95,7 +95,7 @@ inline constexpr std::array<PadButtonInfo, kPadButtonCount> kPadButtons{{
 /// Input codes bound to each pad button (index = position in kPadButtons).
 using BindingTable = std::array<std::vector<int>, kPadButtonCount>;
 
-inline constexpr int kScaleMin = 1, kScaleMax = 8, kScaleDefault = 2;
+inline constexpr int kScaleMin = 1, kScaleMax = 8, kScaleDefault = 3;
 inline constexpr int kVolumeMax = 100;
 inline constexpr int kDeadzoneDefault = 50;  ///< percent of full stick travel
 

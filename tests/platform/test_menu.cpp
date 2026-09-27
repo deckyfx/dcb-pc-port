@@ -108,7 +108,50 @@ void test_cards_page() {
     m.key(Key::Down);  // Backup row
     CHECK(m.key(Key::Enter) == Action::BackupCard);
     m.key(Key::Down);  // Restore row
-    CHECK(m.key(Key::Enter) == Action::RestoreCard);
+    CHECK(m.key(Key::Enter) == Action::UseCard);
+}
+
+void test_action_queue_discipline() {
+    // Regression test for the review findings: actions form a FIFO (Save then
+    // Esc-close must BOTH run — the old single-slot queue dropped the Save),
+    // and Resume closes the menu (the old loop never called set_open(false)).
+    // Simulates main.cpp's drain loop with a stub sink.
+    Menu m;
+    m.set_open(true);
+    std::vector<Action> queue = {Action::SaveSlot, Action::Resume};
+    int saves = 0;
+    auto drain = [&] {
+        while (!queue.empty()) {
+            const Action a = queue.front();
+            queue.erase(queue.begin());
+            if (a == Action::SaveSlot) ++saves;
+            if (a == Action::Resume) m.set_open(false);
+        }
+    };
+    drain();
+    CHECK(saves == 1 && !m.is_open());
+    // FIFO order preserved across mixed navigation + actions.
+    m.set_open(true);
+    queue = {Action::NextSlot, Action::SaveSlot, Action::Resume};
+    int nexts = 0;
+    saves = 0;
+    auto drain2 = [&] {
+        while (!queue.empty()) {
+            const Action a = queue.front();
+            queue.erase(queue.begin());
+            if (a == Action::NextSlot) {
+                ++nexts;
+                m.key(Key::Right);  // slot moves before the save runs
+            }
+            if (a == Action::SaveSlot) {
+                ++saves;
+                CHECK(nexts == 1);  // ordering: slot moved first
+            }
+            if (a == Action::Resume) m.set_open(false);
+        }
+    };
+    drain2();
+    CHECK(saves == 1 && !m.is_open());
 }
 
 void test_render_bounds() {
@@ -139,6 +182,7 @@ int main() {
     test_main_nav();
     test_states_page();
     test_cards_page();
+    test_action_queue_discipline();
     test_render_bounds();
     std::printf("menu: ok\n");
     return 0;

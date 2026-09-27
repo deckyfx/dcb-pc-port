@@ -67,14 +67,20 @@ int main() {
     CHECK(read_all(dir / name) == std::string(128 * 1024, 'A'));
     CHECK(list_cards(dir).size() == 4);
 
-    // Restore: live card takes the backup's bytes; rejects junk safely.
-    CHECK(restore_card(dir, "card1-20240101-120000.mcd").empty());
+    // UseCard: any file becomes live (atomic copy + auto-backup); rejects junk.
+    CHECK(use_card(dir, "card1-20240101-120000.mcd").empty());
     CHECK(read_all(dir / "card1.mcd") == std::string(128 * 1024, 'B'));
-    CHECK(!restore_card(dir, "notes.txt").empty());
-    CHECK(!restore_card(dir, "card1.mcd").empty());  // live card is not a backup
-    CHECK(!restore_card(dir, "../evil.mcd").empty());
-    CHECK(!restore_card(dir, "").empty());
+    CHECK(use_card(dir, "card1.mcd").empty());  // already live: no-op success
+    CHECK(!use_card(dir, "notes.txt").empty());
+    CHECK(!use_card(dir, "../evil.mcd").empty());
+    CHECK(!use_card(dir, "").empty());
     CHECK(read_all(dir / "card1.mcd") == std::string(128 * 1024, 'B'));  // unchanged
+    // The auto-backup kept the pre-switch bytes (A), alongside the manual one.
+    bool found_auto = false;
+    for (const CardInfo& c : list_cards(dir)) {
+        if (c.is_backup && read_all(dir / c.name) == std::string(128 * 1024, 'A')) found_auto = true;
+    }
+    CHECK(found_auto);
 
     std::printf("memcard: ok\n");
     return 0;

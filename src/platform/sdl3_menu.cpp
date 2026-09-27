@@ -42,27 +42,34 @@ void menu_track_chord(const SDL_Event& ev, bool& start_held, bool& select_held) 
 }
 
 menu::Action menu_handle_event(menu::Menu& m, const SDL_Event& ev, const std::vector<int>& toggle_keys,
-                               SDL_Gamepad* gamepad, bool& start_held, bool& select_held) {
+                               SDL_Gamepad* gamepad, bool& start_held, bool& select_held, bool trainer_open) {
     using menu::Action;
     using menu::Key;
     menu_track_chord(ev, start_held, select_held);
     // Start+Select opens the menu (configurable button support would need a
     // gamepad hotkey table; Start+Select is the fixed, documented chord).
-    if (ev.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN && ev.gbutton.button == SDL_GAMEPAD_BUTTON_START && select_held) {
+    // Never on top of the trainer panel: toggles belong to it while open.
+    // Closing with the chord reports Resume so the host loop unfreezes; the
+    // Start press itself must not reach the game (gamepad_button skips it).
+    if (ev.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN && ev.gbutton.button == SDL_GAMEPAD_BUTTON_START && select_held &&
+        !trainer_open) {
         m.set_open(!m.is_open());
-        return Action::None;
+        return m.is_open() ? Action::None : Action::Resume;
     }
-    if (ev.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN && ev.gbutton.button == SDL_GAMEPAD_BUTTON_BACK && start_held) {
+    if (ev.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN && ev.gbutton.button == SDL_GAMEPAD_BUTTON_BACK && start_held &&
+        !trainer_open) {
         m.set_open(!m.is_open());
-        return Action::None;
+        return m.is_open() ? Action::None : Action::Resume;
     }
     if (ev.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN && m.is_open()) {
         if (gamepad != nullptr && ev.gdevice.which != SDL_GetGamepadID(gamepad)) return Action::None;
+        // The chord's Start keypress closes without acting (no passthrough).
+        if (ev.gbutton.button == SDL_GAMEPAD_BUTTON_START) return Action::None;
         return gamepad_button(m, static_cast<SDL_GamepadButton>(ev.gbutton.button));
     }
     if (ev.type != SDL_EVENT_KEY_DOWN) return Action::None;
     const SDL_Scancode sc = ev.key.scancode;
-    if (!ev.key.repeat && (is_bound(toggle_keys, sc) || sc == SDL_SCANCODE_ESCAPE)) {
+    if (!ev.key.repeat && (is_bound(toggle_keys, sc) || sc == SDL_SCANCODE_ESCAPE) && !trainer_open) {
         m.set_open(!m.is_open());
         // Closing via Escape on the main page means Resume; opening never acts.
         if (!m.is_open() && !m.confirming_quit()) return Action::Resume;

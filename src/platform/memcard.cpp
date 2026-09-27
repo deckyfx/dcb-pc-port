@@ -88,20 +88,39 @@ std::string backup_card(const fs::path& save_dir) {
     const fs::path live = save_dir / "card1.mcd";
     std::error_code ec;
     if (!fs::is_regular_file(live, ec)) return "";
-    const std::string name = "card1-" + timestamp() + ".mcd";
+    // Two backups in the same second get -2, -3, ... suffixes (a restore
+    // auto-backup right after a manual one must not clobber it).
+    std::string name = "card1-" + timestamp() + ".mcd";
+    for (int n = 2; fs::is_regular_file(save_dir / name, ec); ++n) {
+        char buf[40];
+        std::snprintf(buf, sizeof buf, "card1-%s-%d.mcd", timestamp().c_str(), n);
+        name = buf;
+    }
     std::string error;
     if (!copy_file(live, save_dir / name, error)) return "";
     return name;
 }
 
-std::string restore_card(const fs::path& save_dir, const std::string& backup_name) {
-    if (backup_name.empty() || backup_name.find('/') != std::string::npos ||
-        backup_name.find('\\') != std::string::npos || backup_name == "card1.mcd" ||
-        !is_card_file(save_dir / backup_name)) {
-        return "not a backup: " + backup_name;
+std::string use_card(const fs::path& save_dir, const std::string& name) {
+    if (name.empty() || name.find('/') != std::string::npos || name.find('\\') != std::string::npos ||
+        !is_card_file(save_dir / name)) {
+        return "not a card file: " + name;
     }
+    if (name == "card1.mcd") return "";  // already live: nothing to do
+    // Atomic: write to a temp file, then rename over the live card (POSIX
+    // rename is atomic; on Windows rename() uses MOVEFILE_REPLACE_EXISTING
+    // for same-directory moves). The live card is backed up first, so a
+    // switch never destroys data.
+    if (backup_card(save_dir).empty()) return "could not back up the live card first";
+    const fs::path tmp = save_dir / "card1.mcd.tmp";
     std::string error;
-    if (!copy_file(save_dir / backup_name, save_dir / "card1.mcd", error)) return error;
+    if (!copy_file(save_dir / name, tmp, error)) return error;
+    std::error_code ec;
+    fs::rename(tmp, save_dir / "card1.mcd", ec);
+    if (ec) {
+        fs::remove(tmp, ec);
+        return "rename failed: " + ec.message();
+    }
     return "";
 }
 

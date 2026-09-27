@@ -32,10 +32,11 @@ std::vector<CardInfo> list_cards(const std::filesystem::path& save_dir);
 /// (`card1-YYYYMMDD-HHMMSS.mcd`). Returns the backup name, or "" on failure.
 std::string backup_card(const std::filesystem::path& save_dir);
 
-/// Replace the live card with the bytes of `backup_name` (a file in
-/// `save_dir`). Returns an error message, or empty on success. The caller
-/// then swaps the card object (Bios::insert_cards / set_slot), which closes
-/// the game's open fds — like a physical swap.
-std::string restore_card(const std::filesystem::path& save_dir, const std::string& backup_name);
+/// Make `name` (any .mcd in `save_dir`, live or backup) the live card:
+/// auto-backup the current live card, then atomically copy over card1.mcd
+/// (temp file + rename). Returns an error message, or empty on success. The
+/// caller then swaps the card object (Bios reload), which closes the game's
+/// open fds — like a physical swap.
+std::string use_card(const std::filesystem::path& save_dir, const std::string& name);
 
 }  // namespace memcard

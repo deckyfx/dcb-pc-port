@@ -14,10 +14,11 @@ namespace platform {
 /// Route one SDL event to the menu. The menu toggle ([hotkeys] menu, default
 /// F1) and Escape open/close it; while open, arrows/Enter/Escape navigate and
 /// gamepad d-pad/south/east do the same (Start+Select opens it, Start closes).
-/// Returns the action for main.cpp (Action::None if the event only moved the
-/// selection or was not for the menu).
+/// `trainer_open`: when true, toggle keys are left for the trainer (no menu
+/// on top of the panel). Returns the action for main.cpp (Action::None if the
+/// event only moved the selection or was not for the menu).
 menu::Action menu_handle_event(menu::Menu& m, const SDL_Event& ev, const std::vector<int>& toggle_keys,
-                               SDL_Gamepad* gamepad, bool& start_held, bool& select_held);
+                               SDL_Gamepad* gamepad, bool& start_held, bool& select_held, bool trainer_open);
 
 /// Track Start/Select holds for the Start+Select chord (call on every gamepad
 /// button event, even when the menu is closed).

@@ -55,20 +55,18 @@ public:
             SDL_Log("dcb: SDL_Init(VIDEO) failed: %s", SDL_GetError());
             return false;
         }
-        // Fixed window size from Display -> Resolution (1x/2x/4x/8x of the
-        // 320x240 PS1 output): no user resizing, so the picture is always an
-        // exact multiple or the Fit-scaled equivalent. Fullscreen stays
-        // borderless desktop.
+        // Initial window size from Display -> Resolution (1x/2x/4x/8x of the
+        // 320x240 PS1 output). The window stays user-resizable; the picture
+        // fits it (scale_mode fit/integer). Fullscreen stays borderless desktop.
         const int scale = std::clamp(settings_.display.scale, kScaleMin, kScaleMax);
-        SDL_WindowFlags flags = 0;  // not resizable
+        SDL_WindowFlags flags = SDL_WINDOW_RESIZABLE;
         if (settings_.display.fullscreen) flags |= SDL_WINDOW_FULLSCREEN;  // borderless desktop
         if (!SDL_CreateWindowAndRenderer(title != nullptr ? title : "dcb", kBaseWidth * scale, kBaseHeight * scale,
                                          flags, &window_, &renderer_)) {
             SDL_Log("dcb: cannot create window/renderer: %s", SDL_GetError());
             return false;
         }
-        SDL_SetWindowMinimumSize(window_, kBaseWidth * scale, kBaseHeight * scale);
-        SDL_SetWindowMaximumSize(window_, kBaseWidth * scale, kBaseHeight * scale);
+        SDL_SetWindowMinimumSize(window_, kBaseWidth, kBaseHeight);
         SDL_SetRenderVSync(renderer_, 0);  // the game paces itself at 59.94 Hz
 
         // One VRAM-sized texture; each frame updates only the displayed sub-rectangle.
@@ -102,10 +100,11 @@ public:
             // The menu owns input while open (Escape/F1 toggles, Start+Select
             // on gamepad); actions queue for the host loop. Quit comes only
             // from the menu's Quit item or closing the window.
-            const menu::Action act =
-                menu_handle_event(menu_, ev, settings_.menu_keys, gamepad_, start_held_, select_held_);
+            const bool trainer_open = trainer_ != nullptr && trainer_->is_open();
+            const menu::Action act = menu_handle_event(menu_, ev, settings_.menu_keys, gamepad_, start_held_,
+                                                       select_held_, trainer_open);
             if (act != menu::Action::None) {
-                menu_action_ = act;
+                menu_actions_.push_back(act);  // FIFO: every action runs, none overwrite
                 key_held_.fill(false);
                 continue;
             }
@@ -274,8 +273,9 @@ public:
     menu::Menu* menu() override { return &menu_; }
     bool menu_open() const override { return menu_.is_open(); }
     int take_menu_action() override {
-        const menu::Action a = menu_action_;
-        menu_action_ = menu::Action::None;
+        if (menu_actions_.empty()) return static_cast<int>(menu::Action::None);
+        const menu::Action a = menu_actions_.front();
+        menu_actions_.erase(menu_actions_.begin());
         return static_cast<int>(a);
     }
     void request_quit() override { quit_ = true; }
@@ -439,20 +439,17 @@ private:
             SDL_Log("dcb: cannot save %s", settings_file_.path().string().c_str());
     }
 
-    /// Display -> Resolution menu: fixed window size scale x of 320x240.
-    /// Applies immediately and persists to settings.ini. In fullscreen the
-    /// size takes effect when leaving fullscreen.
+    /// Display -> Resolution menu: initial window size scale x of 320x240
+    /// (the window stays user-resizable afterwards). Applies immediately and
+    /// persists to settings.ini. In fullscreen the size takes effect when
+    /// leaving fullscreen.
     void set_resolution(int scale) override {
         scale = std::clamp(scale, kScaleMin, kScaleMax);
         settings_.display.scale = scale;
         if (!settings_file_.set_and_save("display", "scale", std::to_string(scale)))
             SDL_Log("dcb: cannot save %s", settings_file_.path().string().c_str());
         if ((SDL_GetWindowFlags(window_) & SDL_WINDOW_FULLSCREEN) != 0) return;
-        SDL_SetWindowMaximumSize(window_, 0, 0);
-        SDL_SetWindowMinimumSize(window_, kBaseWidth * scale, kBaseHeight * scale);
         SDL_SetWindowSize(window_, kBaseWidth * scale, kBaseHeight * scale);
-        SDL_SetWindowMinimumSize(window_, kBaseWidth * scale, kBaseHeight * scale);
-        SDL_SetWindowMaximumSize(window_, kBaseWidth * scale, kBaseHeight * scale);
         SDL_SyncWindow(window_);
     }
 
@@ -666,7 +663,7 @@ private:
     bool paused_ = false;
     trainer::Trainer* trainer_ = nullptr;  ///< [hotkeys] trainer panel (owned by the host loop)
     menu::Menu menu_;                       ///< native pause menu ([hotkeys] menu, Esc, Start+Select)
-    menu::Action menu_action_ = menu::Action::None;  ///< queued for the host loop
+    std::vector<menu::Action> menu_actions_;  ///< FIFO for the host loop (no overwrites)
     bool start_held_ = false, select_held_ = false;  ///< gamepad chord tracking
     std::array<bool, SDL_SCANCODE_COUNT> key_held_{};    ///< keys down now (from key events)
     /// Frames a key still counts as pressed after going down, so a tap shorter than the game's own
