@@ -6,6 +6,7 @@
 /assets/raw/*
 /assets/converted/*
 /assets/*.pak
+/assets/*/disc/
 /generated/*
 !**/.gitkeep
 

@@ -208,16 +208,16 @@ machine differs (every frame boundary with `n=1`). Frame numbers count every fra
 snapshot *N+k* of a run without the load. With `DCB_RECORD`, loading a state rewinds the recording
 to the loaded frame, so the log replays the timeline that was finally played.
 
-**File overrides.** A file placed in `extracted/<serial>/overrides/<name>` (named as under
-`fs/`) replaces that disc file when it has exactly the same size; other sizes are refused and
+**File overrides.** A file placed in `assets/<serial>/disc/<name>` (named as under `fs/`;
+`extracted/<serial>/overrides/` also works but is deprecated) replaces that disc file when it has exactly the same size; other sizes are refused and
 logged. Raw movie sectors get their headers re-stamped with this disc's positions, so a movie
 from another pressing plays as if it were on this disc. Each active override is logged at start
 (`[disc] override: ...`). Example, the English intro movie from the US disc (import the US dump
 first, `dcb --import <us.cue> <dir>`):
 
 ```sh
-mkdir -p extracted/SLPS-03101/overrides
-cp <dir>/SLUS-01328/fs/DIGIMON.MOV.raw2352 extracted/SLPS-03101/overrides/
+mkdir -p assets/SLPS-03101/disc
+cp <dir>/SLUS-01328/fs/DIGIMON.MOV.raw2352 assets/SLPS-03101/disc/
 ```
 
 **Game assets (textures).** `dcb_asset_ripper` (built with the tools) rips the images and sound

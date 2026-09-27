@@ -61,8 +61,9 @@ private:
 
 /// Sectors rebuilt from extracted files (see importer.hpp / tools/disc/extract_disc.py write_layout()).
 ///
-/// File overrides: a file at `<dir>/overrides/<name>` (the name as under fs/) replaces that disc
-/// file, provided it is exactly the same size; anything else is refused and logged. Raw 2352-byte
+/// File overrides: a file at `assets/<serial>/disc/<name>` (the name as under fs/; the older
+/// `<dir>/overrides/<name>` also works) replaces that disc file, provided it is exactly the same
+/// size; anything else is refused and logged. Raw 2352-byte
 /// files (movies) get each sector header re-stamped with the position it is served at, so a file
 /// taken from another pressing (e.g. the US movie) reads as if it were on this disc.
 class ExtractedDisc final : public Disc {
