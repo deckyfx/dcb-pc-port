@@ -208,6 +208,23 @@ machine differs (every frame boundary with `n=1`). Frame numbers count every fra
 snapshot *N+k* of a run without the load. With `DCB_RECORD`, loading a state rewinds the recording
 to the loaded frame, so the log replays the timeline that was finally played.
 
+**Native movies.** The game's three movies (`movie0` opening, `movie1` credits, `movie2` BANDAI
+logo) play natively when `movie/movie<N>.mpg` is in the asset pack or folder: full resolution,
+their own audio, any key skips; without them the disc movie plays. With native movies the game
+reads nothing through the CD drive. Files are MPEG-1 video + MP2 audio (decoded with
+[pl_mpeg](third_party/pl_mpeg)); MPEG-1 has no 15 fps mode, so use 30:
+
+```sh
+# 1. The disc movie cut into its three parts (sectors from the game's table), for upscaling:
+#    see assets/<serial>/movie_src/movie<N>.mp4 (made with ffmpeg's psxstr reader).
+# 2. Your (upscaled) movie -> MPEG-1, then re-pack:
+ffmpeg -i movie0_upscaled.mp4 -c:v mpeg1video -q:v 2 -r 30 -c:a mp2 -b:a 256k -ar 44100 -f mpeg \
+       assets/converted/SLPS-03101/movie/movie0.mpg
+./build/linux-debug/dcb_asset_ripper pack assets/converted/SLPS-03101 assets/SLPS-03101.pak
+```
+
+Save states are refused while a native movie plays.
+
 **Native file access.** The game's file API (open/read/close over the `X.DRV` archives, and
 libcd's `CdSearchFile`) is replaced by native code (`src/game/overrides/files.cpp`): data files
 are read straight from the game data, instantly, instead of through the emulated CD drive. A

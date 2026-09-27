@@ -1,5 +1,6 @@
 #include "program.hpp"
 
+#include <algorithm>
 #include <nlohmann/json.hpp>
 
 #include <cstring>
@@ -104,6 +105,15 @@ Program load_program(const fs::path& root, const std::string& game_id, uint32_t 
         const json cfg = read_json(ov_native);
         for (const auto& o : cfg.at("overrides")) {
             const uint32_t addr = hex(o.at("addr"));
+            if (o.contains("overlay")) {
+                const std::string overlay = o.at("overlay").get<std::string>();
+                const auto seg = std::find_if(prog.segments.begin(), prog.segments.end(),
+                                              [&](const Segment& s) { return s.overlay && s.name == overlay; });
+                if (seg == prog.segments.end() || !seg->in_code(addr))
+                    throw std::runtime_error("override outside overlay " + overlay + " code: " + o.at("addr").get<std::string>());
+                prog.overlay_overrides[{overlay, addr}] = o.at("symbol").get<std::string>();
+                continue;
+            }
             if (!prog.main().in_code(addr)) throw std::runtime_error("override outside boot EXE code: " + o.at("addr").get<std::string>());
             prog.overrides[addr] = o.at("symbol").get<std::string>();
             prog.known_functions.push_back(addr);  // must exist as an entry

@@ -34,6 +34,8 @@ struct Program {
     std::vector<Segment> segments;   ///< [0] is the boot EXE
     std::vector<uint32_t> known_functions;  ///< main-EXE entries from Ghidra (functions.json)
     std::map<uint32_t, std::string> overrides;  ///< main-EXE entry -> native replacement symbol
+    /// (overlay name, entry) -> native replacement symbol ("overlay" in overrides.json).
+    std::map<std::pair<std::string, uint32_t>, std::string> overlay_overrides;
 
     const Segment& main() const { return segments.front(); }
     /// Overlay window shared by all overlays: [lo, hi).

@@ -39,6 +39,7 @@ public:
     ~Sdl3() override {
         if (gamepad_ != nullptr) SDL_CloseGamepad(gamepad_);
         if (audio_ != nullptr) SDL_DestroyAudioStream(audio_);
+        if (movie_texture_ != nullptr) SDL_DestroyTexture(movie_texture_);
         if (texture_ != nullptr) SDL_DestroyTexture(texture_);
         if (renderer_ != nullptr) SDL_DestroyRenderer(renderer_);
         if (window_ != nullptr) SDL_DestroyWindow(window_);
@@ -193,6 +194,42 @@ public:
         draw_message();
         if (overlay_visible_) draw_overlay();
         if (trainer_ != nullptr && trainer_->is_open()) trainer_draw(renderer_, *trainer_);
+        SDL_RenderPresent(renderer_);
+    }
+
+    void present_movie(const uint8_t* rgb, int w, int h) override {
+        SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 255);
+        SDL_RenderClear(renderer_);
+        if (rgb != nullptr && w > 0 && h > 0) {
+            if (movie_texture_ == nullptr || movie_w_ != w || movie_h_ != h) {
+                if (movie_texture_ != nullptr) SDL_DestroyTexture(movie_texture_);
+                movie_texture_ = SDL_CreateTexture(renderer_, SDL_PIXELFORMAT_RGB24, SDL_TEXTUREACCESS_STREAMING, w, h);
+                movie_w_ = w;
+                movie_h_ = h;
+                if (movie_texture_ != nullptr) SDL_SetTextureScaleMode(movie_texture_, SDL_SCALEMODE_LINEAR);
+            }
+            if (movie_texture_ != nullptr) {
+                SDL_UpdateTexture(movie_texture_, nullptr, rgb, w * 3);
+                // The game's 4:3 area, then the movie centred in it at its own aspect ratio (a
+                // 320x160 movie letterboxes inside it, as on the console).
+                const SDL_FRect area = output_rect();
+                SDL_FRect dst = area;
+                const float aspect = static_cast<float>(w) / static_cast<float>(h);
+                if (area.w / area.h < aspect) {
+                    dst.h = area.w / aspect;
+                    dst.y = area.y + (area.h - dst.h) / 2.0f;
+                } else {
+                    dst.w = area.h * aspect;
+                    dst.x = area.x + (area.w - dst.w) / 2.0f;
+                }
+                // Game movies are 320 wide inside a 320x240 screen: keep that width relationship
+                // (a 320x160 movie spans the full width and 2/3 of the height).
+                SDL_RenderTexture(renderer_, movie_texture_, nullptr, &dst);
+            }
+        }
+        if (paused_) draw_label("PAUSED");
+        draw_message();
+        if (overlay_visible_) draw_overlay();
         SDL_RenderPresent(renderer_);
     }
 
@@ -457,6 +494,8 @@ private:
     SDL_Window* window_ = nullptr;
     SDL_Renderer* renderer_ = nullptr;
     SDL_Texture* texture_ = nullptr;
+    SDL_Texture* movie_texture_ = nullptr;  ///< native movie frames (created at the movie's size)
+    int movie_w_ = 0, movie_h_ = 0;
     SDL_AudioStream* audio_ = nullptr;
     SDL_Gamepad* gamepad_ = nullptr;
     std::vector<uint32_t> pixels_;
