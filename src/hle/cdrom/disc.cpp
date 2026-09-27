@@ -177,9 +177,16 @@ ExtractedDisc::ExtractedDisc(const fs::path& dir) : dir_(dir) {
 
 void ExtractedDisc::apply_override(Range& r, const std::string& rel) {
     const std::string name = rel.rfind("fs/", 0) == 0 ? rel.substr(3) : rel;
-    const fs::path candidate = dir_ / "overrides" / name;
+    // Modifications live with the other assets (assets/<serial>/disc/), keeping extracted/ a
+    // clean copy of the player's dump; the older extracted/<serial>/overrides/ still works.
     std::error_code ec;
-    if (!fs::is_regular_file(candidate, ec)) return;
+    fs::path candidate = fs::path("assets") / dir_.filename() / "disc" / name;
+    if (!fs::is_regular_file(candidate, ec)) {
+        candidate = dir_ / "overrides" / name;
+        if (!fs::is_regular_file(candidate, ec)) return;
+        std::fprintf(stderr, "[disc] %s: overrides now belong in %s\n", candidate.string().c_str(),
+                     (fs::path("assets") / dir_.filename() / "disc").string().c_str());
+    }
     const uint64_t want = r.kind == Range::Raw ? uint64_t{r.count} * kRawSector : uint64_t{r.bytes};
     const uint64_t have = fs::file_size(candidate, ec);
     if (ec || have != want) {
