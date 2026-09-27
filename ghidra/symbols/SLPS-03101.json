@@ -1,0 +1,9 @@
+{
+ "program": "SLPS_031.01",
+ "symbols": {
+  "0x80014D3C": {"name": "task_sleep", "source": "re", "note": "yield the current game task for a0 frames (overridden: src/game/overrides/tasks.cpp)"},
+  "0x80029EF4": {"name": "gfx_packet_pool_full", "source": "re", "note": "1 when the frame's 28-byte sprite packet pool (ptr 801D9714) has reached its end (exact compare)"},
+  "0x801ED8D0": {"name": "title_draw_sprite", "overlay": "OPENSEG", "source": "re", "note": "(x, y, vram_x, vram_y, w, h, clut_x, clut_y, depth, semi, semi_mode, brightness, ot_layer): DR_MODE + SPRT packet into the pool"},
+  "0x801EE850": {"name": "title_init", "overlay": "OPENSEG", "source": "re", "note": "loads B:TITLE.ARC and uploads each TIM at its own VRAM position"}
+ }
+}

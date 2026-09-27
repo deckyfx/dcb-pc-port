@@ -554,6 +554,62 @@ void test_hd_identity_e2e() {
     CHECK((*first)[0] == 0x3210u && (*first)[1] == 0x3214u);
 }
 
+// A manifest "slot_w" uploads the art at that larger size from the same corner (the US title's
+// wider copyright in the JP slot): an 8x1 4-bit image replaced by 16x1 art fills 4 units, not 2.
+void test_hd_slot() {
+    const uint16_t entries[16] = {0x0000, 0x001F, 0x03E0, 0x7C00, 0x7FFF, 0x0001, 0x0002, 0x0003,
+                                  0x0004, 0x0005, 0x0006, 0x0007, 0x0008, 0x0009, 0x000A, 0x000B};
+    std::string pal_hex;
+    for (const uint16_t e : entries) {
+        char h[5];
+        std::snprintf(h, sizeof h, "%04x", e);
+        pal_hex += h;
+    }
+    // 16x1 art: 8 red then 8 green pixels.
+    std::vector<uint8_t> rgba(16 * 4, 255);
+    for (int i = 0; i < 16; ++i) {
+        rgba[i * 4 + 0] = i < 8 ? 255 : 0;
+        rgba[i * 4 + 1] = i < 8 ? 0 : 255;
+        rgba[i * 4 + 2] = 0;
+    }
+    int png_len = 0;
+    unsigned char* png = stbi_write_png_to_mem(rgba.data(), 16 * 4, 16, 1, 4, &png_len);
+    CHECK(png && png_len > 0);
+    const fs::path dir = scratch_dir();
+    fs::create_directories(dir / "art");
+    FILE* f = std::fopen((dir / "art" / "s.png").string().c_str(), "wb");
+    CHECK(f);
+    CHECK(std::fwrite(png, 1, static_cast<size_t>(png_len), f) == static_cast<size_t>(png_len));
+    std::fclose(f);
+    STBIW_FREE(png);
+
+    const uint32_t staged[1] = {0x32143210u};  // the original 8x1 upload (one word)
+    const uint64_t img = vfs::fnv1a64(staged, 4);
+    char manifest[512];
+    std::snprintf(manifest, sizeof manifest,
+                  "{\"version\":1,\"entries\":[{\"img\":\"%s\",\"w\":8,\"h\":1,\"bpp\":4,\"path\":\"s.png\","
+                  "\"pal\":\"%s\",\"slot_w\":16}]}",
+                  vfs::to_hex16(img).c_str(), pal_hex.c_str());
+    const std::string man_path = (dir / "m.json").string();
+    f = std::fopen(man_path.c_str(), "wb");
+    CHECK(f);
+    std::fwrite(manifest, 1, std::strlen(manifest), f);
+    std::fclose(f);
+
+    hle::HdTextures hd;
+    CHECK(hd.load(man_path, (dir / "art").string()));
+    int out_w = 0, out_h = 0;
+    const std::vector<uint16_t>* hit = hd.maybe_replace(0, 0, 2, 1, staged, 1, &out_w, &out_h);
+    CHECK(hit && out_w == 4 && out_h == 1 && hit->size() == 4);
+    CHECK((*hit)[0] == 0x1111u && (*hit)[1] == 0x1111u && (*hit)[2] == 0x2222u && (*hit)[3] == 0x2222u);
+
+    // A slot that doesn't fit inside VRAM from this corner falls back to the original size.
+    hle::HdTextures edge;
+    CHECK(edge.load(man_path, (dir / "art").string()));
+    const std::vector<uint16_t>* clipped = edge.maybe_replace(1022, 0, 2, 1, staged, 1, &out_w, &out_h);
+    CHECK(clipped && out_w == 2 && out_h == 1 && clipped->size() == 2);
+}
+
 // --- VAB / BRR ---------------------------------------------------------------
 // Hand-computed vectors for the SPU-ADPCM formula (spu-adpcm, psx-spx "SPU
 // ADPCM Samples"): sample = (nibble<<12 >> shift) + ((old*pos + older*neg + 32) >> 6).
@@ -675,6 +731,7 @@ constexpr Case kCases[] = {
     {"hd_replace", test_hd_replace},
     {"hd_identity_stp", test_hd_identity_stp},
     {"hd_identity_e2e", test_hd_identity_e2e},
+    {"hd_slot", test_hd_slot},
     {"brr_block", test_brr_block},
     {"vab_parse", test_vab_parse},
     {"vab_decode", test_vab_decode},

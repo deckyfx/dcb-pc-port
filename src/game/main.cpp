@@ -199,6 +199,13 @@ int main(int argc, char** argv) {
                 if (hd->load(env_manifest ? env_manifest : "", art)) {
                     std::printf("[dcb] replacement textures: %s\n", art.c_str());
                     hd_textures = hd;
+                    // Sprites to draw at another size, for art whose layout differs (sprites.txt).
+                    std::vector<uint8_t> text;
+                    if (hd->read_art("sprites.txt", text)) {
+                        auto rules = hle::Gpu::parse_sprite_scales(std::string(text.begin(), text.end()));
+                        std::printf("[dcb] sprite sizes: %zu rule(s) from sprites.txt\n", rules.size());
+                        mmio.gpu().set_sprite_scales(std::move(rules));
+                    }
                 } else {
                     std::printf("[dcb] replacement textures unavailable (continuing without them)\n");
                 }

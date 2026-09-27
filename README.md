@@ -270,6 +270,21 @@ prints how many texture uploads were replaced and why others were not; `DCB_LOG_
 `./dcb.sh -H`) logs each texture as it is replaced (file, size, format); `DCB_TRACE_HD=<n>` logs the
 first *n* uploads that match no manifest entry (movie frames arrive as 24-pixel-wide strips and never match).
 
+**Resizing sprites.** The game draws each sprite one texel per pixel, at its original size. When
+replacement art needs a different size on screen (a longer English line, a smaller logo), put a
+`sprites.txt` next to the manifest (in `assets/converted/<serial>/`, then re-pack): one rule per
+line, `tex_x tex_y u v w h draw_w draw_h [src_w src_h]`. Each rule draws the matching sprite at
+`draw_w` x `draw_h`, centred where the game put it, showing `src_w` x `src_h` texels (default: the
+sprite's own). Different sizes scale; equal sizes draw one texel per pixel.
+
+To show wider art without scaling it (the US title's 256-wide copyright in the JP 176-wide slot),
+give the image a bigger slot in video memory: add `"slot_w"` (and/or `"slot_h"`) in pixels to its
+manifest entry, and the art is uploaded at that size from the same corner. Palette images only. The
+area it grows into must be free on that screen; the US version of the same screen shows where
+that's safe. Then add a rule with `src` = `draw` = the slot size. `DCB_TRACE_PRIMS=1` prints every distinct
+textured draw once (packet address, draw mode, raw GP0 words), which is where the numbers come from:
+`tex_x` = (mode & 15) × 64, `tex_y` = ((mode >> 4) & 1) × 256, and u, v, w, h come from the sprite's words.
+
 **Reverse engineering.** `DCB_COVERAGE=<file>` writes per-function call counts (address, overlay,
 calls, first frame) at exit; `DCB_TRACE_CALLS=<n>` logs the first *n* calls live. `DCB_LOG_LOADS=1`
 logs named asset loads (disc files, SPU uploads, XA streams, MDEC decodes) with frame numbers.

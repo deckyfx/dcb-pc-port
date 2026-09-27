@@ -95,10 +95,15 @@ void Mmio::dma_gpu_linked_list(uint32_t addr) {
     for (uint32_t nodes = 0; nodes < (1u << 20); ++nodes) {
         const uint32_t header = psx_read32(ctx_, addr & 0x1FFFFCu);
         const uint32_t words = header >> 24;
+        gpu_.set_packet_address(addr & 0x1FFFFCu);
         for (uint32_t k = 1; k <= words; ++k) gp0(psx_read32(ctx_, (addr & 0x1FFFFCu) + 4 * k));
-        if (header & 0x800000u) return;
+        if (header & 0x800000u) {
+            gpu_.set_packet_address(0);
+            return;
+        }
         addr = header & 0xFFFFFFu;
     }
+    gpu_.set_packet_address(0);
     std::fprintf(stderr, "[dma] GPU linked list does not terminate (cycle?) - stopped\n");
 }
 

@@ -78,6 +78,9 @@ in A, changed counts (default: ≥10 calls both sides, ratio ≥2.0).
 - **XA**: stream start/stop edges with file + channel.
 - **MDEC**: decode start/stop edges (movie segments in `DIGIMON.MOV`).
 - **Textures**: `DCB_LOG_HD` / `DCB_TRACE_HD` (existing).
+- **Draws**: `DCB_TRACE_PRIMS=1` prints each distinct textured polygon/sprite once, with the RAM
+  address of its packet. Match a texture to its draw by texpage/UV/size, then find the code that
+  fills that packet (the title's sprites all come from OPENSEG `title_draw_sprite` 801ED8D0).
 
 ### 2.3 Ghidra bridge
 
