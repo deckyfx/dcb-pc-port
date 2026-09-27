@@ -149,11 +149,11 @@ void LoadLog::sector(uint32_t lba) {
     run_first_ = run_last_ = lba;
 }
 
-void LoadLog::file(const std::string& path, uint32_t bytes, bool loose) {
+void LoadLog::file(const std::string& path, uint32_t bytes, bool loose, const std::string& callers) {
     if (!enabled_) return;
     emit_run();
-    std::fprintf(stderr, "[load] frame %llu file %s %u KB%s\n", static_cast<unsigned long long>(frame_), path.c_str(),
-                 (bytes + 1023) / 1024, loose ? " (loose file)" : "");
+    std::fprintf(stderr, "[load] frame %llu file %s %u KB%s%s\n", static_cast<unsigned long long>(frame_), path.c_str(),
+                 (bytes + 1023) / 1024, loose ? " (loose file)" : "", callers.c_str());
 }
 
 void LoadLog::stream(uint32_t lba) {

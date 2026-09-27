@@ -1,3 +1,4 @@
+#include <psx/backtrace.hpp>
 #include <psx/runtime.hpp>
 
 #include <cstring>
@@ -24,6 +25,7 @@ Machine::Machine() : ram_(std::make_unique<std::array<uint8_t, PSX_RAM_SIZE>>())
     ctx_.ram = ram_->data();
     ctx_.scratch = scratch_.data();
     ctx_.host = this;
+    set_active_context(&ctx_);
 }
 
 Machine& Machine::from(PsxContext* ctx) {

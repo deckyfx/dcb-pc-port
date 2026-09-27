@@ -4,6 +4,8 @@
 #include "gpu/hd_textures.hpp"
 
 #include "vfs/hash.hpp"
+
+#include <psx/backtrace.hpp>
 #include "vfs/image.hpp"
 #include "vfs/tim.hpp"
 #include "vfs/vfs.hpp"
@@ -527,8 +529,8 @@ const std::vector<uint16_t>* HdTextures::maybe_replace(int x, int y, int w, int 
         }
         // Right shape, no live palette: keep the original bytes (never guess).
         if (log_hd())
-            std::printf("[hd] kept %s: %zu palette variants, none matches the last palette uploaded\n",
-                        it->second.front().path.c_str(), it->second.size());
+            std::printf("[hd] kept %s: %zu palette variants, none matches the last palette uploaded%s\n",
+                        it->second.front().path.c_str(), it->second.size(), psx::backtrace_string(psx::active_context()).c_str());
         ++miss_palette_not_live_;
         ++misses_;
         return nullptr;
@@ -663,7 +665,7 @@ const std::vector<uint16_t>* HdTextures::replace(const Candidate& pick, size_t u
         } else {
             // Older manifests without "pal": convert against the palette the game uploaded.
             if (!pick.has_clut) {
-                if (log_hd()) std::printf("[hd] kept %s: no palette in the manifest\n", pick.path.c_str());
+                if (log_hd()) std::printf("[hd] kept %s: no palette in the manifest%s\n", pick.path.c_str(), psx::backtrace_string(psx::active_context()).c_str());
                 ++miss_no_palette_;
                 ++misses_;
                 return nullptr;
@@ -672,8 +674,8 @@ const std::vector<uint16_t>* HdTextures::replace(const Candidate& pick, size_t u
             const auto cache = clut_cache_.find(pick.clut);
             if (cache == clut_cache_.end()) {
                 if (log_hd())
-                    std::printf("[hd] kept %s: its palette has not been uploaded yet (re-rip to store it)\n",
-                                pick.path.c_str());
+                    std::printf("[hd] kept %s: its palette has not been uploaded yet (re-rip to store it)%s\n",
+                                pick.path.c_str(), psx::backtrace_string(psx::active_context()).c_str());
                 ++miss_palette_not_live_;
                 ++misses_;
                 return nullptr;
@@ -683,8 +685,8 @@ const std::vector<uint16_t>* HdTextures::replace(const Candidate& pick, size_t u
             // Only single-row palette uploads are handled on this path.
             if (pal_ptr->size() != per) {
                 if (log_hd())
-                    std::printf("[hd] kept %s: palette upload has %zu entries, a %d-bit image uses %zu per row\n",
-                                pick.path.c_str(), pal_ptr->size(), pick.bpp, per);
+                    std::printf("[hd] kept %s: palette upload has %zu entries, a %d-bit image uses %zu per row%s\n",
+                                pick.path.c_str(), pal_ptr->size(), pick.bpp, per, psx::backtrace_string(psx::active_context()).c_str());
                 ++miss_palette_shape_;
                 ++misses_;
                 return nullptr;
@@ -762,8 +764,8 @@ const std::vector<uint16_t>* HdTextures::replace(const Candidate& pick, size_t u
     ++hits_;
     // Fresh replacements only: repeats come from the fit cache and stay quiet.
     if (log_hd())
-        std::printf("[hd] replaced %s (%dx%d, %d-bit, from a %dx%d PNG)\n", pick.path.c_str(), pick.w, pick.h,
-                    pick.bpp, png_w, png_h);
+        std::printf("[hd] replaced %s (%dx%d, %d-bit, from a %dx%d PNG)%s\n", pick.path.c_str(), pick.w, pick.h,
+                    pick.bpp, png_w, png_h, psx::backtrace_string(psx::active_context()).c_str());
     // Cache the fitted result; return the cached copy so the pointer stays
     // valid across later replacements reusing scratch_.
     store_fit(key, scratch_);

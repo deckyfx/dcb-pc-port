@@ -98,7 +98,7 @@ public:
     void mdec_frame(uint64_t transfers);
     /// A file opened through the native file layer (src/game/overrides/files.cpp): data that never
     /// goes through the CD drive. `loose` = served from assets/<serial>/files/.
-    void file(const std::string& path, uint32_t bytes, bool loose);
+    void file(const std::string& path, uint32_t bytes, bool loose, const std::string& callers = {});
     /// A streaming read (ReadS: movie video + XA audio) starts at `lba`; its sectors are not
     /// logged one by one.
     void stream(uint32_t lba);

@@ -58,6 +58,14 @@ in A, changed counts (default: ≥10 calls both sides, ratio ≥2.0).
 - **Game files**: the native file layer (`src/game/overrides/files.cpp`) serves
   every data file without the CD drive and logs it by game path (`file X:\…`,
   with `(loose file)` when it came from `assets/<id>/files/`).
+- **Call chains**: every `file` line and every `[hd] replaced/kept` line (with `DCB_LOG_HD=1`)
+  ends with the guest callers, innermost first:
+  `file A:\BGM\BGM102.PAK 100 KB <- f_8001B48C+0x74 <- f_8002D864+0x12C <- o_OPENSEG_801EE850+0x2C`.
+  They come from `$ra` plus a scan of the guest stack for return addresses (a word pointing just
+  after a jal/jalr into recompiled code), named by `src/game/code_names.cpp`: a heuristic, so a
+  stale return address can appear and deep callers can be missed. Texture uploads are queued by
+  libgpu and run later from its queue, so their chain names the queue runner (80068BD4…), not the
+  code that asked for the image.
 - **Streams**: a ReadS (movie video + XA audio) logs one `stream` line where it
   starts, not every sector.
 - **Other CD reads → files** via `extracted/<id>/layout.txt` (falls back to bare
