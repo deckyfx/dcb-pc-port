@@ -188,5 +188,8 @@ if(DCB_BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
         add_test(NAME tools.extract_disc
                  COMMAND Python3::Interpreter -m unittest discover -s tools/disc/tests -v
                  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+        add_test(NAME tools.coverage_diff
+                 COMMAND Python3::Interpreter -m unittest discover -s tools/re/tests -v
+                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
     endif()
 endif()

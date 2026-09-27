@@ -3,6 +3,7 @@
 
 #include "bios/bios.hpp"
 #include "cdrom/disc.hpp"
+#include "cdrom/load_log.hpp"
 #include "gpu/hd_textures.hpp"
 #include "hw/mmio.hpp"
 #include "system.hpp"
@@ -14,6 +15,7 @@
 #include "settings.hpp"
 #include "trainer.hpp"
 
+#include <psx/coverage.h>
 #include <psx/runtime.hpp>
 
 #include <algorithm>
@@ -103,6 +105,17 @@ void snapshot(const uint16_t* vram, const platform::DisplayArea& area, uint64_t 
                  static_cast<unsigned long long>(frame), area.x, area.y, area.width, area.height, area.rgb24, area.enabled);
 }
 
+/// Dump the coverage report if DCB_COVERAGE names a file. Free function so both
+/// the clean-exit path and the catch block can call it.
+void write_coverage_to(const char* path) {
+    if (path && psx_coverage_count) {
+        if (psx_coverage_write_json(path) == 0)
+            std::printf("[dcb] coverage: %u functions -> %s\n", psx_coverage_count, path);
+        else
+            std::fprintf(stderr, "[dcb] coverage: cannot write %s\n", path);
+    }
+}
+
 void arm_watchdog() {
 #ifndef _WIN32
     if (const char* s = std::getenv("DCB_WATCHDOG")) {
@@ -149,6 +162,13 @@ int main(int argc, char** argv) {
         const std::vector<uint8_t> boot = exe_override.empty() ? disc->read_boot_exe() : std::vector<uint8_t>{};
         std::printf("[dcb] game data: %s\n", disc->describe().c_str());
         mmio.insert_disc(std::move(disc));
+        // Named asset-load log for the RE loop (docs/RE_WORKFLOW.md): one line
+        // per load with frame + guest cycle. Read-only over disc data, so
+        // guest state and timing stay bit-identical.
+        if (std::getenv("DCB_LOG_LOADS")) {
+            hle::LoadLog::instance().set_enabled(true);
+            hle::LoadLog::instance().set_data_dir(("extracted/" + std::string(DCB_GAME_ID)).c_str());
+        }
         hle::HdTextures* hd_textures = nullptr;  // for the exit summary
         // Texture replacement (dcb_asset_ripper output). First found wins:
         //   DCB_HD_PACK=<.pak|folder> (+ DCB_HD_MANIFEST=<file> if the manifest lives elsewhere),
@@ -203,6 +223,18 @@ int main(int argc, char** argv) {
             area.enabled = d.enabled;
         };
         dcb::HostFrameState frame_state;  // guest-visible host values: part of every save state
+        // Function coverage for the RE loop (docs/RE_WORKFLOW.md): DCB_COVERAGE=<file>
+        // writes per-function call counts at exit; DCB_TRACE_CALLS=<n> logs the first
+        // n calls live. Sized from the generated tables; arming only appends to
+        // host-side counters, so guest state and timing stay bit-identical.
+        const char* coverage_path = std::getenv("DCB_COVERAGE");
+        const bool coverage_armed = coverage_path != nullptr || std::getenv("DCB_TRACE_CALLS") != nullptr;
+        if (coverage_armed) {
+            // Sized from the recompiler-emitted name table (boot EXE + overlays);
+            // stays disarmed when nothing was emitted.
+            psx_coverage_init(psx_coverage_name_count);
+            psx_coverage_armed = psx_coverage_count ? 1 : 0;
+        }
         const auto guest_frame = [&] {
             // Input. While a movie plays (the MDEC is busy), any key or button skips it: the game
             // itself only accepts Start, so a press becomes a short Start tap.
@@ -259,7 +291,19 @@ int main(int argc, char** argv) {
             static FILE* dump = std::getenv("DCB_AUDIO_DUMP") ? std::fopen(std::getenv("DCB_AUDIO_DUMP"), "wb") : nullptr;
             if (dump && !audio.empty()) std::fwrite(audio.data(), sizeof(int16_t), audio.size(), dump);
             static uint64_t frame = 0;
-            snapshot(mmio.gpu().vram(), area, frame++);
+            snapshot(mmio.gpu().vram(), area, frame);
+            ++frame;
+            // RE tracing stamps for the *next* frame's guest code (coverage +
+            // load log share the host frame counter). One predictable branch
+            // when everything is off.
+            static const bool tracing =
+                coverage_armed || hle::LoadLog::instance().enabled();
+            if (tracing) {
+                psx_coverage_frame = frame;
+                hle::LoadLog::instance().set_frame(frame, machine.ctx().cycles);
+                hle::LoadLog::instance().mdec_frame(mmio.mdec_transfers());
+                hle::LoadLog::instance().flush();
+            }
         };
 
         const psx::ExeInfo exe = exe_override.empty() ? machine.load_exe(boot) : machine.load_exe(exe_override);
@@ -326,7 +370,10 @@ int main(int argc, char** argv) {
                         static_cast<unsigned long long>(hd_textures->miss_no_palette()),
                         static_cast<unsigned long long>(hd_textures->miss_palette_not_live()),
                         static_cast<unsigned long long>(hd_textures->miss_palette_shape()));
+        write_coverage_to(coverage_path);  // clean exits (window close, program return, DCB_EXIT_AT)
     } catch (const std::exception& e) {
+        // coverage_path is out of scope here; re-read the env (same value).
+        write_coverage_to(std::getenv("DCB_COVERAGE"));  // fatal errors still dump what was recorded
         std::fprintf(stderr, "[dcb] fatal: %s\n", e.what());
         return 1;
     }
