@@ -208,6 +208,18 @@ machine differs (every frame boundary with `n=1`). Frame numbers count every fra
 snapshot *N+k* of a run without the load. With `DCB_RECORD`, loading a state rewinds the recording
 to the loaded frame, so the log replays the timeline that was finally played.
 
+**File overrides.** A file placed in `extracted/<serial>/overrides/<name>` (named as under
+`fs/`) replaces that disc file when it has exactly the same size; other sizes are refused and
+logged. Raw movie sectors get their headers re-stamped with this disc's positions, so a movie
+from another pressing plays as if it were on this disc. Each active override is logged at start
+(`[disc] override: ...`). Example, the English intro movie from the US disc (import the US dump
+first, `dcb --import <us.cue> <dir>`):
+
+```sh
+mkdir -p extracted/SLPS-03101/overrides
+cp <dir>/SLUS-01328/fs/DIGIMON.MOV.raw2352 extracted/SLPS-03101/overrides/
+```
+
 **Game assets (textures).** `dcb_asset_ripper` (built with the tools) rips the images and sound
 banks from the game data into `assets/` (gitignored), and packs them into one file:
 
@@ -220,7 +232,11 @@ banks from the game data into `assets/` (gitignored), and packs them into one fi
 At start the game loads replacement textures from the first of: `DCB_HD_PACK=<.pak|folder>`,
 `assets/<serial>.pak`, `assets/converted/<serial>/`; the manifest (`assets_manifest.json`) is read
 from inside the pack or folder unless `DCB_HD_MANIFEST=<file>` names one. Edit a PNG (same size as the
-original for now: the renderer draws at native resolution), re-pack, restart. Unmodified art gives
+original for now: the renderer draws at native resolution), re-pack, restart. Palette images are
+converted against their own palette from the disc (stored in the manifest), so an edit should use
+that palette's colours; the game still chooses the palette when drawing, so palette animation keeps
+working. Manifests ripped before this change lack the palettes: re-rip (this rewrites
+`assets/converted/<serial>/`, so keep a copy of edited PNGs). Unmodified art gives
 frames bit-identical to the original. PNG alpha: 0 = transparent, 255 = opaque; the semi-transparency
 bit is taken from the original pixel unless alpha is exactly 254 (forces it on). At exit the game
 prints how many texture uploads were replaced and why others were not; `DCB_LOG_HD=1` (or
