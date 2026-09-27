@@ -559,6 +559,7 @@ int main(int argc, char** argv) {
         system.start(exe.pc0);
         dcb::SaveStates states({machine, mmio, bios, system}, frame_state, input_log, *host);
         bool paused = false, frozen = false;  // frozen: the host held the game (pause, trainer panel)
+        bool menu_was_open = false;  // edge-detect menu open for the slot sync below
         for (;;) {
             if (!host->pump_events()) {
                 std::printf("[dcb] window closed\n");
@@ -583,7 +584,6 @@ int main(int argc, char** argv) {
             // action queued on the exact frame the menu closed).
             // Menu just opened this frame: adopt the hotkey-selected slot so
             // the menu and F5/F7 can never disagree (either direction).
-            static bool menu_was_open = false;
             if (menu_open && !menu_was_open) {
                 if (menu::Menu* menu = host->menu()) menu->set_slot(states.selected_slot());
             }

@@ -122,10 +122,12 @@ Action Menu::key(Key k) {
             return Action::PrevSlot;
         }
         if (page_ == Page::Cards && !cards_.empty()) {
-            // Move within the file list (wraps); Backup/Use rows included.
+            // Move within files + Backup/Use rows (wraps). card_sel_ only
+            // follows on file rows: stepping onto Backup/Use must not
+            // reselect, or "Use selected file" would act on the last file.
             const int rows = static_cast<int>(cards_.size()) + 2;
             sel_ = (sel_ + rows - 1) % rows;
-            card_sel_ = std::clamp(sel_, 0, static_cast<int>(cards_.size()) - 1);
+            if (sel_ < static_cast<int>(cards_.size())) card_sel_ = sel_;
             return Action::None;
         }
         return Action::None;
@@ -138,7 +140,7 @@ Action Menu::key(Key k) {
         if (page_ == Page::Cards && !cards_.empty()) {
             const int rows = static_cast<int>(cards_.size()) + 2;
             sel_ = (sel_ + 1) % rows;
-            card_sel_ = std::clamp(sel_, 0, static_cast<int>(cards_.size()) - 1);
+            if (sel_ < static_cast<int>(cards_.size())) card_sel_ = sel_;
             return Action::None;
         }
         return Action::None;
@@ -235,6 +237,7 @@ void Menu::render_info(std::vector<Line>& out, const char* title) const {
             for (size_t i = 0; i < cards_.size(); ++i) {
                 std::string text = std::string(static_cast<int>(i) == sel_ ? "> " : "  ") + cards_[i];
                 if (static_cast<int>(i) == card_active_) text += "  [in use]";
+                if (static_cast<int>(i) == card_sel_) text += "  [selected]";
                 out.push_back({text, static_cast<int>(i) == sel_ ? Style::Selected : Style::Normal});
             }
             const int nb = static_cast<int>(cards_.size());

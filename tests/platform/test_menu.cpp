@@ -160,23 +160,36 @@ void test_cards_left_right() {
     for (int i = 0; i < 4; ++i) m.key(Key::Down);
     CHECK(m.key(Key::Enter) == Action::OpenCards);
     m.set_cards({"card1.mcd", "card1-a.mcd", "card1-b.mcd"}, 0);
-    // Left/Right moves within files + Backup/Use rows (3 files + 2 rows).
+    // Pick card1-a (second file), then step onto Backup/Use: the choice sticks.
+    // Rows: 0,1,2 files - 3 Backup - 4 Use.
     CHECK(m.card_sel() == 0);
     CHECK(m.key(Key::Right) == Action::None && m.card_sel() == 1);
     CHECK(m.key(Key::Right) == Action::None && m.card_sel() == 2);
-    CHECK(m.key(Key::Right) == Action::None && m.card_sel() == 2);  // Backup row clamps
+    CHECK(m.key(Key::Right) == Action::None && m.card_sel() == 2);  // Backup row: unchanged
     CHECK(m.key(Key::Enter) == Action::BackupCard);
-    CHECK(m.key(Key::Right) == Action::None && m.card_sel() == 2);  // Use row clamps
-    CHECK(m.key(Key::Enter) == Action::UseCard);
-    CHECK(m.key(Key::Left) == Action::None && m.card_sel() == 2);
-    // Wraps around the 5 rows (3 files + Backup + Use).
+    CHECK(m.key(Key::Right) == Action::None && m.card_sel() == 2);  // Use row: unchanged
+    CHECK(m.key(Key::Enter) == Action::UseCard);                    // acts on card1-b here
+    // Re-pick file 0, wrap to Use: the choice sticks across Backup/Use rows.
+    // Currently sel=4 (Use), choice=2.
+    m.key(Key::Left);  // sel 3 (Backup), choice stays 2
     m.key(Key::Left);  // sel 2 (file 2)
     m.key(Key::Left);  // sel 1 (file 1)
     m.key(Key::Left);  // sel 0 (file 0)
-    m.key(Key::Left);  // sel 4 (Use row, wraps)
-    CHECK(m.card_sel() == 2);
-    m.key(Key::Right);  // sel 0 (wraps)
     CHECK(m.card_sel() == 0);
+    m.key(Key::Left);  // sel 4 (Use, wraps), choice stays 0
+    CHECK(m.card_sel() == 0);
+    CHECK(m.key(Key::Enter) == Action::UseCard);  // acts on file 0, not the oldest
+    // The chosen file is marked.
+    CHECK(contains(m.render(56, 28), "[selected]"));
+    // Left/Right still wraps across all 5 rows (3 files + Backup + Use);
+    // choice only changes on file rows. Currently sel=4 (Use), choice=0.
+    m.key(Key::Left);  // sel 3 (Backup), choice stays 0
+    CHECK(m.card_sel() == 0);
+    m.key(Key::Left);  // sel 2 (file 2)
+    CHECK(m.card_sel() == 2);
+    m.key(Key::Right);  // sel 3 (Backup), choice stays 2
+    m.key(Key::Right);  // sel 4 (Use), choice stays 2
+    CHECK(m.card_sel() == 2);
 }
 
 void test_set_slot() {
