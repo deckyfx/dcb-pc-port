@@ -331,18 +331,20 @@ unsigned quantize_index(const std::vector<uint16_t>& pal, size_t per, uint8_t r,
             if (pal[k] == 0) return static_cast<unsigned>(k);
         }
     }
+    // Nearest colour. The STP bit only breaks ties (same distance, e.g. duplicate RGB entries
+    // either side of the bit): colour always wins. Art from another source (such as the US
+    // release, where every opaque texel has STP set) must not be pulled onto the few STP
+    // entries of this palette; exact matches, and so identity packs, never get here.
     unsigned best = 0;
-    unsigned best_d = 0xFFFFFFFFu;
+    uint64_t best_d = UINT64_MAX;
     for (size_t k = 0; k < per; ++k) {
         const uint16_t e = pal[k];
         if (e == 0) continue;
         const int dr = static_cast<int>(r) - vfs::expand5(static_cast<uint16_t>(e & 0x1F));
         const int dg = static_cast<int>(g) - vfs::expand5(static_cast<uint16_t>((e >> 5) & 0x1F));
         const int db = static_cast<int>(b) - vfs::expand5(static_cast<uint16_t>((e >> 10) & 0x1F));
-        // STP mismatch costs as much as a full-channel miss: keeps duplicate
-        // RGB entries on their own side of the bit.
-        const unsigned stp_cost = ((e ^ want) & 0x8000u) ? 3u * 255u * 255u : 0u;
-        const unsigned d = static_cast<unsigned>(dr * dr + dg * dg + db * db) + stp_cost;
+        const uint64_t colour = static_cast<uint64_t>(dr * dr + dg * dg + db * db);
+        const uint64_t d = colour * 2 + (((e ^ want) & 0x8000u) ? 1u : 0u);
         if (d < best_d) {
             best_d = d;
             best = static_cast<unsigned>(k);
