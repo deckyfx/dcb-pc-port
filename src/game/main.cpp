@@ -10,6 +10,7 @@
 
 #include "first_run.hpp"
 #include "input_log.hpp"
+#include "overrides/movies.hpp"
 #include "overrides/native_files.hpp"
 #include "platform.hpp"
 #include "save_states.hpp"
@@ -186,6 +187,8 @@ int main(int argc, char** argv) {
             if (env_pack) art = env_pack;
             else if (std::filesystem::is_regular_file(pak, hd_ec)) art = pak.string();
             else if (std::filesystem::is_regular_file(loose / hle::HdTextures::kManifestName, hd_ec)) art = loose.string();
+            // Native movies (movie/movie<N>.mpg) come from the same places; a loose folder shadows the pack.
+            dcb::attach_movies({pak.string(), loose.string(), env_pack ? std::string(env_pack) : std::string()});
             if (!art.empty()) {
                 hle::HdTextures* hd = mmio.gpu().install_hd();
                 if (hd->load(env_manifest ? env_manifest : "", art)) {
@@ -249,6 +252,9 @@ int main(int argc, char** argv) {
             }
             if (any_press && pad_frame < movie_until) skip_until = pad_frame + 6;
             if (pad_frame < skip_until) pad = static_cast<uint16_t>(pad & ~platform::Start);
+            // A native movie is skipped by any key or Start, like the disc one.
+            auto& movie = dcb::movie_host();
+            if (movie.active && (any_press || (pad & platform::Start) == 0)) movie.skip = true;
             input_log.apply(pad_frame, pad, any_press);
             mmio.set_pad_buttons(0, pad);
             // DCB_TRACE_INPUT: what the game's pad library last read over the port.
@@ -262,7 +268,13 @@ int main(int argc, char** argv) {
             ++pad_frame;
             read_display();
             const auto present_start = std::chrono::steady_clock::now();
-            host->present(mmio.gpu().vram(), area);
+            if (movie.active) {
+                movie.player.advance(1.0 / 59.94);  // one game frame of movie time (deterministic)
+                const auto& rgb = movie.player.rgb();
+                host->present_movie(rgb.empty() ? nullptr : rgb.data(), movie.player.width(), movie.player.height());
+            } else {
+                host->present(mmio.gpu().vram(), area);
+            }
             // Performance overlay: once per second, turn the counters into rates and shares.
             static auto window_start = std::chrono::steady_clock::now();
             static uint64_t frames = 0, flips0 = mmio.display_flips(), gpu0 = mmio.gpu_ns(), sleep0 = system.sleep_ns();
@@ -287,7 +299,11 @@ int main(int argc, char** argv) {
                 gpu0 = mmio.gpu_ns();
                 sleep0 = system.sleep_ns();
             }
-            const std::vector<int16_t>& audio = mmio.take_audio();
+            // While a native movie plays, its sound replaces the game's sound output.
+            std::vector<int16_t> movie_audio;
+            if (movie.active) movie_audio = movie.player.take_audio();
+            const std::vector<int16_t>& game_audio = mmio.take_audio();
+            const std::vector<int16_t>& audio = movie.active ? movie_audio : game_audio;
             if (!audio.empty()) host->queue_audio(audio.data(), audio.size() / 2);
             // DCB_AUDIO_DUMP=<file>: raw s16le stereo 44100 Hz of everything played (ffmpeg -f s16le -ar 44100 -ac 2).
             static FILE* dump = std::getenv("DCB_AUDIO_DUMP") ? std::fopen(std::getenv("DCB_AUDIO_DUMP"), "wb") : nullptr;
@@ -327,7 +343,11 @@ int main(int argc, char** argv) {
                 std::printf("[dcb] window closed\n");
                 break;
             }
-            const uint32_t commands = host->take_commands();
+            uint32_t commands = host->take_commands();
+            if (dcb::movie_host().active && (commands & (platform::kSaveState | platform::kLoadState))) {
+                host->show_message("No save states during movies");  // the player's state is host-side
+                commands &= ~(platform::kSaveState | platform::kLoadState);
+            }
             if (states.handle(commands)) {  // save states: between frames, also while paused
                 read_display();
                 host->present(mmio.gpu().vram(), area);
@@ -337,7 +357,12 @@ int main(int argc, char** argv) {
                 host->set_paused(paused);
             }
             if ((paused || cheats->is_open()) && !(commands & platform::kFrameAdvance)) {
-                host->present(mmio.gpu().vram(), area);  // the frozen picture (window resizes, overlay)
+                const auto& still = dcb::movie_host().player.rgb();
+                if (dcb::movie_host().active)  // the frozen picture (window resizes, overlay)
+                    host->present_movie(still.empty() ? nullptr : still.data(), dcb::movie_host().player.width(),
+                                        dcb::movie_host().player.height());
+                else
+                    host->present(mmio.gpu().vram(), area);
                 std::this_thread::sleep_for(std::chrono::milliseconds(16));
                 frozen = true;
                 continue;

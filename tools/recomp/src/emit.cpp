@@ -133,6 +133,8 @@ private:
     /// Guest call to a statically known target.
     std::string call(uint32_t target) const {
         if (seg_.overlay) {
+            if (const auto it = prog_.overlay_overrides.find({seg_.name, target}); it != prog_.overlay_overrides.end())
+                return it->second + "(ctx);";
             if (an_.find(seg_idx_, target)) return function_symbol(seg_, target) + "(ctx);";
         }
         if (const auto it = prog_.overrides.find(target); it != prog_.overrides.end()) return it->second + "(ctx);";
@@ -363,6 +365,8 @@ EmitStats emit_program(const Program& prog, const Analysis& analysis, const fs::
         decls << "\n/* Native overrides (src/game/overrides): calls to these guest addresses go here. */\n";
         for (const auto& [addr, sym] : prog.overrides) decls << "void " << sym << "(PsxContext* ctx);  /* " << hex32(addr) << " */\n";
     }
+    for (const auto& [key, sym] : prog.overlay_overrides)
+        decls << "void " << sym << "(PsxContext* ctx);  /* " << key.first << " " << hex32(key.second) << " */\n";
     write_if_changed(out_dir / "recomp_funcs.h", decls.str());
     written.insert(out_dir / "recomp_funcs.h");
 
@@ -379,10 +383,22 @@ EmitStats emit_program(const Program& prog, const Analysis& analysis, const fs::
     table << "};\nconst uint32_t recomp_function_count = " << analysis.functions[0].size() << "u;\n\n";
     // Originals of overridden functions: an override may fall back to the game's own code.
     table << "const RecompFunctionEntry recomp_original_table[] = {\n";
-    size_t originals = 0;
+    std::map<uint32_t, std::string> original_syms;  // sorted by address, as the runtime expects
     for (const auto& [addr, sym] : prog.overrides) {
-        if (!analysis.functions[0].count(addr)) continue;
-        table << "    {" << hex32(addr) << ", " << function_symbol(prog.main(), addr) << "},\n";
+        if (analysis.functions[0].count(addr)) original_syms[addr] = function_symbol(prog.main(), addr);
+    }
+    for (const auto& [key, sym] : prog.overlay_overrides) {
+        for (size_t s = 1; s < prog.segments.size(); ++s) {
+            if (prog.segments[s].name != key.first) continue;
+            if (!analysis.functions[s].count(key.second))
+                throw std::runtime_error("overlay override " + key.first + " " + hex32(key.second) + " is not a discovered function");
+            if (!original_syms.emplace(key.second, function_symbol(prog.segments[s], key.second)).second)
+                throw std::runtime_error("two overrides at " + hex32(key.second) + ": psx_call_original would be ambiguous");
+        }
+    }
+    size_t originals = 0;
+    for (const auto& [addr, sym] : original_syms) {
+        table << "    {" << hex32(addr) << ", " << sym << "},\n";
         ++originals;
     }
     if (!originals) table << "    {0u, 0},\n";
@@ -394,7 +410,9 @@ EmitStats emit_program(const Program& prog, const Analysis& analysis, const fs::
         const Segment& seg = prog.segments[s];
         table << "static const RecompOverlayEntry overlay_" << seg.name << "[] = {\n";
         for (const auto& [entry, fn] : analysis.functions[s]) {
-            table << "    {" << hex32(entry) << ", " << function_symbol(seg, entry) << ", {";
+            const auto ov = prog.overlay_overrides.find({seg.name, entry});
+            table << "    {" << hex32(entry) << ", " << (ov != prog.overlay_overrides.end() ? ov->second : function_symbol(seg, entry))
+                  << ", {";
             for (uint32_t k = 0; k < 4; ++k) table << (k ? ", " : "") << hex32(seg.word(entry + 4 * k).value_or(0));
             table << "}},\n";
         }

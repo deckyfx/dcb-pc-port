@@ -6,7 +6,8 @@
 /assets/raw/*
 /assets/converted/*
 /assets/*.pak
-/assets/*/disc/
+# per-serial local data: disc overrides, loose files, movie sources
+/assets/*-*/
 /generated/*
 !**/.gitkeep
 

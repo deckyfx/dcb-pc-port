@@ -75,6 +75,9 @@ public:
     virtual uint16_t pad_buttons(unsigned port) const = 0;
     /// Show the display area of `vram` (1024x512 PS1 pixels). Cheap; call once per VBLANK.
     virtual void present(const uint16_t* vram, const DisplayArea& area) = 0;
+    /// Show a native movie frame (8-bit RGB, w x h) instead of the game's picture: fitted into the
+    /// game's 4:3 area at the movie's own aspect ratio. Backends without a window ignore it.
+    virtual void present_movie(const uint8_t* rgb, int w, int h) { (void)rgb, (void)w, (void)h; }
     /// Queue `frames` interleaved stereo s16 frames at kAudioRate. Latency is kept bounded.
     virtual void queue_audio(const int16_t* stereo, size_t frames) = 0;
     /// Latest performance numbers, for the on-screen overlay (ignored by backends without one).
