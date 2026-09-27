@@ -16,3 +16,11 @@ add_test(NAME platform.settings COMMAND test_platform_settings)
 add_executable(test_platform_input_log ${CMAKE_CURRENT_LIST_DIR}/test_input_log.cpp)
 target_link_libraries(test_platform_input_log PRIVATE dcb_platform dcb::warnings)
 add_test(NAME platform.input_log COMMAND test_platform_input_log)
+
+add_executable(test_platform_menu ${CMAKE_CURRENT_LIST_DIR}/test_menu.cpp)
+target_link_libraries(test_platform_menu PRIVATE dcb_platform dcb::warnings)
+add_test(NAME platform.menu COMMAND test_platform_menu)
+
+add_executable(test_platform_memcard ${CMAKE_CURRENT_LIST_DIR}/test_memcard.cpp)
+target_link_libraries(test_platform_memcard PRIVATE dcb_platform dcb::warnings)
+add_test(NAME platform.memcard COMMAND test_platform_memcard)

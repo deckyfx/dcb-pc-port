@@ -8,6 +8,8 @@
 //   DCB_STATE_STRESS=<n>                     self-check: save, run n frames, fingerprint the
 //                                            machine, load, run them again, compare; repeat
 //                                            (aborts on a mismatch; every boundary with n=1)
+//   DCB_STATE_DUMP_AT=<frame>                write the slot's bytes to DCB_STATE_DUMP_PATH
+//   DCB_STATE_DUMP_PATH=<file>               (debug: offline analysis of state contents)
 // Frame counts are host frames (every resume_guest() since start, never rewound by a load), the
 // same numbering as DCB_SNAPSHOT's frame_NNNNN files: after a load at M of a state saved at N,
 // snapshot M+k shows what snapshot N+k showed in a run without the load.
@@ -59,6 +61,21 @@ public:
     bool save(int slot);
     bool load(int slot);
 
+    /// Slot inspection for the native menu (thumbnails, timestamps).
+    bool occupied(int slot) const;
+    int selected_slot() const { return slot_; }
+    void select_slot(int slot);
+
+    /// Small display-area capture for the menu's States page (set by the host
+    /// loop after a successful save; cleared with the slot on load failure).
+    struct Thumbnail {
+        int width = 0, height = 0;
+        std::vector<uint8_t> rgb;  ///< width*height*3, 8-bit RGB
+        std::string saved_at;      ///< local time string, empty when unset
+    };
+    const Thumbnail& thumbnail(int slot) const;
+    void set_thumbnail(int slot, Thumbnail thumb);
+
     ~SaveStates();
     SaveStates(const SaveStates&) = delete;
     SaveStates& operator=(const SaveStates&) = delete;
@@ -69,9 +86,10 @@ private:
     platform::InputLog& input_log_;
     platform::Platform& host_;
     std::array<std::vector<uint8_t>, kSlots> slots_;
+    std::array<Thumbnail, kSlots> thumbs_;
     int slot_ = 0;
     uint64_t frames_ = 0;
-    std::vector<uint64_t> save_at_, load_at_;
+    std::vector<uint64_t> save_at_, load_at_, dump_at_;
     uint64_t exit_at_ = 0;
 
     // DCB_STATE_STRESS

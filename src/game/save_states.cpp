@@ -54,7 +54,8 @@ void HostFrameState::load_state(psx::StateReader& r) {
 SaveStates::SaveStates(const hle::Guest& guest, HostFrameState& frame_state, platform::InputLog& input_log,
                        platform::Platform& host)
     : guest_(guest), frame_state_(frame_state), input_log_(input_log), host_(host),
-      save_at_(env_frames("DCB_STATE_SAVE_AT")), load_at_(env_frames("DCB_STATE_LOAD_AT")) {
+      save_at_(env_frames("DCB_STATE_SAVE_AT")), load_at_(env_frames("DCB_STATE_LOAD_AT")),
+      dump_at_(env_frames("DCB_STATE_DUMP_AT")) {
     const std::vector<uint64_t> exit_at = env_frames("DCB_EXIT_AT");
     if (!exit_at.empty()) exit_at_ = exit_at.front();
     const std::vector<uint64_t> stress = env_frames("DCB_STATE_STRESS");
@@ -86,6 +87,27 @@ std::string SaveStates::load_from(const std::vector<uint8_t>& state) {
     input_log_.rewind(loaded.pad_frame);
     host_.clear_audio();  // queued sound belongs to the replaced timeline
     return {};
+}
+
+bool SaveStates::occupied(int slot) const {
+    return slot >= 0 && slot < kSlots && !slots_[static_cast<size_t>(slot)].empty();
+}
+
+const SaveStates::Thumbnail& SaveStates::thumbnail(int slot) const {
+    static const Thumbnail empty;
+    if (slot < 0 || slot >= kSlots) return empty;
+    return thumbs_[static_cast<size_t>(slot)];
+}
+
+void SaveStates::set_thumbnail(int slot, Thumbnail thumb) {
+    if (slot < 0 || slot >= kSlots) return;
+    thumbs_[static_cast<size_t>(slot)] = std::move(thumb);
+}
+
+void SaveStates::select_slot(int slot) {
+    if (slot < 0 || slot >= kSlots) return;
+    slot_ = slot;
+    notify("Slot " + std::to_string(slot_ + 1));
 }
 
 bool SaveStates::save(int slot) {
@@ -188,6 +210,18 @@ bool SaveStates::handle(uint32_t commands) {
     // Debug triggers: a save and a load at the same count happen in that order.
     if (take(save_at_, frames_)) save(slot_);
     if (take(load_at_, frames_)) loaded |= load(slot_);
+    // Offline analysis: dump the slot bytes for tools/re/scan_stacks.py.
+    if (take(dump_at_, frames_)) {
+        if (const char* path = std::getenv("DCB_STATE_DUMP_PATH")) {
+            if (FILE* f = std::fopen(path, "wb")) {
+                const auto& bytes = slots_[static_cast<size_t>(slot_)];
+                std::fwrite(bytes.data(), 1, bytes.size(), f);
+                std::fclose(f);
+                std::fprintf(stderr, "[state] frame %llu: dumped slot %d (%zu KB) to %s\n",
+                             static_cast<unsigned long long>(frames_), slot_ + 1, bytes.size() / 1024, path);
+            }
+        }
+    }
     if (stress_every_) loaded |= stress();
     return loaded;
 }

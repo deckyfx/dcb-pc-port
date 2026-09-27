@@ -41,6 +41,12 @@ public:
 
     /// Slot 1 is a card image in `save_dir` (created formatted when missing); slot 2 is empty.
     void insert_cards(const std::filesystem::path& save_dir);
+    /// Re-read card1.mcd from `save_dir` after the menu restored a backup over
+    /// it: swaps in a fresh card object (closing the game's open fds, like a
+    /// physical swap). Only call while the game is frozen at a frame boundary.
+    void reload_card(const std::filesystem::path& save_dir) { insert_cards(save_dir); }
+    /// Card files the game currently holds open (for the menu's restore guard).
+    int open_card_files() const { return card_fs_.open_count(); }
 
     /// Save state: heap bookkeeping, events, interrupt chains and hooks, card file system
     /// (chunk "BIOS"). Memory-card images are not included (they are files on disk).

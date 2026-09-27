@@ -214,6 +214,12 @@ void test_hotkeys() {
     CHECK(defaults.get("hotkeys", "save_state") == std::optional<std::string>("F5"));
     CHECK(defaults.get("hotkeys", "load_state") == std::optional<std::string>("F7"));
     CHECK(defaults.get("hotkeys", "state_slot") == std::optional<std::string>("F6"));
+    CHECK(defaults.get("hotkeys", "menu") == std::optional<std::string>("F1"));
+    // Menu hotkey: configurable like the rest (fake resolver maps M).
+    warnings.clear();
+    s = parse_settings(IniDocument::parse("[hotkeys]\nmenu = M\n"), r, warnings);
+    CHECK(warnings.empty());
+    CHECK(s.menu_keys == std::vector<int>{'M' - 'A'});
 }
 
 void test_binding_lists() {

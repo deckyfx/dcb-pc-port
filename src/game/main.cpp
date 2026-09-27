@@ -10,6 +10,8 @@
 
 #include "first_run.hpp"
 #include "input_log.hpp"
+#include "memcard.hpp"
+#include "menu.hpp"
 #include "overrides/movies.hpp"
 #include "overrides/native_files.hpp"
 #include "platform.hpp"
@@ -26,6 +28,7 @@
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
+#include <ctime>
 #include <exception>
 #include <filesystem>
 #include <stdexcept>
@@ -120,6 +123,196 @@ void write_coverage_to(const char* path) {
         else
             std::fprintf(stderr, "[dcb] coverage: cannot write %s\n", path);
     }
+}
+
+/// Controls page: the backend's binding list, or a headless placeholder.
+std::vector<std::string> controls_lines(platform::Platform& host) {
+    std::vector<std::string> lines = host.controls_lines();
+    if (lines.empty()) lines.push_back("(no window: bindings unavailable)");
+    return lines;
+}
+
+/// About page: version, build, credits. DCB_VERSION_* come from CMake (git
+/// describe); third-party licences ship in the binary via their headers.
+std::vector<std::string> about_lines() {
+    std::vector<std::string> lines;
+    lines.push_back(std::string("dcb pc-port ") + DCB_VERSION_STRING);
+    lines.push_back(std::string("build ") + DCB_BUILD_TYPE + " " + DCB_PLATFORM_NAME);
+    lines.push_back(std::string("game ") + DCB_GAME_ID);
+    lines.push_back("");
+    lines.push_back("Digimon Card Battle static recompilation.");
+    lines.push_back("Needs the player's own disc dump; no game");
+    lines.push_back("data is distributed with this program.");
+    lines.push_back("");
+    lines.push_back("Third party: SDL3 (zlib), stb (public domain / MIT),");
+    lines.push_back("pl_mpeg (MIT). See third_party/ for licences.");
+    return lines;
+}
+
+/// Refresh the menu's States page from SaveStates (occupancy + timestamps +
+/// thumbnails).
+void refresh_slots(menu::Menu& m, dcb::SaveStates& states) {
+    menu::Menu::SlotInfo info[4];
+    for (int i = 0; i < 4; ++i) {
+        info[i].occupied = states.occupied(i);
+        if (info[i].occupied) {
+            const dcb::SaveStates::Thumbnail& thumb = states.thumbnail(i);
+            const std::string& when = thumb.saved_at;
+            info[i].label = when.empty() ? "saved" : when;
+            info[i].thumb_w = thumb.width;
+            info[i].thumb_h = thumb.height;
+            info[i].thumb_rgb = thumb.rgb;
+        }
+    }
+    m.set_slots(info);
+}
+
+/// Refresh the menu's Cards page from the save directory.
+void refresh_cards(menu::Menu& m) {
+    const std::vector<memcard::CardInfo> cards =
+        memcard::list_cards(std::filesystem::path("saves") / DCB_GAME_ID);
+    std::vector<std::string> names;
+    int active = 0;
+    for (size_t i = 0; i < cards.size(); ++i) {
+        char entry[160];
+        std::snprintf(entry, sizeof entry, "%s  (%llu KB)", cards[i].name.c_str(),
+                      static_cast<unsigned long long>(cards[i].bytes / 1024));
+        names.emplace_back(entry);
+        if (!cards[i].is_backup) active = static_cast<int>(i);
+    }
+    m.set_cards(std::move(names), active);
+}
+
+/// Carry out one menu action at the frame boundary. Returns true when a state
+/// was loaded (the caller re-reads the display). Save/load are safe at any
+/// frame boundary; everything else touches host objects only.
+bool handle_menu_action(menu::Action action, platform::Platform& host, menu::Menu& menu, dcb::SaveStates& states,
+                        hle::Bios& bios, hle::Mmio& mmio, const platform::DisplayArea& area) {
+    switch (action) {
+    case menu::Action::None:
+    case menu::Action::Resume: menu.set_open(false); return false;
+    case menu::Action::OpenStates: refresh_slots(menu, states); return false;
+    case menu::Action::OpenSettings:
+    case menu::Action::OpenControls:
+    case menu::Action::OpenAbout: return false;  // navigation only
+    case menu::Action::OpenCards: refresh_cards(menu); return false;
+    case menu::Action::Quit: host.request_quit(); return false;
+    case menu::Action::SaveSlot: {
+        const int slot = menu.slot();
+        states.select_slot(slot);
+        if (dcb::movie_host().active) {
+            host.show_message("No save states during movies");
+            return false;
+        }
+        if (states.save(slot)) {
+            // Thumbnail: the display area downscaled to <= 96 px wide.
+            dcb::SaveStates::Thumbnail thumb;
+            const int w = std::clamp(area.width, 0, 1024);
+            const int h = std::clamp(area.height, 0, 512);
+            if (area.enabled && w > 0 && h > 0 && mmio.gpu().vram() != nullptr) {
+                const int tw = std::min(w, 96);
+                const int th = std::max(1, h * tw / w);
+                std::vector<uint32_t> rgba(static_cast<size_t>(w) * static_cast<size_t>(h));
+                platform::convert_display(mmio.gpu().vram(), area, rgba.data());
+                thumb.width = tw;
+                thumb.height = th;
+                thumb.rgb.resize(static_cast<size_t>(tw) * static_cast<size_t>(th) * 3);
+                for (int y = 0; y < th; ++y) {
+                    for (int x = 0; x < tw; ++x) {
+                        const uint32_t px = rgba[(static_cast<size_t>(y) * h / th) * w +
+                                                 (static_cast<size_t>(x) * w / tw)];
+                        uint8_t* dst = &thumb.rgb[(static_cast<size_t>(y) * tw + x) * 3];
+                        dst[0] = static_cast<uint8_t>(px);
+                        dst[1] = static_cast<uint8_t>(px >> 8);
+                        dst[2] = static_cast<uint8_t>(px >> 16);
+                    }
+                }
+            }
+            const std::time_t now = std::time(nullptr);
+            char when[32];
+            std::strftime(when, sizeof when, "%Y-%m-%d %H:%M", std::localtime(&now));
+            thumb.saved_at = when;
+            states.set_thumbnail(slot, std::move(thumb));
+        }
+        refresh_slots(menu, states);
+        return false;
+    }
+    case menu::Action::LoadSlot:
+        states.select_slot(menu.slot());
+        if (dcb::movie_host().active) {
+            host.show_message("No save states during movies");
+            return false;
+        }
+        return states.load(menu.slot());
+    // Slot selection lives in the menu (Prev/Next already moved menu.slot());
+    // sync SaveStates to it so hotkeys and the menu never disagree.
+    case menu::Action::PrevSlot:
+    case menu::Action::NextSlot: states.select_slot(menu.slot()); return false;
+    case menu::Action::CycleResolution: {
+        // 1x -> 2x -> 3x -> 4x -> 8x (3x is the default, so it must be reachable).
+        static constexpr int kSteps[5] = {1, 2, 3, 4, 8};
+        int cur = host.resolution();
+        int next = kSteps[0];
+        for (int s : kSteps) {
+            if (s > cur) {
+                next = s;
+                break;
+            }
+        }
+        host.set_resolution(next);
+        menu.set_info(menu::Page::Settings, host.settings_lines());
+        return false;
+    }
+    case menu::Action::CycleDisplay:
+        // Menu rows: 1 = scale mode, 2 = filter/aspect.
+        host.cycle_setting(menu.selection() == 1 ? 0 : 1);
+        menu.set_info(menu::Page::Settings, host.settings_lines());
+        return false;
+    case menu::Action::CycleAudio:
+        host.cycle_setting(2);
+        menu.set_info(menu::Page::Settings, host.settings_lines());
+        return false;
+    case menu::Action::ToggleFullscreen:
+        host.cycle_setting(3);
+        menu.set_info(menu::Page::Settings, host.settings_lines());
+        return false;
+    case menu::Action::BackupCard: {
+        const std::string name = memcard::backup_card(std::filesystem::path("saves") / DCB_GAME_ID);
+        host.show_message(name.empty() ? "Backup failed" : "Backed up " + name);
+        refresh_cards(menu);
+        return false;
+    }
+    case menu::Action::UseCard: {
+        const std::vector<memcard::CardInfo> cards =
+            memcard::list_cards(std::filesystem::path("saves") / DCB_GAME_ID);
+        const int sel = menu.card_sel();
+        // Guards: the game must hold no open card files (a swap would desync
+        // its view). Best done on the title screen: save data already loaded
+        // into guest RAM stays stale until the game re-reads it — same as
+        // swapping a physical card mid-game.
+        if (bios.open_card_files() > 0) {
+            host.show_message("Close the game's card screen first");
+            return false;
+        }
+        if (sel >= 0 && sel < static_cast<int>(cards.size())) {
+            const std::string error =
+                memcard::use_card(std::filesystem::path("saves") / DCB_GAME_ID, cards[sel].name);
+            if (error.empty()) {
+                bios.reload_card(std::filesystem::path("saves") / DCB_GAME_ID);
+                host.show_message("Using " + cards[sel].name);
+            } else {
+                host.show_message("Switch failed: " + error);
+            }
+            refresh_cards(menu);
+        } else {
+            host.show_message("Select a card file first");
+        }
+        return false;
+    }
+    case menu::Action::PrevCard:
+    case menu::Action::NextCard: return false;  // selection only, handled in menu logic
+    }
+    return false;
 }
 
 void arm_watchdog() {
@@ -366,6 +559,7 @@ int main(int argc, char** argv) {
         system.start(exe.pc0);
         dcb::SaveStates states({machine, mmio, bios, system}, frame_state, input_log, *host);
         bool paused = false, frozen = false;  // frozen: the host held the game (pause, trainer panel)
+        bool menu_was_open = false;  // edge-detect menu open for the slot sync below
         for (;;) {
             if (!host->pump_events()) {
                 std::printf("[dcb] window closed\n");
@@ -384,7 +578,37 @@ int main(int argc, char** argv) {
                 paused = !paused;
                 host->set_paused(paused);
             }
-            if ((paused || cheats->is_open()) && !(commands & platform::kFrameAdvance)) {
+            const bool menu_open = host->menu_open();
+            // Menu actions run inside the frozen branch (so Save/Settings/cards
+            // act while the menu is open) and also on the running path (an
+            // action queued on the exact frame the menu closed).
+            // Menu just opened this frame: adopt the hotkey-selected slot so
+            // the menu and F5/F7 can never disagree (either direction).
+            if (menu_open && !menu_was_open) {
+                if (menu::Menu* menu = host->menu()) menu->set_slot(states.selected_slot());
+            }
+            menu_was_open = menu_open;
+            const auto run_menu_actions = [&] {
+                if (menu::Menu* menu = host->menu()) {
+                    if (menu->is_open()) {
+                        menu->set_info(menu::Page::Settings, host->settings_lines());
+                        menu->set_info(menu::Page::Controls, controls_lines(*host));
+                        menu->set_info(menu::Page::About, about_lines());
+                    }
+                    bool reloaded = false;
+                    for (menu::Action action = static_cast<menu::Action>(host->take_menu_action());
+                         action != menu::Action::None;
+                         action = static_cast<menu::Action>(host->take_menu_action())) {
+                        if (handle_menu_action(action, *host, *menu, states, bios, mmio, area)) reloaded = true;
+                    }
+                    if (reloaded) {
+                        read_display();
+                        host->present(mmio.gpu().vram(), area);
+                    }
+                }
+            };
+            if ((paused || cheats->is_open() || menu_open) && !(commands & platform::kFrameAdvance)) {
+                run_menu_actions();
                 const auto& still = dcb::movie_host().player.rgb();
                 if (dcb::movie_host().active)  // the frozen picture (window resizes, overlay)
                     host->present_movie(still.empty() ? nullptr : still.data(), dcb::movie_host().player.width(),
@@ -395,6 +619,7 @@ int main(int argc, char** argv) {
                 frozen = true;
                 continue;
             }
+            run_menu_actions();
             cheats->apply_frame();
             if (!system.resume_guest()) {
                 if (!system.error().empty()) throw std::runtime_error(system.error());

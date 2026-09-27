@@ -67,6 +67,13 @@ uint32_t CardFs::file_error(int fd) const {
     return files_[static_cast<size_t>(fd)].error;
 }
 
+int CardFs::open_count() const {
+    int n = 0;
+    for (const File& f : files_)
+        if (f.used) ++n;
+    return n;
+}
+
 // "bu00:NAME" -> slot 0, "bu10:NAME" -> slot 1. The device name is case-insensitive; the file
 // name is kept verbatim (card file names are case-sensitive).
 bool CardFs::parse(const std::string& path, Path& out, bool allow_empty_name) {

@@ -101,6 +101,9 @@ public:
     uint32_t last_error() const { return last_error_; }
     /// Error of the last operation on `fd` (B0:55); kEBadF for an unknown fd.
     uint32_t file_error(int fd) const;
+    /// Open file descriptors right now (for the menu's restore guard: a
+    /// restore while the game holds files open would desync its view).
+    int open_count() const;
     /// True when the last read/write was on an FASYNC file: deliver the card completion events.
     bool last_was_async() const { return last_async_; }
     /// Spec to deliver with that event: kSpecDone on success, kSpecError on failure.

@@ -363,6 +363,8 @@ IniDocument default_settings_ini() {
     doc.set("hotkeys", "scale_mode", "F8");
     doc.add_comment("hotkeys", "trainer: cheat codes (cheats/<serial>.txt) and memory search; pauses the game.");
     doc.set("hotkeys", "trainer", "F4");
+    doc.add_comment("hotkeys", "menu: the native pause menu (Esc always works too).");
+    doc.set("hotkeys", "menu", "F1");
     doc.add_comment("hotkeys", "Save states (kept in memory for this run): save_state / load_state use the selected");
     doc.add_comment("hotkeys", "slot, state_slot selects the next one (1-4).");
     doc.set("hotkeys", "save_state", "F5");
@@ -406,6 +408,7 @@ Settings parse_settings(const IniDocument& doc, const BindingResolvers& resolver
     s.fast_forward_keys = hotkey("fast_forward", "Tab");
     s.scale_mode_keys = hotkey("scale_mode", "F8");
     s.trainer_keys = hotkey("trainer", "F4");
+    s.menu_keys = hotkey("menu", "F1");
     s.save_state_keys = hotkey("save_state", "F5");
     s.load_state_keys = hotkey("load_state", "F7");
     s.state_slot_keys = hotkey("state_slot", "F6");

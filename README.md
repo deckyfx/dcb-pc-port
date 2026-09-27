@@ -33,7 +33,8 @@ executable: MIPS R3000A → C, with native HLE of the kernel and Psy-Q libraries
 - [x] One-time asset import from the player's own dump: no disc needed afterwards, no copyrighted data in the download (`dcb --import`, or a file picker on first run)
 - [ ] Windows x64 release build tested on Windows
 - [ ] English build: JP code + English assets from the player's US dump (SLUS-01328) ([research and plan](docs/HYBRID_EN_ASSETS.md))
-- [x] PC options: `settings.ini` (window scale, filtering, aspect, key/gamepad rebinding, volume); resizable window, picture fits it (F8: fit / integer)
+- [x] PC options: `settings.ini` (initial window size, filtering, aspect, key/gamepad rebinding, volume); resizable window, picture fits it (F8: fit / integer)
+- [x] Native pause menu: Esc / F1 (gamepad Start+Select) with save/load slots, settings, controls, memory-card backup/restore, about, quit with confirmation
 - [x] Performance overlay (FPS, game FPS, CPU/GPU load, audio queue): F3
 - [x] Host-driven main loop: the game runs on fibers; pause (P), frame advance (N), fast-forward (hold Tab) ([design](docs/HOST_MAIN_LOOP.md))
 - [x] Input record / replay (`DCB_RECORD`, `DCB_REPLAY`): reproducible runs, bit-identical frames
@@ -189,12 +190,24 @@ cheat is never half-applied. Enabled cheats are written once per frame at the fr
   the current one if the field is empty; `S` on the Cheats page saves it) and `W` writes the
   typed value once. The first 500 results are listed; the count is always shown.
 
+**Native pause menu.** `Esc` or `F1` (`[hotkeys] menu`; gamepad Start+Select) freezes the game
+and opens the menu; Esc no longer quits directly (Quit is a menu item with confirmation). Items:
+Resume; Save / Load state (slots 1-4 with thumbnails and timestamps, same slots as the F5/F7
+hotkeys); Settings (initial resolution 1x/2x/4x/8x with dimensions, scale mode, filter, aspect,
+volume, fullscreen — applied live and saved to `settings.ini`); Controls (keyboard + gamepad
+bindings and all hotkeys, always accurate); Memory card (back up `card1.mcd` to a timestamped
+copy, use any card file as the live card, switch between files); About (version, build, credits);
+Quit. Keyboard: arrows / Enter / Esc back. Gamepad: d-pad / south / east. The window is resizable
+and the picture adapts (Resolution sets the initial size); fullscreen stays borderless desktop.
+Card restores refuse while the game holds card files open; best done on the title screen.
+
 **Save states.** While playing, `F5` saves the game into the selected slot, `F7` loads it and `F6`
 selects the next slot (1-4); a short notice confirms each ("State 2 saved", "Slot 3", "No state in
-slot 1"). They work while paused too. The keys are `save_state`, `load_state` and `state_slot` under
-`[hotkeys]` in `settings.ini`. Limits:
+slot 1"). They work while paused too, and from the pause menu (which shows thumbnails). The keys
+are `save_state`, `load_state` and `state_slot` under `[hotkeys]` in `settings.ini`. Limits:
 - States live in memory for the current run only: they are gone when the game closes, and cannot
-  be written to disk or moved to another machine (they contain host stack addresses).
+  be written to disk or moved to another machine (they contain host stack addresses; see
+  "Persistent save states" below).
 - Memory cards are not part of a state: loading an older state does not undo a save written to
   `card1.mcd` since. Avoid loading a state taken in the middle of a memory-card save.
 - Supported by the Linux build (glibc, x86-64 / ARM64) and the Windows build made with MinGW (the
@@ -203,10 +216,27 @@ slot 1"). They work while paused too. The keys are `save_state`, `load_state` an
 For scripted checks, `DCB_STATE_SAVE_AT=<frame>[,...]` / `DCB_STATE_LOAD_AT=<frame>[,...]` save and
 load the selected slot after that many frames, `DCB_EXIT_AT=<frame>` quits cleanly, and
 `DCB_STATE_STRESS=<n>` saves, runs *n* frames, loads and runs them again, and aborts if the
-machine differs (every frame boundary with `n=1`). Frame numbers count every frame run, as the
+machine differs (every frame boundary with *n=1*). Frame numbers count every frame run, as the
 `DCB_SNAPSHOT` file names do: after a load at *M* of a state saved at *N*, snapshot *M+k* equals
 snapshot *N+k* of a run without the load. With `DCB_RECORD`, loading a state rewinds the recording
 to the loaded frame, so the log replays the timeline that was finally played.
+`DCB_STATE_DUMP_AT=<frame>` + `DCB_STATE_DUMP_PATH=<file>` writes the slot bytes for offline
+analysis (`tools/re/scan_stacks.py` classifies host pointers on game stacks).
+
+**Persistent save states (verdict: not reasonably feasible).** A state saved to disk cannot be
+loaded after a restart, and should not be attempted:
+- The binary is PIE: code, statics, heap and stacks all land at different addresses every run
+  (verified: three runs, three disjoint address sets).
+- Game stacks at a frame boundary hold return addresses into our `.text`, pointers to long-lived
+  heap objects (`Machine`, `Bios`, `Mmio`, `System`, the 2 MB guest RAM buffer), pointers to
+  statics, and main-thread stack addresses (`tools/re/scan_stacks.py` on a real state: 61 code,
+  45 heap, 42 binary-data, 33 main-stack values in 4 KB of stacks).
+- Fixing the stacks (`MAP_FIXED_NOREPLACE`, verified working) is the easy 10%: the heap objects,
+  statics and code addresses would all need fixing too (non-PIE build + fixed arenas), and then
+  ASLR-disabled libc/SDL addresses inside `ucontext_t` and C++ exception state would still break.
+- What works instead: memory-card backup/restore from the pause menu (robust cross-session save),
+  plus a build-identity hash if states are ever written to disk (refuse foreign states clearly).
+  See `docs/HOST_MAIN_LOOP.md` for the full analysis.
 
 **Native movies.** The game's three movies (`movie0` opening, `movie1` credits, `movie2` BANDAI
 logo) play natively when `movie/movie<N>.mpg` is in the asset pack or folder: full resolution,
