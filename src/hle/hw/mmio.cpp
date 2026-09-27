@@ -1,5 +1,6 @@
 #include "hw/mmio.hpp"
 
+#include "cdrom/load_log.hpp"
 #include "system.hpp"
 
 #include <chrono>
@@ -122,7 +123,7 @@ void Mmio::dma_run(unsigned channel) {
         case 1: {  // MDEC -> RAM (decoded pixels)
             std::vector<uint32_t> buf(words);
             mdec_.dma_read(buf.data(), words);
-            ++mdec_transfers_;
+            if (mdec_transfers_++ == 0) LoadLog::instance().mdec(true);
             for (uint32_t i = 0, a = madr; i < words; ++i, a += static_cast<uint32_t>(step)) psx_write32(ctx_, a, buf[i]);
             return;
         }
@@ -156,6 +157,9 @@ void Mmio::dma_run(unsigned channel) {
             std::vector<uint32_t> buf(words);
             if (from_ram) {
                 for (uint32_t i = 0; i < words; ++i) buf[i] = psx_read32(ctx_, madr + 4 * i);
+                // Guest RAM -> SPU RAM: sample-bank uploads. Coalescing would
+                // hide the transfer size/address the analyst needs, so log each.
+                LoadLog::instance().spu(spu_.transfer_addr(), words * 4);
                 spu_.dma_write(buf.data(), words);
             } else {
                 spu_.dma_read(buf.data(), words);

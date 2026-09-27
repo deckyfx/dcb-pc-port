@@ -1,4 +1,5 @@
 #include "cdrom/cdrom.hpp"
+#include "cdrom/load_log.hpp"
 
 #include <algorithm>
 #include <cstdio>
@@ -33,6 +34,11 @@ CdRom::CdRom(std::function<void()> raise_irq2, std::function<uint64_t()> clock)
 
 void CdRom::reset_xa() {
     xa_.reset();
+    // A seek/stop/init ends any live XA stream (the decoder state is dropped).
+    if (xa_active_) {
+        xa_active_ = false;
+        LoadLog::instance().xa(false, filter_file_, filter_channel_);
+    }
 }
 
 uint64_t CdRom::sector_period() const { return kCpuHz / ((mode_ & kModeDoubleSpeed) ? 150 : 75); }
@@ -73,6 +79,7 @@ void CdRom::read_sector() {
         return;
     }
     if (trace_) std::fprintf(stderr, "[cd] sector %u submode %02X\n", read_lba_, sector_[18]);
+    if (!streaming_) LoadLog::instance().sector(read_lba_);  // streams are logged as start edges
     ++(streaming_ ? sectors_streamed_ : sectors_read_);
     ++read_lba_;
     // XA audio sectors (Form 2, audio submode) go to the audio path when XA playback is enabled,
@@ -81,6 +88,12 @@ void CdRom::read_sector() {
     const bool xa_audio = (submode & 0x04) && (submode & 0x20);
     if ((mode_ & kModeXaAdpcm) && xa_audio) {
         const bool match = !(mode_ & kModeXaFilter) || (file == filter_file_ && (channel & 0x1F) == filter_channel_);
+        // Log stream edges only: start when a matching stream begins, stop when
+        // it ends (non-matching sector, mode change, or seek — those reset
+        // the decoder, see command()).
+        if (match && !xa_active_) LoadLog::instance().xa(true, file, channel);
+        if (!match && xa_active_) LoadLog::instance().xa(false, file, channel);
+        xa_active_ = match;
         if (match && cd_audio_) {
             // Keep decoding while muted so the ADPCM filter history stays continuous.
             xa_pcm_.clear();
@@ -131,6 +144,7 @@ void CdRom::command(uint8_t cmd) {
             stat_ = static_cast<uint8_t>((stat_ | kStatMotor | kStatRead) & ~kStatPlay);
             reading_ = true;
             streaming_ = cmd == 0x1B;
+            if (streaming_) LoadLog::instance().stream(read_lba_);
             next_sector_ = now_ + kSeekDelay;
             push(3, {stat_}, kAckDelay);
             break;
@@ -413,6 +427,9 @@ void CdRom::load_state(psx::StateReader& r) {
     muted_ = r.boolean();
     xa_muted_ = r.boolean();
     r.end();
+    // Log-only edge tracker (not device state, not serialized): re-sniff from
+    // the next sector so a load mid-stream cannot miss the start edge.
+    xa_active_ = false;
 }
 
 }  // namespace hle

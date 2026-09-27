@@ -54,6 +54,9 @@ public:
     /// Sound RAM, for tests and debugging.
     const uint8_t* ram() const { return ram_.data(); }
 
+    /// Current DMA transfer address in sound RAM (for the load log).
+    uint32_t transfer_addr() const { return transfer_addr_; }
+
     /// Save state: registers, sound RAM, voices (ADPCM decoder, ADSR, sweeps), noise, capture,
     /// the CD audio queue and reverb state (chunk "SPU ").
     void save_state(psx::StateWriter& w) const;

@@ -127,6 +127,18 @@ void psx_poll(PsxContext* ctx);
 void psx_invalid(PsxContext* ctx, uint32_t pc);
 void psx_bad_return(PsxContext* ctx, uint32_t expected_ra);
 
+/* ---- reverse-engineering coverage (runtime/src/coverage.cpp) ----
+ * Every generated function calls PSX_COVER(id) from its prologue when the
+ * recompiler emits coverage ids (tools/recomp always does now). Off by
+ * default: a single predictable branch on psx_coverage_armed, so guest state
+ * and timing are bit-identical with it off. */
+extern int psx_coverage_armed;
+void psx_cover(uint32_t id);
+static inline void psx_cover_checked(uint32_t id) {
+    if (psx_coverage_armed) psx_cover(id);
+}
+#define PSX_COVER(id) psx_cover_checked(id)
+
 /* Debug builds verify every `jr ra` returns to the address its caller set, which catches
  * longjmp/context-switch tricks the C call stack cannot follow. */
 #ifdef PSX_CHECK_RA

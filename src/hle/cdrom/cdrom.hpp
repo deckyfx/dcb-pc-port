@@ -99,6 +99,7 @@ private:
 
     // XA-ADPCM playback: decoder, CD volume matrix (ATV0-3, applied on ADPCTL bit 5), mute.
     std::function<void(const int16_t*, size_t)> cd_audio_;
+    bool xa_active_ = false;  ///< a matching XA stream is flowing (for LoadLog edges)
     XaDecoder xa_;
     std::vector<int16_t> xa_pcm_;
     uint8_t atv_pending_[4] = {0x80, 0x00, 0x80, 0x00};  // L->L, L->R, R->R, R->L

@@ -16,6 +16,7 @@
 // DCB_CD_FILES=1 keeps the original CD path (for comparison); DCB_LOG_FILES=1 logs every open.
 
 #include "cdrom/disc.hpp"
+#include "cdrom/load_log.hpp"
 #include "vfs/toc.hpp"
 
 #include "native_files.hpp"
@@ -242,6 +243,7 @@ void dcb_file_open(PsxContext* ctx) {
         return;  // directories are opened through chdir (80015994), which is native too
     }
     const Source& src = g_sources[id];
+    hle::LoadLog::instance().file(path, src.size, src.loose);
     set_field(*ctx, handle, kInUse, mode);
     set_field(*ctx, handle, kSector, src.lba);
     set_field(*ctx, handle, kRemaining, src.size);

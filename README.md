@@ -251,6 +251,12 @@ prints how many texture uploads were replaced and why others were not; `DCB_LOG_
 `./dcb.sh -H`) logs each texture as it is replaced (file, size, format); `DCB_TRACE_HD=<n>` logs the
 first *n* uploads that match no manifest entry (movie frames arrive as 24-pixel-wide strips and never match).
 
+**Reverse engineering.** `DCB_COVERAGE=<file>` writes per-function call counts (address, overlay,
+calls, first frame) at exit; `DCB_TRACE_CALLS=<n>` logs the first *n* calls live. `DCB_LOG_LOADS=1`
+logs named asset loads (disc files, SPU uploads, XA streams, MDEC decodes) with frame numbers.
+`tools/re/coverage_diff.py a.json b.json` diffs two coverage runs. Full loop (play → trace →
+document → poke) in [`docs/RE_WORKFLOW.md`](docs/RE_WORKFLOW.md); subsystem notes in `docs/re/`.
+
 ## Ghidra MCP
 
 `.mcp.json` registers the `ghidra` server (bethington/ghidra-mcp 6.0.0, built for Ghidra 12.1.2).
