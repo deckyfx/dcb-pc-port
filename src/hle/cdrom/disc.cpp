@@ -46,32 +46,40 @@ bool parse_hex4(const std::string& hex, uint8_t* out) {
 // ---------------------------------------------------------------------------------------------
 // Shared: ISO9660 access on top of read()
 
-std::vector<uint8_t> Disc::read_root_file(const std::string& name) {
+bool Disc::find_root_file(const std::string& name, uint32_t& lba, uint32_t& size) {
     // ISO9660 in Mode 2 Form 1 sectors: user data at raw offset 24. PVD at sector 16.
     uint8_t raw[kRawSector];
-    if (!read(16, raw) || std::memcmp(raw + 24 + 1, "CD001", 5) != 0) return {};
+    if (!read(16, raw) || std::memcmp(raw + 24 + 1, "CD001", 5) != 0) return false;
     const uint8_t* root = raw + 24 + 156;
     const uint32_t dir_lba = le32(root + 2), dir_size = le32(root + 10);
     for (uint32_t s = 0; s * 2048 < dir_size; ++s) {
-        if (!read(dir_lba + s, raw)) return {};
+        if (!read(dir_lba + s, raw)) return false;
         const uint8_t* d = raw + 24;
         for (uint32_t off = 0; off < 2048 && d[off] != 0; off += d[off]) {
             const uint8_t len = d[off + 32];
             std::string ident(reinterpret_cast<const char*>(d + off + 33), len);
             ident = ident.substr(0, ident.find(';'));
             if (ident != name) continue;
-            const uint32_t lba = le32(d + off + 2), size = le32(d + off + 10);
-            std::vector<uint8_t> out;
-            out.reserve(size);
-            for (uint32_t k = 0; out.size() < size; ++k) {
-                if (!read(lba + k, raw)) return {};
-                const size_t take = std::min<size_t>(2048, size - out.size());
-                out.insert(out.end(), raw + 24, raw + 24 + take);
-            }
-            return out;
+            lba = le32(d + off + 2);
+            size = le32(d + off + 10);
+            return true;
         }
     }
-    return {};
+    return false;
+}
+
+std::vector<uint8_t> Disc::read_root_file(const std::string& name) {
+    uint32_t lba = 0, size = 0;
+    if (!find_root_file(name, lba, size)) return {};
+    uint8_t raw[kRawSector];
+    std::vector<uint8_t> out;
+    out.reserve(size);
+    for (uint32_t k = 0; out.size() < size; ++k) {
+        if (!read(lba + k, raw)) return {};
+        const size_t take = std::min<size_t>(2048, size - out.size());
+        out.insert(out.end(), raw + 24, raw + 24 + take);
+    }
+    return out;
 }
 
 std::vector<uint8_t> Disc::read_boot_exe() {
