@@ -95,7 +95,7 @@ inline constexpr std::array<PadButtonInfo, kPadButtonCount> kPadButtons{{
 /// Input codes bound to each pad button (index = position in kPadButtons).
 using BindingTable = std::array<std::vector<int>, kPadButtonCount>;
 
-inline constexpr int kScaleMin = 1, kScaleMax = 8, kScaleDefault = 3;
+inline constexpr int kScaleMin = 1, kScaleMax = 8, kScaleDefault = 2;
 inline constexpr int kVolumeMax = 100;
 inline constexpr int kDeadzoneDefault = 50;  ///< percent of full stick travel
 
@@ -119,6 +119,7 @@ struct Settings {
     std::vector<int> fast_forward_keys;   ///< [hotkeys] fast_forward: held, the game runs unthrottled
     std::vector<int> scale_mode_keys;     ///< [hotkeys] scale_mode: switches fit / integer scaling
     std::vector<int> trainer_keys;        ///< [hotkeys] trainer: opens / closes the cheats + memory search panel
+    std::vector<int> menu_keys;           ///< [hotkeys] menu: opens / closes the native pause menu
     std::vector<int> save_state_keys;     ///< [hotkeys] save_state: save into the selected slot
     std::vector<int> load_state_keys;     ///< [hotkeys] load_state: load the selected slot
     std::vector<int> state_slot_keys;     ///< [hotkeys] state_slot: select the next slot (1-4)

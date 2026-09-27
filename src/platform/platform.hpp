@@ -7,9 +7,14 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace trainer {
 class Trainer;
+}
+
+namespace menu {
+class Menu;
 }
 
 namespace platform {
@@ -90,9 +95,32 @@ public:
     virtual void set_paused(bool paused) { (void)paused; }
     /// Whether the fast-forward hotkey is held (the game should run unthrottled).
     virtual bool fast_forward() const { return false; }
+    /// Fixed window resolution as a multiple of the 320x240 PS1 output
+    /// (Display -> Resolution menu; 0 when the backend has none).
+    virtual int resolution() const { return 0; }
+    virtual void set_resolution(int scale) { (void)scale; }
+    /// Current settings values as text lines for the menu's Settings page
+    /// (empty when the backend has none).
+    virtual std::vector<std::string> settings_lines() { return {}; }
+    /// Advance a Settings-page row (0 = scale mode, 1 = filter/aspect,
+    /// 2 = volume, 3 = fullscreen toggle); persists to settings.ini.
+    /// (Resolution cycles through the Sdl3 setter directly.)
+    virtual void cycle_setting(int row) { (void)row; }
+    /// Bindings + hotkeys as text lines for the menu's Controls page
+    /// (empty when the backend has none).
+    virtual std::vector<std::string> controls_lines() { return {}; }
     /// The trainer panel ([hotkeys] trainer) to route keys to and draw; backends without a
     /// window ignore it. The host loop keeps the game paused while trainer->is_open().
     virtual void attach_trainer(trainer::Trainer* trainer) { (void)trainer; }
+    /// Whether the native pause menu is open (the game stays frozen like the trainer).
+    virtual bool menu_open() const { return false; }
+    /// The menu itself (null when the backend has none); the host loop fills
+    /// slot/card/info pages and reads queued actions through it.
+    virtual menu::Menu* menu() { return nullptr; }
+    /// The next queued menu action, if any (Resume, Quit, SaveSlot, ...).
+    virtual int take_menu_action() { return 0; }
+    /// Quit the application (the menu's confirmed Quit item).
+    virtual void request_quit() {}
     /// Show a short notice (e.g. "State 2 saved") for a couple of seconds.
     virtual void show_message(const std::string& text) { (void)text; }
     /// Drop audio queued for playback (it belongs to a timeline that was just replaced).

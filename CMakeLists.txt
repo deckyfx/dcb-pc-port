@@ -121,6 +121,27 @@ file(GLOB_RECURSE DCB_GAME_SOURCES CONFIGURE_DEPENDS src/game/*.c src/game/*.cpp
 add_executable(dcb ${DCB_GAME_SOURCES})
 target_link_libraries(dcb PRIVATE dcb_recompiled dcb_platform psx_hle psx_runtime dcb_vfs dcb::warnings)
 target_compile_definitions(dcb PRIVATE DCB_GAME_ID="${DCB_GAME_ID}")
+# About page: version (git describe at configure time), build type, platform.
+find_package(Git QUIET)
+if(GIT_FOUND)
+    execute_process(COMMAND ${GIT_EXECUTABLE} describe --always --dirty --exclude "nightly*"
+                    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} OUTPUT_VARIABLE DCB_VERSION
+                    OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+endif()
+if(NOT DCB_VERSION)
+    set(DCB_VERSION "unknown")
+endif()
+if(MINGW)
+    set(DCB_PLATFORM_NAME "windows-x64-mingw")
+elseif(WIN32)
+    set(DCB_PLATFORM_NAME "windows-x64")
+elseif(APPLE)
+    set(DCB_PLATFORM_NAME "macos")
+else()
+    set(DCB_PLATFORM_NAME "linux")
+endif()
+target_compile_definitions(dcb PRIVATE DCB_VERSION_STRING="${DCB_VERSION}" DCB_BUILD_TYPE="$<CONFIG>"
+                                       DCB_PLATFORM_NAME="${DCB_PLATFORM_NAME}")
 if(MINGW)
     target_link_options(dcb PRIVATE -static)   # no libstdc++/libgcc DLLs next to the .exe
 endif()

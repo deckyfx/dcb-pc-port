@@ -311,5 +311,15 @@ upscaled backgrounds would come from the asset pipeline (`docs/ASSETS_RIP_UPSCAL
 5. ~~Trainer~~: done; GameShark codes from `cheats/<serial>.txt` applied at the frame boundary
    (`src/platform/trainer*.cpp`), memory search and the `F4` panel.
 6. Custom Battle: approach A, then B.
-7. Optional: save states that survive a restart (debug builds only: fixed stack addresses, build
-   id check), rewind, in-game settings menu, threaded rendering.
+7. Optional: save states that survive a restart — **verdict: not reasonably feasible**
+   (investigated for the native-menu milestone, September 2026). The binary is PIE, so code,
+   statics, heap and stacks all move every run. Game stacks at a frame boundary hold return
+   addresses into our `.text`, pointers to long-lived heap objects (`Machine`/`Bios`/`Mmio`/
+   `System`, the guest RAM buffer), pointers to statics, and main-thread stack addresses
+   (measured with `tools/re/scan_stacks.py` on a real 3.7 MB state: 61 code + 45 heap + 42
+   binary-data + 33 main-stack values in 4 KB of stacks). `MAP_FIXED_NOREPLACE` replays stack
+   mappings exactly (verified), but that is the easy 10%: the heap objects, statics and code
+   addresses would need fixing too (non-PIE build + fixed arenas for every long-lived object),
+   and ASLR-disabled libc/SDL addresses inside `ucontext_t` plus C++ exception state would
+   still break. The robust cross-session save is memory-card backup/restore (pause menu).
+   Rewind, in-game settings menu, threaded rendering remain open.

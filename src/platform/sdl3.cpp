@@ -10,6 +10,7 @@
 #if defined(DCB_HAS_SDL3)
 
 #include "platform.hpp"
+#include "sdl3_menu.hpp"
 #include "sdl3_trainer.hpp"
 #include "settings.hpp"
 
@@ -54,15 +55,20 @@ public:
             SDL_Log("dcb: SDL_Init(VIDEO) failed: %s", SDL_GetError());
             return false;
         }
-        const int scale = settings_.display.scale;
-        SDL_WindowFlags flags = SDL_WINDOW_RESIZABLE;
+        // Fixed window size from Display -> Resolution (1x/2x/4x/8x of the
+        // 320x240 PS1 output): no user resizing, so the picture is always an
+        // exact multiple or the Fit-scaled equivalent. Fullscreen stays
+        // borderless desktop.
+        const int scale = std::clamp(settings_.display.scale, kScaleMin, kScaleMax);
+        SDL_WindowFlags flags = 0;  // not resizable
         if (settings_.display.fullscreen) flags |= SDL_WINDOW_FULLSCREEN;  // borderless desktop
         if (!SDL_CreateWindowAndRenderer(title != nullptr ? title : "dcb", kBaseWidth * scale, kBaseHeight * scale,
                                          flags, &window_, &renderer_)) {
             SDL_Log("dcb: cannot create window/renderer: %s", SDL_GetError());
             return false;
         }
-        SDL_SetWindowMinimumSize(window_, kBaseWidth, kBaseHeight);
+        SDL_SetWindowMinimumSize(window_, kBaseWidth * scale, kBaseHeight * scale);
+        SDL_SetWindowMaximumSize(window_, kBaseWidth * scale, kBaseHeight * scale);
         SDL_SetRenderVSync(renderer_, 0);  // the game paces itself at 59.94 Hz
 
         // One VRAM-sized texture; each frame updates only the displayed sub-rectangle.
@@ -93,6 +99,21 @@ public:
     bool pump_events() override {
         SDL_Event ev;
         while (SDL_PollEvent(&ev)) {
+            // The menu owns input while open (Escape/F1 toggles, Start+Select
+            // on gamepad); actions queue for the host loop. Quit comes only
+            // from the menu's Quit item or closing the window.
+            const menu::Action act =
+                menu_handle_event(menu_, ev, settings_.menu_keys, gamepad_, start_held_, select_held_);
+            if (act != menu::Action::None) {
+                menu_action_ = act;
+                key_held_.fill(false);
+                continue;
+            }
+            if (menu_.is_open()) {
+                key_held_.fill(false);  // no game input leaks through the menu
+                if (ev.type == SDL_EVENT_QUIT || ev.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) quit_ = true;
+                continue;
+            }
             if (trainer_ != nullptr && trainer_handle_event(*trainer_, window_, ev, settings_.trainer_keys)) {
                 key_held_.fill(false);  // the panel owns the keyboard; no stuck pad buttons after it
                 continue;
@@ -110,9 +131,7 @@ public:
                     key_held_[ev.key.scancode] = true;
                     key_tap_frames_[ev.key.scancode] = kMinTapFrames;
                 }
-                if (ev.key.scancode == SDL_SCANCODE_ESCAPE) {
-                    quit_ = true;
-                } else if (is_enter(ev.key.scancode) && (ev.key.mod & SDL_KMOD_ALT) != 0 && !ev.key.repeat) {
+                if (is_enter(ev.key.scancode) && (ev.key.mod & SDL_KMOD_ALT) != 0 && !ev.key.repeat) {
                     toggle_fullscreen();
                 } else if (!ev.key.repeat && bound(settings_.overlay_keys, ev.key.scancode)) {
                     overlay_visible_ = !overlay_visible_;
@@ -194,6 +213,7 @@ public:
         draw_message();
         if (overlay_visible_) draw_overlay();
         if (trainer_ != nullptr && trainer_->is_open()) trainer_draw(renderer_, *trainer_);
+        if (menu_.is_open()) menu_draw(renderer_, menu_);
         SDL_RenderPresent(renderer_);
     }
 
@@ -230,6 +250,7 @@ public:
         if (paused_) draw_label("PAUSED");
         draw_message();
         if (overlay_visible_) draw_overlay();
+        if (menu_.is_open()) menu_draw(renderer_, menu_);
         SDL_RenderPresent(renderer_);
     }
 
@@ -249,6 +270,15 @@ public:
         return false;
     }
     void attach_trainer(trainer::Trainer* trainer) override { trainer_ = trainer; }
+
+    menu::Menu* menu() override { return &menu_; }
+    bool menu_open() const override { return menu_.is_open(); }
+    int take_menu_action() override {
+        const menu::Action a = menu_action_;
+        menu_action_ = menu::Action::None;
+        return static_cast<int>(a);
+    }
+    void request_quit() override { quit_ = true; }
 
     bool take_any_press() override {
         const bool pressed = any_press_;
@@ -409,6 +439,121 @@ private:
             SDL_Log("dcb: cannot save %s", settings_file_.path().string().c_str());
     }
 
+    /// Display -> Resolution menu: fixed window size scale x of 320x240.
+    /// Applies immediately and persists to settings.ini. In fullscreen the
+    /// size takes effect when leaving fullscreen.
+    void set_resolution(int scale) override {
+        scale = std::clamp(scale, kScaleMin, kScaleMax);
+        settings_.display.scale = scale;
+        if (!settings_file_.set_and_save("display", "scale", std::to_string(scale)))
+            SDL_Log("dcb: cannot save %s", settings_file_.path().string().c_str());
+        if ((SDL_GetWindowFlags(window_) & SDL_WINDOW_FULLSCREEN) != 0) return;
+        SDL_SetWindowMaximumSize(window_, 0, 0);
+        SDL_SetWindowMinimumSize(window_, kBaseWidth * scale, kBaseHeight * scale);
+        SDL_SetWindowSize(window_, kBaseWidth * scale, kBaseHeight * scale);
+        SDL_SetWindowMinimumSize(window_, kBaseWidth * scale, kBaseHeight * scale);
+        SDL_SetWindowMaximumSize(window_, kBaseWidth * scale, kBaseHeight * scale);
+        SDL_SyncWindow(window_);
+    }
+
+    int resolution() const override { return settings_.display.scale; }
+
+    /// Human-readable binding list ("Z, Return" / "south, +leftx").
+    static std::string binding_names(const std::vector<int>& codes, bool gamepad) {
+        std::string out;
+        for (int code : codes) {
+            const char* name = "?";
+            if (!gamepad && code >= 0 && code < SDL_SCANCODE_COUNT) {
+                name = SDL_GetScancodeName(static_cast<SDL_Scancode>(code));
+            } else if (gamepad) {
+                if (!is_gamepad_axis(code)) {
+                    name = SDL_GetGamepadStringForButton(static_cast<SDL_GamepadButton>(code));
+                } else {
+                    static thread_local char axis[32];
+                    const char* aname =
+                        SDL_GetGamepadStringForAxis(static_cast<SDL_GamepadAxis>(gamepad_axis_of(code)));
+                    std::snprintf(axis, sizeof axis, "%s%s", gamepad_axis_negative(code) ? "-" : "+",
+                                  aname ? aname : "?");
+                    name = axis;
+                }
+                if (name == nullptr) name = "?";
+            }
+            if (!out.empty()) out += ", ";
+            out += name != nullptr ? name : "?";
+        }
+        return out.empty() ? "(unbound)" : out;
+    }
+
+    std::vector<std::string> controls_lines() override {
+        std::vector<std::string> out;
+        out.push_back("Pad buttons (keyboard / gamepad):");
+        for (size_t i = 0; i < kPadButtonCount; ++i) {
+            std::string line = std::string("  ") + kPadButtons[i].name + ": ";
+            line += binding_names(settings_.keyboard[i], false);
+            line += " / ";
+            line += binding_names(settings_.gamepad[i], true);
+            out.push_back(line);
+        }
+        out.push_back("Hotkeys:");
+        const std::pair<const char*, const std::vector<int>&> hotkeys[] = {
+            {"menu", settings_.menu_keys},           {"overlay", settings_.overlay_keys},
+            {"pause", settings_.pause_keys},         {"frame_advance", settings_.frame_advance_keys},
+            {"fast_forward", settings_.fast_forward_keys}, {"scale_mode", settings_.scale_mode_keys},
+            {"trainer", settings_.trainer_keys},     {"save_state", settings_.save_state_keys},
+            {"load_state", settings_.load_state_keys}, {"state_slot", settings_.state_slot_keys},
+        };
+        for (const auto& [name, keys] : hotkeys) out.push_back(std::string("  ") + name + ": " + binding_names(keys, false));
+        out.push_back("Gamepad: d-pad arrows, south confirm, east back,");
+        out.push_back("  Start close, Start+Select opens the menu.");
+        return out;
+    }
+
+    std::vector<std::string> settings_lines() override {
+        const DisplaySettings& d = settings_.display;
+        char res[32];
+        std::snprintf(res, sizeof res, "%dx (%dx%d)", d.scale, 320 * d.scale, 240 * d.scale);
+        std::string scale_mode = d.scale_mode == ScaleMode::Fit ? "fit" : "integer";
+        std::string filter = d.filter == FilterMode::Linear ? "linear" : "nearest";
+        std::string aspect = d.aspect == AspectMode::Stretch ? "stretch" : "4:3";
+        char vol[32];
+        std::snprintf(vol, sizeof vol, "%d", settings_.volume);
+        return {"Resolution = " + std::string(res), "Scale mode = " + scale_mode,
+                "Filter = " + filter + "  Aspect = " + aspect, "Volume = " + std::string(vol),
+                std::string("Fullscreen = ") + (d.fullscreen ? "on" : "off")};
+    }
+
+    void cycle_setting(int row) override {
+        switch (row) {
+        case 0: toggle_scale_mode(); break;
+        case 1: {  // filter nearest -> linear -> aspect toggle -> back
+            if (settings_.display.filter == FilterMode::Nearest) {
+                settings_.display.filter = FilterMode::Linear;
+                settings_file_.set_and_save("display", "filter", "linear");
+            } else if (settings_.display.aspect == AspectMode::Ratio4x3) {
+                settings_.display.aspect = AspectMode::Stretch;
+                settings_file_.set_and_save("display", "aspect", "stretch");
+                settings_.display.filter = FilterMode::Nearest;
+                settings_file_.set_and_save("display", "filter", "nearest");
+            } else {
+                settings_.display.aspect = AspectMode::Ratio4x3;
+                settings_file_.set_and_save("display", "aspect", "4:3");
+            }
+            SDL_SetTextureScaleMode(texture_, settings_.display.filter == FilterMode::Linear
+                                                   ? SDL_SCALEMODE_LINEAR
+                                                   : SDL_SCALEMODE_NEAREST);
+            break;
+        }
+        case 2: {  // volume in steps of 10, wraps to 0
+            const int vol = (settings_.volume + 10) % (kVolumeMax + 10);
+            settings_.volume = vol > kVolumeMax ? 0 : vol;
+            settings_file_.set_and_save("audio", "volume", std::to_string(settings_.volume));
+            break;
+        }
+        case 3: toggle_fullscreen(); break;
+        default: break;
+        }
+    }
+
     /// Alt+Enter: flip fullscreen and remember the choice in settings.ini.
     void toggle_fullscreen() {
         const bool fullscreen = (SDL_GetWindowFlags(window_) & SDL_WINDOW_FULLSCREEN) == 0;
@@ -520,6 +665,9 @@ private:
     uint32_t commands_ = 0;  ///< HostCommand bits since take_commands()
     bool paused_ = false;
     trainer::Trainer* trainer_ = nullptr;  ///< [hotkeys] trainer panel (owned by the host loop)
+    menu::Menu menu_;                       ///< native pause menu ([hotkeys] menu, Esc, Start+Select)
+    menu::Action menu_action_ = menu::Action::None;  ///< queued for the host loop
+    bool start_held_ = false, select_held_ = false;  ///< gamepad chord tracking
     std::array<bool, SDL_SCANCODE_COUNT> key_held_{};    ///< keys down now (from key events)
     /// Frames a key still counts as pressed after going down, so a tap shorter than the game's own
     /// pad sampling interval is not lost.
