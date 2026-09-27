@@ -208,6 +208,14 @@ machine differs (every frame boundary with `n=1`). Frame numbers count every fra
 snapshot *N+k* of a run without the load. With `DCB_RECORD`, loading a state rewinds the recording
 to the loaded frame, so the log replays the timeline that was finally played.
 
+**Native file access.** The game's file API (open/read/close over the `X.DRV` archives, and
+libcd's `CdSearchFile`) is replaced by native code (`src/game/overrides/files.cpp`): data files
+are read straight from the game data, instantly, instead of through the emulated CD drive. A
+loose file at `assets/<serial>/files/<X>/<DIR>/<NAME.EXT>` (e.g. `assets/SLPS-03101/files/B/CARD2.CDD`)
+replaces that file whatever its size. `DCB_LOG_FILES=1` logs every file the game opens;
+`DCB_CD_FILES=1` restores the original CD path for comparison. At exit the game prints how many
+sectors went through the CD drive: data should be 0, only the intro movie still streams.
+
 **File overrides.** A file placed in `assets/<serial>/disc/<name>` (named as under `fs/`;
 `extracted/<serial>/overrides/` also works but is deprecated) replaces that disc file when it has exactly the same size; other sizes are refused and
 logged. Raw movie sectors get their headers re-stamped with this disc's positions, so a movie

@@ -9,6 +9,7 @@
 
 #include "first_run.hpp"
 #include "input_log.hpp"
+#include "overrides/native_files.hpp"
 #include "platform.hpp"
 #include "save_states.hpp"
 #include "settings.hpp"
@@ -149,6 +150,7 @@ int main(int argc, char** argv) {
         const std::vector<uint8_t> boot = exe_override.empty() ? disc->read_boot_exe() : std::vector<uint8_t>{};
         std::printf("[dcb] game data: %s\n", disc->describe().c_str());
         mmio.insert_disc(std::move(disc));
+        dcb::attach_native_files(mmio.disc(), DCB_GAME_ID);
         hle::HdTextures* hd_textures = nullptr;  // for the exit summary
         // Texture replacement (dcb_asset_ripper output). First found wins:
         //   DCB_HD_PACK=<.pak|folder> (+ DCB_HD_MANIFEST=<file> if the manifest lives elsewhere),
@@ -314,6 +316,9 @@ int main(int argc, char** argv) {
             else system.pace();
             frozen = false;
         }
+        std::printf("[cd] sectors read through the CD drive: %llu data, %llu streamed (movie)\n",
+                    static_cast<unsigned long long>(mmio.cd_sectors_read()),
+                    static_cast<unsigned long long>(mmio.cd_sectors_streamed()));
         if (hd_textures)
             std::printf("[hd] %llu texture uploads replaced (%llu from the cache), %llu left as they were\n",
                         static_cast<unsigned long long>(hd_textures->hits()),

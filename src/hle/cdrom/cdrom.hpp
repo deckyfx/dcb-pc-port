@@ -30,6 +30,12 @@ public:
     explicit CdRom(std::function<void()> raise_irq2, std::function<uint64_t()> clock = {});
 
     void insert(std::unique_ptr<Disc> disc) { disc_ = std::move(disc); }
+    /// The inserted disc (the native file layer reads game data through it directly).
+    Disc* disc() const { return disc_.get(); }
+    /// Sectors the drive has read since start with ReadN (data) and ReadS (streams: movie video
+    /// and XA audio). A diagnostic: with the native file layer, data reads should be none.
+    uint64_t sectors_read() const { return sectors_read_; }
+    uint64_t sectors_streamed() const { return sectors_streamed_; }
 
     /// Where decoded XA audio goes (the SPU's CD input): stereo s16 frames at 44100 Hz.
     void on_cd_audio(std::function<void(const int16_t*, size_t)> sink) { cd_audio_ = std::move(sink); }
@@ -82,6 +88,8 @@ private:
     uint32_t setloc_lba_ = 0, read_lba_ = 0;
     bool setloc_pending_ = false;
     bool reading_ = false;
+    uint64_t sectors_read_ = 0, sectors_streamed_ = 0;  ///< diagnostic only; not in save states
+    bool streaming_ = false;  ///< the current read is ReadS (only affects the counters)
     uint8_t filter_file_ = 0, filter_channel_ = 0;
     std::array<uint8_t, Disc::kRawSector> sector_{};    // last sector read from disc
     std::array<uint8_t, Disc::kRawSector> ready_{};     // sector announced by the last INT1

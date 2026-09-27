@@ -31,6 +31,8 @@ public:
 
     /// Read a file from the disc's root directory (ISO9660 name without ";1"); empty if absent.
     std::vector<uint8_t> read_root_file(const std::string& name);
+    /// Where a root-directory file sits: first sector and size in bytes. False if absent.
+    bool find_root_file(const std::string& name, uint32_t& lba, uint32_t& size);
     /// The boot executable named by SYSTEM.CNF (BOOT = cdrom:\\NAME;1), read from the disc.
     std::vector<uint8_t> read_boot_exe();
 

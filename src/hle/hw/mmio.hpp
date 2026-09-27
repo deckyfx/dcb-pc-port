@@ -35,6 +35,9 @@ public:
 
     /// Timers read the system clock, and status reads give the system a chance to deliver IRQs.
     void insert_disc(std::unique_ptr<Disc> disc) { cdrom_.insert(std::move(disc)); }
+    Disc* disc() const { return cdrom_.disc(); }
+    uint64_t cd_sectors_read() const { return cdrom_.sectors_read(); }
+    uint64_t cd_sectors_streamed() const { return cdrom_.sectors_streamed(); }
     void set_pad_buttons(unsigned port, uint16_t buttons) { sio_.set_buttons(port, buttons); }
     uint16_t pad_sent() const { return sio_.last_sent(); }
     /// Advance time-driven devices to guest time `cycles`: CD-ROM responses and sectors, and the

@@ -65,6 +65,17 @@ uint32_t call_guest(PsxContext& ctx, uint32_t addr, uint32_t a0, uint32_t a1, ui
 
 extern "C" {
 
+void psx_call_original(PsxContext* ctx, uint32_t addr) {
+    const RecompFunctionEntry* end = recomp_original_table + recomp_original_count;
+    const RecompFunctionEntry* it = std::lower_bound(recomp_original_table, end, addr,
+                                                     [](const RecompFunctionEntry& e, uint32_t a) { return e.addr < a; });
+    if (it == end || it->addr != addr) {
+        std::fprintf(stderr, "[dispatch] no recompiled original for override %08X\n", addr);
+        std::abort();
+    }
+    it->fn(ctx);
+}
+
 void psx_dispatch(PsxContext* ctx, uint32_t target) {
     // Kernel calls: `jal 0xA0/0xB0/0xC0` with the function number in $t1 (r9).
     const uint32_t kernel = target & 0x1FFFFFFFu;

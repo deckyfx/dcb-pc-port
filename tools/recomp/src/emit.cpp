@@ -358,6 +358,16 @@ EmitStats emit_program(const Program& prog, const Analysis& analysis, const fs::
               << "},\n";
     }
     table << "};\nconst uint32_t recomp_function_count = " << analysis.functions[0].size() << "u;\n\n";
+    // Originals of overridden functions: an override may fall back to the game's own code.
+    table << "const RecompFunctionEntry recomp_original_table[] = {\n";
+    size_t originals = 0;
+    for (const auto& [addr, sym] : prog.overrides) {
+        if (!analysis.functions[0].count(addr)) continue;
+        table << "    {" << hex32(addr) << ", " << function_symbol(prog.main(), addr) << "},\n";
+        ++originals;
+    }
+    if (!originals) table << "    {0u, 0},\n";
+    table << "};\nconst uint32_t recomp_original_count = " << originals << "u;\n\n";
 
     std::ostringstream overlays;
     size_t overlay_count = 0;
