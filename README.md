@@ -215,15 +215,17 @@ reads nothing through the CD drive. Files are MPEG-1 video + MP2 audio (decoded 
 [pl_mpeg](third_party/pl_mpeg)); MPEG-1 has no 15 fps mode, so use 30:
 
 ```sh
-# 1. The disc movie cut into its three parts (sectors from the game's table), for upscaling:
-#    see assets/<serial>/movie_src/movie<N>.mp4 (made with ffmpeg's psxstr reader).
+# 1. Cut the disc movie into its three parts (config/<serial>/movies.json) at their true frame
+#    rate (the opening streams at double speed: 30 fps; ffmpeg's reader assumes 15):
+tools/disc/rip_movies.py        # -> assets/<serial>/movie_src/movie<N>.mp4 + converted .mpg
 # 2. Your (upscaled) movie -> MPEG-1, then re-pack:
 ffmpeg -i movie0_upscaled.mp4 -c:v mpeg1video -q:v 2 -r 30 -c:a mp2 -b:a 256k -ar 44100 -f mpeg \
        assets/converted/SLPS-03101/movie/movie0.mpg
 ./build/linux-debug/dcb_asset_ripper pack assets/converted/SLPS-03101 assets/SLPS-03101.pak
 ```
 
-Save states are refused while a native movie plays.
+Save states are refused while a native movie plays. `DCB_TRACE_MOVIE=1` prints, per second,
+host frames, movie audio samples and video frames (they should read ~60 / 44100 / the movie's fps).
 
 **Native file access.** The game's file API (open/read/close over the `X.DRV` archives, and
 libcd's `CdSearchFile`) is replaced by native code (`src/game/overrides/files.cpp`): data files

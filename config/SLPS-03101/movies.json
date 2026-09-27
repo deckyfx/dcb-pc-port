@@ -1,0 +1,9 @@
+{
+  "_comment": "The game's movies: segments of one CD-XA stream file, from its table at OPENSEG 801F4BB8 (start sector per movie). Each segment runs to the next one's start (or the end of the file). tools/disc/rip_movies.py cuts them; the native player loads movie/movie<index>.mpg.",
+  "file": "DIGIMON.MOV",
+  "segments": [
+    { "index": 0, "name": "opening",     "start": 0 },
+    { "index": 1, "name": "credits",     "start": 14872 },
+    { "index": 2, "name": "bandai_logo", "start": 33168 }
+  ]
+}

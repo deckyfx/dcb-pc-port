@@ -28,6 +28,7 @@ bool MoviePlayer::open(std::vector<uint8_t> bytes) {
     bytes_ = std::move(bytes);
     rgb_.clear();
     audio_.clear();
+    video_frames_ = 0;
     resample_pos_ = 0.0;
     last_l_ = last_r_ = 0.0f;
     if (bytes_.empty()) return false;
@@ -67,6 +68,7 @@ std::vector<int16_t> MoviePlayer::take_audio() {
 
 void MoviePlayer::on_video(const void* frame) {
     const auto* f = static_cast<const plm_frame_t*>(frame);
+    ++video_frames_;
     width_ = static_cast<int>(f->width);
     height_ = static_cast<int>(f->height);
     rgb_.resize(static_cast<size_t>(width_) * static_cast<size_t>(height_) * 3);

@@ -29,6 +29,8 @@ public:
     int height() const { return height_; }
     /// The latest video frame, 8-bit RGB, width() * height() * 3 bytes (empty before the first).
     const std::vector<uint8_t>& rgb() const { return rgb_; }
+    /// Video frames decoded since open() (diagnostics).
+    uint64_t video_frames() const { return video_frames_; }
 
     /// Interleaved stereo s16 samples at platform::kAudioRate decoded since the last call.
     std::vector<int16_t> take_audio();
@@ -40,6 +42,7 @@ private:
     std::vector<uint8_t> rgb_;
     std::vector<int16_t> audio_;
     int width_ = 0, height_ = 0;
+    uint64_t video_frames_ = 0;
     double resample_pos_ = 0.0;  ///< fractional read position of the linear resampler
     float last_l_ = 0.0f, last_r_ = 0.0f;
 

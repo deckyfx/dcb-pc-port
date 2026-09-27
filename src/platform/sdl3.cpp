@@ -369,6 +369,15 @@ public:
         const int room = kMaxQueuedFrames - std::max(queued, 0);
         if (room <= 0) return;
         const int accepted = static_cast<int>(std::min(frames, static_cast<size_t>(room)));
+        // DCB_TRACE_MOVIE also reports audio dropped by the latency cap (sync debugging).
+        static const bool trace = std::getenv("DCB_TRACE_MOVIE") != nullptr;
+        static uint64_t dropped = 0, last_report = 0;
+        dropped += frames - static_cast<size_t>(accepted);
+        if (trace && dropped != last_report) {
+            std::fprintf(stderr, "[audio] dropped %llu frames so far (queue %d)\n",
+                         static_cast<unsigned long long>(dropped), queued);
+            last_report = dropped;
+        }
         if (settings_.volume != kVolumeMax) {
             const size_t samples = static_cast<size_t>(accepted) * kChannels;
             scaled_.resize(samples);
