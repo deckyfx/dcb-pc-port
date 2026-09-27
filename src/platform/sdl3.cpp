@@ -21,6 +21,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <cstdio>
+#include <set>
 #include <string>
 #include <system_error>
 #include <vector>
@@ -95,17 +96,26 @@ public:
     }
 
     bool pump_events() override {
+        // Menu closed by the host loop (Resume action) since the last poll:
+        // suppress held gamepad buttons the same as an event-driven close.
+        if (menu_was_open_ && !menu_.is_open()) suppress_held_pad();
+        menu_was_open_ = menu_.is_open();
         SDL_Event ev;
         while (SDL_PollEvent(&ev)) {
             // The menu owns input while open (Escape/F1 toggles, Start+Select
             // on gamepad); actions queue for the host loop. Quit comes only
             // from the menu's Quit item or closing the window.
             const bool trainer_open = trainer_ != nullptr && trainer_->is_open();
+            const bool was_open = menu_.is_open();
             const menu::Action act = menu_handle_event(menu_, ev, settings_.menu_keys, gamepad_, start_held_,
                                                        select_held_, trainer_open);
             if (act != menu::Action::None) {
-                menu_actions_.push_back(act);  // FIFO: every action runs, none overwrite
+                // FIFO: every action runs, none overwrite. Bounded: the loop
+                // drains it every pass (16 ms or less), but a stuck key must
+                // not grow it without limit.
+                if (menu_actions_.size() < 64) menu_actions_.push_back(act);
                 key_held_.fill(false);
+                if (was_open && !menu_.is_open()) suppress_held_pad();
                 continue;
             }
             if (menu_.is_open()) {
@@ -501,7 +511,7 @@ private:
         };
         for (const auto& [name, keys] : hotkeys) out.push_back(std::string("  ") + name + ": " + binding_names(keys, false));
         out.push_back("Gamepad: d-pad arrows, south confirm, east back,");
-        out.push_back("  Start close, Start+Select opens the menu.");
+        out.push_back("  Start+Select toggles the menu.");
         return out;
     }
 
@@ -607,6 +617,10 @@ private:
     }
 
     /// Pressed buttons (active HIGH) from the open gamepad, per the [gamepad] bindings.
+    /// Buttons in suppress_pad_ (held when the menu closed) stay suppressed
+    /// until physically released, so closing with Start+Select or choosing
+    /// Resume with South doesn't leak a press into the game. Mutable because
+    /// release is observed here, on the polled state.
     uint16_t read_gamepad() const {
         if (gamepad_ == nullptr) return 0;
         uint16_t pressed = 0;
@@ -619,7 +633,13 @@ private:
                                                 gamepad_axis_negative(code), sdl3_axis_is_trigger(axis),
                                                 settings_.stick_deadzone);
                 } else {
-                    down = SDL_GetGamepadButton(gamepad_, static_cast<SDL_GamepadButton>(code));
+                    const auto button = static_cast<SDL_GamepadButton>(code);
+                    down = SDL_GetGamepadButton(gamepad_, button);
+                    if (!down) {
+                        suppress_pad_.erase(button);
+                    } else if (suppress_pad_.count(button)) {
+                        continue;
+                    }
                 }
                 if (down) {
                     pressed = static_cast<uint16_t>(pressed | kPadButtons[i].bit);
@@ -628,6 +648,17 @@ private:
             }
         }
         return pressed;
+    }
+
+    /// Snapshot currently-down gamepad buttons into the suppress set. Called
+    /// when the menu closes so held buttons don't leak into the game.
+    void suppress_held_pad() const {
+        if (gamepad_ == nullptr) return;
+        for (int b = 0; b < SDL_GAMEPAD_BUTTON_COUNT; ++b) {
+            if (SDL_GetGamepadButton(gamepad_, static_cast<SDL_GamepadButton>(b))) {
+                suppress_pad_.insert(static_cast<SDL_GamepadButton>(b));
+            }
+        }
     }
 
     /// Destination rectangle per [display] scale_mode / aspect, centred in the output.
@@ -663,8 +694,11 @@ private:
     bool paused_ = false;
     trainer::Trainer* trainer_ = nullptr;  ///< [hotkeys] trainer panel (owned by the host loop)
     menu::Menu menu_;                       ///< native pause menu ([hotkeys] menu, Esc, Start+Select)
+    bool menu_was_open_ = false;            ///< open state at the last pump_events()
     std::vector<menu::Action> menu_actions_;  ///< FIFO for the host loop (no overwrites)
     bool start_held_ = false, select_held_ = false;  ///< gamepad chord tracking
+    /// Gamepad buttons held at menu-close, suppressed until released (M1).
+    mutable std::set<SDL_GamepadButton> suppress_pad_;
     std::array<bool, SDL_SCANCODE_COUNT> key_held_{};    ///< keys down now (from key events)
     /// Frames a key still counts as pressed after going down, so a tap shorter than the game's own
     /// pad sampling interval is not lost.

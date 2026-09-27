@@ -8,6 +8,7 @@
 // resume_guest(), the same way the trainer freezes it), so opening/closing
 // the menu never changes guest state or guest time.
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -68,6 +69,9 @@ public:
 
     bool is_open() const { return open_; }
     void set_open(bool open);
+    /// Adopt an externally selected slot (the F6 hotkey while the menu is
+    /// closed). Clamped to 0-3.
+    void set_slot(int slot) { slot_ = std::clamp(slot, 0, 3); }
 
     /// A navigation / action key. Returns the action for main.cpp (None if the
     /// key only moved the selection).

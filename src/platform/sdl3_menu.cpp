@@ -69,11 +69,23 @@ menu::Action menu_handle_event(menu::Menu& m, const SDL_Event& ev, const std::ve
     }
     if (ev.type != SDL_EVENT_KEY_DOWN) return Action::None;
     const SDL_Scancode sc = ev.key.scancode;
-    if (!ev.key.repeat && (is_bound(toggle_keys, sc) || sc == SDL_SCANCODE_ESCAPE) && !trainer_open) {
+    // Held Enter must not machine-gun Save/Load (a repeat rate of ~30/s would
+    // queue full saves with thumbnails); toggles already ignore repeats.
+    if (ev.key.repeat && (sc == SDL_SCANCODE_RETURN || sc == SDL_SCANCODE_KP_ENTER)) return Action::None;
+    // Toggle key opens from anywhere; Escape on a sub-page goes back one
+    // level (Key::Back), on the main page it closes (Resume). Opening never
+    // acts.
+    if (!ev.key.repeat && is_bound(toggle_keys, sc) && !trainer_open) {
         m.set_open(!m.is_open());
-        // Closing via Escape on the main page means Resume; opening never acts.
         if (!m.is_open() && !m.confirming_quit()) return Action::Resume;
         return Action::None;
+    }
+    if (!ev.key.repeat && sc == SDL_SCANCODE_ESCAPE && !trainer_open) {
+        if (!m.is_open()) {
+            m.set_open(true);
+            return Action::None;
+        }
+        return m.key(Key::Back);
     }
     if (!m.is_open()) return Action::None;
     switch (sc) {

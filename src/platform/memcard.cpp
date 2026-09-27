@@ -111,10 +111,19 @@ std::string use_card(const fs::path& save_dir, const std::string& name) {
     // rename is atomic; on Windows rename() uses MOVEFILE_REPLACE_EXISTING
     // for same-directory moves). The live card is backed up first, so a
     // switch never destroys data.
-    if (backup_card(save_dir).empty()) return "could not back up the live card first";
+    // Back up the live card first — unless there is none (the recovery case
+    // use_card exists for: start from a backup with no live card yet).
+    std::error_code ec0;
+    if (fs::is_regular_file(save_dir / "card1.mcd", ec0)) {
+        if (backup_card(save_dir).empty()) return "could not back up the live card first";
+    }
     const fs::path tmp = save_dir / "card1.mcd.tmp";
     std::string error;
-    if (!copy_file(save_dir / name, tmp, error)) return error;
+    if (!copy_file(save_dir / name, tmp, error)) {
+        std::error_code ec;
+        fs::remove(tmp, ec);
+        return error;
+    }
     std::error_code ec;
     fs::rename(tmp, save_dir / "card1.mcd", ec);
     if (ec) {

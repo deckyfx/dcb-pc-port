@@ -249,8 +249,8 @@ bool handle_menu_action(menu::Action action, platform::Platform& host, menu::Men
     case menu::Action::PrevSlot:
     case menu::Action::NextSlot: states.select_slot(menu.slot()); return false;
     case menu::Action::CycleResolution: {
-        // 1x -> 2x -> 4x -> 8x, with dimensions in the menu text.
-        static constexpr int kSteps[4] = {1, 2, 4, 8};
+        // 1x -> 2x -> 3x -> 4x -> 8x (3x is the default, so it must be reachable).
+        static constexpr int kSteps[5] = {1, 2, 3, 4, 8};
         int cur = host.resolution();
         int next = kSteps[0];
         for (int s : kSteps) {
@@ -581,6 +581,13 @@ int main(int argc, char** argv) {
             // Menu actions run inside the frozen branch (so Save/Settings/cards
             // act while the menu is open) and also on the running path (an
             // action queued on the exact frame the menu closed).
+            // Menu just opened this frame: adopt the hotkey-selected slot so
+            // the menu and F5/F7 can never disagree (either direction).
+            static bool menu_was_open = false;
+            if (menu_open && !menu_was_open) {
+                if (menu::Menu* menu = host->menu()) menu->set_slot(states.selected_slot());
+            }
+            menu_was_open = menu_open;
             const auto run_menu_actions = [&] {
                 if (menu::Menu* menu = host->menu()) {
                     if (menu->is_open()) {

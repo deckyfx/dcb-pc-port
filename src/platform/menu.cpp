@@ -121,7 +121,13 @@ Action Menu::key(Key k) {
             sel_ = slot_;
             return Action::PrevSlot;
         }
-        if (page_ == Page::Cards && !cards_.empty()) return Action::PrevCard;
+        if (page_ == Page::Cards && !cards_.empty()) {
+            // Move within the file list (wraps); Backup/Use rows included.
+            const int rows = static_cast<int>(cards_.size()) + 2;
+            sel_ = (sel_ + rows - 1) % rows;
+            card_sel_ = std::clamp(sel_, 0, static_cast<int>(cards_.size()) - 1);
+            return Action::None;
+        }
         return Action::None;
     case Key::Right:
         if (page_ == Page::States) {
@@ -129,7 +135,12 @@ Action Menu::key(Key k) {
             sel_ = slot_;
             return Action::NextSlot;
         }
-        if (page_ == Page::Cards && !cards_.empty()) return Action::NextCard;
+        if (page_ == Page::Cards && !cards_.empty()) {
+            const int rows = static_cast<int>(cards_.size()) + 2;
+            sel_ = (sel_ + 1) % rows;
+            card_sel_ = std::clamp(sel_, 0, static_cast<int>(cards_.size()) - 1);
+            return Action::None;
+        }
         return Action::None;
     case Key::Enter: return activate(sel_);
     case Key::Back:

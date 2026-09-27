@@ -13,7 +13,7 @@ namespace platform {
 
 /// Route one SDL event to the menu. The menu toggle ([hotkeys] menu, default
 /// F1) and Escape open/close it; while open, arrows/Enter/Escape navigate and
-/// gamepad d-pad/south/east do the same (Start+Select opens it, Start closes).
+/// gamepad d-pad/south/east do the same (Start+Select toggles it).
 /// `trainer_open`: when true, toggle keys are left for the trainer (no menu
 /// on top of the panel). Returns the action for main.cpp (Action::None if the
 /// event only moved the selection or was not for the menu).

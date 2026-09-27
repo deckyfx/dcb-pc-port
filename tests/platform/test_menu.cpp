@@ -154,6 +154,42 @@ void test_action_queue_discipline() {
     CHECK(saves == 1 && !m.is_open());
 }
 
+void test_cards_left_right() {
+    Menu m;
+    m.set_open(true);
+    for (int i = 0; i < 4; ++i) m.key(Key::Down);
+    CHECK(m.key(Key::Enter) == Action::OpenCards);
+    m.set_cards({"card1.mcd", "card1-a.mcd", "card1-b.mcd"}, 0);
+    // Left/Right moves within files + Backup/Use rows (3 files + 2 rows).
+    CHECK(m.card_sel() == 0);
+    CHECK(m.key(Key::Right) == Action::None && m.card_sel() == 1);
+    CHECK(m.key(Key::Right) == Action::None && m.card_sel() == 2);
+    CHECK(m.key(Key::Right) == Action::None && m.card_sel() == 2);  // Backup row clamps
+    CHECK(m.key(Key::Enter) == Action::BackupCard);
+    CHECK(m.key(Key::Right) == Action::None && m.card_sel() == 2);  // Use row clamps
+    CHECK(m.key(Key::Enter) == Action::UseCard);
+    CHECK(m.key(Key::Left) == Action::None && m.card_sel() == 2);
+    // Wraps around the 5 rows (3 files + Backup + Use).
+    m.key(Key::Left);  // sel 2 (file 2)
+    m.key(Key::Left);  // sel 1 (file 1)
+    m.key(Key::Left);  // sel 0 (file 0)
+    m.key(Key::Left);  // sel 4 (Use row, wraps)
+    CHECK(m.card_sel() == 2);
+    m.key(Key::Right);  // sel 0 (wraps)
+    CHECK(m.card_sel() == 0);
+}
+
+void test_set_slot() {
+    Menu m;
+    m.set_open(true);
+    m.set_slot(2);
+    CHECK(m.slot() == 2);
+    m.set_slot(99);
+    CHECK(m.slot() == 3);  // clamped
+    m.set_slot(-1);
+    CHECK(m.slot() == 0);
+}
+
 void test_render_bounds() {
     Menu m;
     CHECK(m.render(56, 28).empty());  // closed: nothing
@@ -182,6 +218,8 @@ int main() {
     test_main_nav();
     test_states_page();
     test_cards_page();
+    test_cards_left_right();
+    test_set_slot();
     test_action_queue_discipline();
     test_render_bounds();
     std::printf("menu: ok\n");
