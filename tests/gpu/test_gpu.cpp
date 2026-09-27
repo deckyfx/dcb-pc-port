@@ -262,6 +262,36 @@ void test_textured_sprite() {
     CHECK(px(*gpu, 500, 0) == rgb15(1, 2, 3) && px(*gpu, 501, 0) == rgb15(4, 5, 6));
 }
 
+void test_sprite_scale() {
+    // Rules parse: comments and malformed lines are skipped.
+    const auto rules = Gpu::parse_sprite_scales("# comment\n192 0  0 0  4 1  8 2  trailing words\nbad line\n");
+    CHECK(rules.size() == 1 && rules[0].tex_x == 192 && rules[0].w == 4 && rules[0].draw_w == 8 && rules[0].draw_h == 2);
+
+    auto gpu = make_gpu();
+    gpu->set_sprite_scales(rules);
+    const uint16_t a = rgb15(1, 0, 0), b = rgb15(2, 0, 0), c = rgb15(3, 0, 0), d = rgb15(4, 0, 0);
+    const uint16_t texels[4] = {a, b, c, d};
+    upload(*gpu, 192, 0, 4, 1, texels);        // page 3 (x=192), 15-bit
+    gpu->gp0(0xE1000000u | 3u | (2u << 7));
+    gpu->gp0(0x65808080u);                     // 4x1 raw textured rect: matches the rule
+    gpu->gp0(xy(600, 10));
+    gpu->gp0(0u);
+    gpu->gp0(xy(4, 1));
+    // Drawn 8x2, centred on the 4x1 rectangle: x 598..605, each texel twice, both rows.
+    for (int y = 10; y <= 11; ++y) {
+        CHECK(px(*gpu, 598, y) == a && px(*gpu, 599, y) == a && px(*gpu, 600, y) == b && px(*gpu, 601, y) == b);
+        CHECK(px(*gpu, 602, y) == c && px(*gpu, 603, y) == c && px(*gpu, 604, y) == d && px(*gpu, 605, y) == d);
+    }
+    CHECK(px(*gpu, 597, 10) == 0 && px(*gpu, 606, 10) == 0 && px(*gpu, 600, 12) == 0);
+
+    // A different size does not match and draws one texel per pixel.
+    gpu->gp0(0x65808080u);
+    gpu->gp0(xy(700, 10));
+    gpu->gp0(0u);
+    gpu->gp0(xy(3, 1));
+    CHECK(px(*gpu, 700, 10) == a && px(*gpu, 702, 10) == c && px(*gpu, 703, 10) == 0 && px(*gpu, 700, 11) == 0);
+}
+
 void test_semi_transparency() {
     auto gpu = make_gpu();
     // Background (16,16,16), front (8,8,8) -> expected per mode.
@@ -506,6 +536,7 @@ constexpr Case kCases[] = {
     {"triangle_fill_rule", test_triangle_fill_rule},
     {"gouraud", test_gouraud},
     {"textured_sprite", test_textured_sprite},
+    {"sprite_scale", test_sprite_scale},
     {"semi_transparency", test_semi_transparency},
     {"draw_area_clipping", test_draw_area_clipping},
     {"polyline", test_polyline},

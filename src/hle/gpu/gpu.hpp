@@ -12,6 +12,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 namespace hle {
@@ -30,6 +32,24 @@ public:
     void gp0(uint32_t word);
     /// Feed several GP0 words (DMA channel 2 block / linked-list payloads).
     void gp0_block(const uint32_t* words, std::size_t count);
+    /// A rectangle (sprite) to draw at another size. The PS1 draws sprites one texel per pixel, so
+    /// a game can't resize one without rebuilding it as a polygon; this matches a sprite by its
+    /// texture (page base in VRAM, UV, size) and draws it as a scaled quad of draw_w x draw_h,
+    /// centred on the rectangle the game asked for. Used to fit replacement art whose layout
+    /// differs from the original (config/<serial>/sprites.txt).
+    struct SpriteScale {
+        int32_t tex_x = 0, tex_y = 0;  ///< texture page base in VRAM (x in 16-bit units)
+        int32_t u = 0, v = 0, w = 0, h = 0;
+        int32_t draw_w = 0, draw_h = 0;
+    };
+    void set_sprite_scales(std::vector<SpriteScale> rules) { sprite_scales_ = std::move(rules); }
+    /// Parse sprites.txt: one rule per line, `tex_x tex_y u v w h draw_w draw_h` (anything after
+    /// the eighth number, and lines starting with '#', are comments). Bad lines are reported and
+    /// skipped.
+    static std::vector<SpriteScale> parse_sprite_scales(const std::string& text);
+
+    /// RAM address of the linked-list node being fed (0 outside DMA); DCB_TRACE_PRIMS prints it.
+    void set_packet_address(uint32_t addr) { packet_addr_ = addr; }
     /// GP1 port 0x1F801814 write: control commands.
     void gp1(uint32_t word);
     /// 0x1F801810 read: VRAM->CPU transfer data, or the latched GP1(10h) info reply.
@@ -121,6 +141,8 @@ private:
     Mode mode_ = Mode::Command;
     std::array<uint32_t, 16> fifo_{};
     std::size_t fifo_len_ = 0, fifo_need_ = 0;
+    uint32_t packet_addr_ = 0;
+    std::vector<SpriteScale> sprite_scales_;
     Transfer write_{}, read_{};
     // Polyline continuation state (GP0 48h-5Fh)
     Vertex poly_last_{};

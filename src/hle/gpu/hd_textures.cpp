@@ -358,6 +358,10 @@ unsigned quantize_index(const std::vector<uint16_t>& pal, size_t per, uint8_t r,
 HdTextures::HdTextures() = default;
 HdTextures::~HdTextures() = default;
 
+bool HdTextures::read_art(const std::string& name, std::vector<uint8_t>& out) const {
+    return vfs_ && vfs_->read(name, out);
+}
+
 bool HdTextures::load(const std::string& manifest_path, const std::string& art_path) {
     index_.clear();
     clut_hashes_.clear();

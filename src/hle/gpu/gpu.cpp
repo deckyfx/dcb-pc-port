@@ -3,7 +3,10 @@
 #include "gpu/hd_textures.hpp"
 
 #include <algorithm>
+#include <cstdio>
 #include <cstdlib>
+#include <string>
+#include <unordered_set>
 #include <utility>
 
 namespace hle {
@@ -65,7 +68,46 @@ constexpr int64_t kOne = int64_t{1} << 32;  // attribute interpolation: 32.32 fi
 /// fractional distance to the next integer is >= 1/area >= 2^-20, so floor() stays exact.
 constexpr int64_t kInterpBias = int64_t{1} << 11;
 
+
+/// DCB_TRACE_PRIMS=1: print each distinct textured polygon/rectangle once (its raw GP0 words and
+/// the decoded screen position, UV, texpage and CLUT), to find which draw shows which texture.
+void trace_prim(const uint32_t* words, std::size_t count, uint32_t draw_mode, uint32_t packet) {
+    static const bool on = [] {
+        const char* e = std::getenv("DCB_TRACE_PRIMS");
+        return e && *e && *e != '0';
+    }();
+    if (!on) return;
+    static std::unordered_set<std::string> seen;
+    std::string key(reinterpret_cast<const char*>(words), count * sizeof(uint32_t));
+    if (!seen.insert(std::move(key)).second) return;
+    std::fprintf(stderr, "[prim] @%06x mode=%04x", packet, draw_mode);
+    for (std::size_t i = 0; i < count; ++i) std::fprintf(stderr, " %08x", words[i]);
+    std::fputc('\n', stderr);
+}
+
 }  // namespace
+
+std::vector<Gpu::SpriteScale> Gpu::parse_sprite_scales(const std::string& text) {
+    std::vector<SpriteScale> rules;
+    std::size_t pos = 0;
+    for (int line_no = 1; pos < text.size(); ++line_no) {
+        std::size_t end = text.find('\n', pos);
+        if (end == std::string::npos) end = text.size();
+        const std::string line = text.substr(pos, end - pos);
+        pos = end + 1;
+        const std::size_t first = line.find_first_not_of(" \t\r");
+        if (first == std::string::npos || line[first] == '#') continue;
+        SpriteScale s;
+        if (std::sscanf(line.c_str(), "%d %d %d %d %d %d %d %d", &s.tex_x, &s.tex_y, &s.u, &s.v, &s.w, &s.h, &s.draw_w,
+                        &s.draw_h) != 8 ||
+            s.w <= 0 || s.h <= 0 || s.draw_w <= 0 || s.draw_h <= 0) {
+            std::fprintf(stderr, "[gpu] sprites.txt line %d: expected tex_x tex_y u v w h draw_w draw_h\n", line_no);
+            continue;
+        }
+        rules.push_back(s);
+    }
+    return rules;
+}
 
 Gpu::Gpu() : vram_(static_cast<std::size_t>(kVramWidth) * kVramHeight, 0) { reset(); }
 
@@ -116,9 +158,15 @@ void Gpu::execute() {
             if (cmd == 0x02) fill_rect();
             else if (cmd == 0x1F) irq_ = true;  // GP0(1Fh) interrupt request
             break;                              // 00h NOP, 01h clear cache, 03h-1Eh NOP
-        case 1: draw_polygon(); break;
+        case 1:
+            if (cmd & 0x04u) trace_prim(fifo_.data(), fifo_need_, draw_mode_, packet_addr_);
+            draw_polygon();
+            break;
         case 2: draw_line_cmd(); break;
-        case 3: draw_rect(); break;
+        case 3:
+            if (cmd & 0x04u) trace_prim(fifo_.data(), fifo_need_, draw_mode_, packet_addr_);
+            draw_rect();
+            break;
         case 4: copy_vram(); break;
         case 5: begin_cpu_to_vram(); break;
         case 6: begin_vram_to_cpu(); break;
@@ -277,6 +325,24 @@ void Gpu::draw_rect() {
     Vertex origin = decode_vertex(fifo_[1], fifo_[0]);
     origin.u = static_cast<int32_t>(tex & 0xFFu);
     origin.v = static_cast<int32_t>((tex >> 8) & 0xFFu);
+    if (p.textured) {
+        for (const SpriteScale& s : sprite_scales_) {
+            if (s.tex_x != p.tex_x || s.tex_y != p.tex_y || s.u != origin.u || s.v != origin.v || s.w != w || s.h != h) continue;
+            // Two triangles covering the scaled rectangle; UVs span the sprite's texels exactly.
+            Vertex q[4];
+            const int32_t x0 = origin.x + (w - s.draw_w) / 2, y0 = origin.y + (h - s.draw_h) / 2;
+            for (int k = 0; k < 4; ++k) {
+                q[k] = origin;
+                q[k].x = x0 + ((k & 1) ? s.draw_w : 0);
+                q[k].y = y0 + ((k & 2) ? s.draw_h : 0);
+                q[k].u = origin.u + ((k & 1) ? w : 0);
+                q[k].v = origin.v + ((k & 2) ? h : 0);
+            }
+            draw_triangle(q[0], q[1], q[2], p);  // sprites are never dithered or shaded: p as is
+            draw_triangle(q[1], q[2], q[3], p);
+            return;
+        }
+    }
     draw_sprite(origin, w, h, p);
 }
 

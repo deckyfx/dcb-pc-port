@@ -74,6 +74,8 @@ public:
     /// Name of the manifest inside an asset folder or `.pak` (used when no manifest path is given).
     static constexpr const char* kManifestName = "assets_manifest.json";
 
+    /// Read another file from the mounted art (e.g. sprites.txt). False when absent.
+    bool read_art(const std::string& name, std::vector<uint8_t>& out) const;
     bool enabled() const { return !index_.empty() && vfs_ != nullptr; }
     size_t entry_count() const { return entry_total_; }
     uint64_t hits() const { return hits_; }
