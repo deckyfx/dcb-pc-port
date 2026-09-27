@@ -400,6 +400,34 @@ void test_errors(const fs::path& tmp) {
 
 }  // namespace
 
+
+/// overrides/<name>: a same-size file replaces the disc file (raw sectors re-stamped with the
+/// position they are served at); any other size is ignored.
+void test_overrides(const fs::path& tmp) {
+    const fs::path dir = tmp / "overrides_disc";
+    fs::create_directories(dir / "fs");
+    fs::create_directories(dir / "overrides");
+    // Two raw sectors at LBA 5 and a 3000-byte Form 1 file at LBA 7 (2 sectors).
+    write_text(dir / "layout.txt",
+               "sectors 16\n"
+               "file 5 2 4704 raw2352 00000000 00000000 fs/MOVIE.RAW\n"
+               "file 7 2 3000 form1 00000800 00008900 fs/DATA.BIN\n");
+    std::vector<uint8_t> original(2 * 2352, 0x11), replacement(2 * 2352, 0x22);
+    replacement[12] = 0x99;  // a header from another disc position
+    write_file(dir / "fs" / "MOVIE.RAW", original);
+    write_file(dir / "overrides" / "MOVIE.RAW", replacement);
+    write_file(dir / "fs" / "DATA.BIN", std::vector<uint8_t>(3000, 0x33));
+    write_file(dir / "overrides" / "DATA.BIN", std::vector<uint8_t>(2999, 0x44));  // wrong size
+
+    hle::ExtractedDisc disc(dir);
+    uint8_t sector[2352];
+    CHECK(disc.read(6, sector));
+    CHECK(sector[100] == 0x22);                                         // served from overrides/
+    CHECK(sector[12] == 0x00 && sector[13] == 0x02 && sector[14] == 0x06);  // MSF of LBA 6: 00:02:06
+    CHECK(disc.read(7, sector));
+    CHECK(sector[24] == 0x33);  // wrong-size override ignored: the disc file is used
+}
+
 int main(int argc, char** argv) {
     if (argc == 3 && std::strcmp(argv[1], "--write-image") == 0) {
         write_file(argv[2], make_disc());
@@ -422,6 +450,7 @@ int main(int argc, char** argv) {
     test_cue(tmp);
     test_import(tmp);
     test_errors(tmp);
+    test_overrides(tmp);
     fs::remove_all(tmp);
     std::printf("import tests passed\n");
     return 0;

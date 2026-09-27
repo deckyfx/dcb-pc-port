@@ -32,7 +32,26 @@ struct ManifestEntry {
     bool has_clut = false;
     int w = 0, h = 0, bpp = 0;
     std::string path;
+    std::vector<uint16_t> pal;  ///< the image's own palette ("pal"), if the manifest has it
 };
+
+/// "pal": 4 hex digits per entry, at most 256 entries.
+bool parse_palette_hex(const std::string& hex, std::vector<uint16_t>& out) {
+    if (hex.empty() || hex.size() % 4 != 0 || hex.size() > 4 * 256) return false;
+    out.clear();
+    for (size_t i = 0; i < hex.size(); i += 4) {
+        uint16_t v = 0;
+        for (size_t k = 0; k < 4; ++k) {
+            const char c = hex[i + k];
+            const int d = c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10
+                        : c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
+            if (d < 0) return false;
+            v = static_cast<uint16_t>(v << 4 | d);
+        }
+        out.push_back(v);
+    }
+    return true;
+}
 
 const char* skip_ws(const char* p, const char* end) {
     while (p < end && (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')) ++p;
@@ -209,6 +228,9 @@ bool parse_entry(const char*& p, const char* end, ManifestEntry& e) {
             }
         } else if (key == "path") {
             if (!parse_string(p, end, e.path)) return false;
+        } else if (key == "pal") {
+            std::string hex;
+            if (!parse_string(p, end, hex) || !parse_palette_hex(hex, e.pal)) return false;
         } else if (key == "w" || key == "h" || key == "bpp") {
             if (!parse_int(p, end, num) || num < 0) return false;
             if (key == "w") e.w = static_cast<int>(num);
@@ -387,7 +409,7 @@ bool HdTextures::load(const std::string& manifest_path, const std::string& art_p
         return false;
     }
     for (auto& e : entries) {
-        index_[e.img].push_back({std::move(e.path), e.w, e.h, e.bpp, e.clut, e.has_clut});
+        index_[e.img].push_back({std::move(e.path), e.w, e.h, e.bpp, e.clut, e.has_clut, std::move(e.pal)});
         if (e.has_clut) clut_hashes_.insert(e.clut);
         ++entry_total_;
     }
@@ -480,6 +502,18 @@ const std::vector<uint16_t>* HdTextures::maybe_replace(int x, int y, int w, int 
             if (c.has_clut && have_clut_ && c.clut == last_clut_) {
                 pick = &c;
                 break;
+            }
+        }
+        // No variant matches the live palette: every variant shares these indices, so any one that
+        // carries its own palette converts correctly (artists edit that one; the game still picks
+        // the palette at draw time, so colour cycling keeps working).
+        if (!pick && shape_ok) {
+            for (const auto& c : it->second) {
+                int rw = 0, rh = 0;
+                if (!c.pal.empty() && upload_rect(c.w, c.h, c.bpp, rw, rh) && rw == w && rh == h) {
+                    pick = &c;
+                    break;
+                }
             }
         }
         if (pick) return replace(*pick, units, staged, staged_words);
@@ -620,30 +654,41 @@ const std::vector<uint16_t>* HdTextures::replace(const Candidate& pick, size_t u
         // recency: an image uploaded before its CLUT still resolves once the
         // CLUT has been sniffed at any point. The fit key uses the same hash
         // so each palette gets its own correct indices.
-        if (!pick.has_clut) {
-            if (log_hd()) std::printf("[hd] kept %s: no palette in the manifest\n", pick.path.c_str());
-            ++miss_no_palette_;
-            ++misses_;
-            return nullptr;
-        }
-        key.clut = pick.clut;
-        const auto cache = clut_cache_.find(pick.clut);
-        if (cache == clut_cache_.end()) {
-            if (log_hd()) std::printf("[hd] kept %s: its palette has not been uploaded yet\n", pick.path.c_str());
-            ++miss_palette_not_live_;
-            ++misses_;
-            return nullptr;
-        }
-        pal_ptr = &cache->second;
-        per = pick.bpp == 4 ? 16 : 256;  // entries per palette row
-        // NOTE: only single-row palettes are handled (see below).
-        if (pal_ptr->size() != per) {
-            if (log_hd())
-                std::printf("[hd] kept %s: palette upload has %zu entries, a %d-bit image uses %zu per row\n",
-                            pick.path.c_str(), pal_ptr->size(), pick.bpp, per);
-            ++miss_palette_shape_;
-            ++misses_;
-            return nullptr;
+        if (!pick.pal.empty()) {
+            // The image's own palette from the disc: independent of upload order, of palettes
+            // packed several to an upload, and of palette animation.
+            key.clut = pick.has_clut ? pick.clut : vfs::fnv1a64(pick.pal.data(), pick.pal.size() * sizeof(uint16_t));
+            pal_ptr = &pick.pal;
+            per = pick.pal.size();
+        } else {
+            // Older manifests without "pal": convert against the palette the game uploaded.
+            if (!pick.has_clut) {
+                if (log_hd()) std::printf("[hd] kept %s: no palette in the manifest\n", pick.path.c_str());
+                ++miss_no_palette_;
+                ++misses_;
+                return nullptr;
+            }
+            key.clut = pick.clut;
+            const auto cache = clut_cache_.find(pick.clut);
+            if (cache == clut_cache_.end()) {
+                if (log_hd())
+                    std::printf("[hd] kept %s: its palette has not been uploaded yet (re-rip to store it)\n",
+                                pick.path.c_str());
+                ++miss_palette_not_live_;
+                ++misses_;
+                return nullptr;
+            }
+            pal_ptr = &cache->second;
+            per = pick.bpp == 4 ? 16 : 256;  // entries per palette row
+            // Only single-row palette uploads are handled on this path.
+            if (pal_ptr->size() != per) {
+                if (log_hd())
+                    std::printf("[hd] kept %s: palette upload has %zu entries, a %d-bit image uses %zu per row\n",
+                                pick.path.c_str(), pal_ptr->size(), pick.bpp, per);
+                ++miss_palette_shape_;
+                ++misses_;
+                return nullptr;
+            }
         }
     }
     if (const std::vector<uint16_t>* hit = cached_fit(key, units)) return hit;
@@ -690,11 +735,8 @@ const std::vector<uint16_t>* HdTextures::replace(const Candidate& pick, size_t u
             scratch_[i] = px;
         }
     } else {
-        // Re-quantize to the live palette row (hoisted above): same shape the game
-        // uploaded (packed indices), but sampled from fitted HD pixels.
-        // NOTE: only single-row palettes (clut.w == 16/256, one row) are handled:
-        // multi-row strips share one upload but select rows per-primitive via the
-        // CLUT id, which we don't track yet. Those fall back until row tracking lands.
+        // Re-quantize to the palette chosen above (the image's own, or the uploaded one): same
+        // shape the game uploaded (packed indices), sampled from the fitted art.
         const size_t pixels = static_cast<size_t>(pick.w) * static_cast<size_t>(pick.h);
         std::vector<uint8_t> indices(pixels);
         for (size_t i = 0; i < pixels; ++i) {

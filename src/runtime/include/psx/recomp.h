@@ -44,6 +44,11 @@ typedef struct RecompFunctionEntry {
 extern const RecompFunctionEntry recomp_function_table[];
 extern const uint32_t            recomp_function_count;
 
+/** The recompiled originals of functions replaced by native overrides (sorted by address), so an
+ *  override can fall back to the game's own code. Empty when no code has been generated. */
+extern const RecompFunctionEntry recomp_original_table[];
+extern const uint32_t            recomp_original_count;
+
 /* ---- slow path: scratchpad, MMIO, BIOS ROM, unmapped (runtime/src/memory.cpp) ---- */
 uint8_t  psx_slow_read8(PsxContext* ctx, uint32_t addr);
 uint16_t psx_slow_read16(PsxContext* ctx, uint32_t addr);
@@ -54,6 +59,8 @@ void     psx_slow_write32(PsxContext* ctx, uint32_t addr, uint32_t value);
 
 /* ---- control flow the recompiler cannot resolve statically (runtime/src/dispatch.cpp) ---- */
 void psx_dispatch(PsxContext* ctx, uint32_t target);           /* jr / jalr / BIOS A0,B0,C0 */
+/* Run the recompiled original of the overridden function at `addr` (aborts if there is none). */
+void psx_call_original(PsxContext* ctx, uint32_t addr);
 void psx_syscall(PsxContext* ctx, uint32_t code);
 void psx_break(PsxContext* ctx, uint32_t code);
 

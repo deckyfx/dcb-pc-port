@@ -3,6 +3,11 @@
   "overrides": [
     { "addr": "0x80014BFC", "symbol": "dcb_task_yield", "why": "task switch: saves context and jumps into another task's stack" },
     { "addr": "0x80014D3C", "symbol": "dcb_task_sleep", "why": "task switch: sleep n frames (yield n times)" },
-    { "addr": "0x80014BC4", "symbol": "dcb_task_exit",  "why": "task switch: return address of every task entry; unlinks and switches away" }
+    { "addr": "0x80014BC4", "symbol": "dcb_task_exit",  "why": "task switch: return address of every task entry; unlinks and switches away" },
+    { "addr": "0x80015994", "symbol": "dcb_file_chdir", "why": "file API: cache a directory for relative paths; served natively, no CD reads" },
+    { "addr": "0x80015C24", "symbol": "dcb_file_open",  "why": "file API: open X:\\DIR\\NAME.EXT via the archive tables; served natively" },
+    { "addr": "0x80015FF8", "symbol": "dcb_file_close", "why": "file API: close a handle" },
+    { "addr": "0x80016080", "symbol": "dcb_file_read",  "why": "file API: read into RAM; native, instant (the original polls CdReadSync)" },
+    { "addr": "0x80059D30", "symbol": "dcb_cd_search_file", "why": "libcd CdSearchFile: answered from the disc's root directory without reading it through the drive (the movie player looks up DIGIMON.MOV)" }
   ]
 }

@@ -208,6 +208,26 @@ machine differs (every frame boundary with `n=1`). Frame numbers count every fra
 snapshot *N+k* of a run without the load. With `DCB_RECORD`, loading a state rewinds the recording
 to the loaded frame, so the log replays the timeline that was finally played.
 
+**Native file access.** The game's file API (open/read/close over the `X.DRV` archives, and
+libcd's `CdSearchFile`) is replaced by native code (`src/game/overrides/files.cpp`): data files
+are read straight from the game data, instantly, instead of through the emulated CD drive. A
+loose file at `assets/<serial>/files/<X>/<DIR>/<NAME.EXT>` (e.g. `assets/SLPS-03101/files/B/CARD2.CDD`)
+replaces that file whatever its size. `DCB_LOG_FILES=1` logs every file the game opens;
+`DCB_CD_FILES=1` restores the original CD path for comparison. At exit the game prints how many
+sectors went through the CD drive: data should be 0, only the intro movie still streams.
+
+**File overrides.** A file placed in `assets/<serial>/disc/<name>` (named as under `fs/`;
+`extracted/<serial>/overrides/` also works but is deprecated) replaces that disc file when it has exactly the same size; other sizes are refused and
+logged. Raw movie sectors get their headers re-stamped with this disc's positions, so a movie
+from another pressing plays as if it were on this disc. Each active override is logged at start
+(`[disc] override: ...`). Example, the English intro movie from the US disc (import the US dump
+first, `dcb --import <us.cue> <dir>`):
+
+```sh
+mkdir -p assets/SLPS-03101/disc
+cp <dir>/SLUS-01328/fs/DIGIMON.MOV.raw2352 assets/SLPS-03101/disc/
+```
+
 **Game assets (textures).** `dcb_asset_ripper` (built with the tools) rips the images and sound
 banks from the game data into `assets/` (gitignored), and packs them into one file:
 
@@ -220,7 +240,11 @@ banks from the game data into `assets/` (gitignored), and packs them into one fi
 At start the game loads replacement textures from the first of: `DCB_HD_PACK=<.pak|folder>`,
 `assets/<serial>.pak`, `assets/converted/<serial>/`; the manifest (`assets_manifest.json`) is read
 from inside the pack or folder unless `DCB_HD_MANIFEST=<file>` names one. Edit a PNG (same size as the
-original for now: the renderer draws at native resolution), re-pack, restart. Unmodified art gives
+original for now: the renderer draws at native resolution), re-pack, restart. Palette images are
+converted against their own palette from the disc (stored in the manifest), so an edit should use
+that palette's colours; the game still chooses the palette when drawing, so palette animation keeps
+working. Manifests ripped before this change lack the palettes: re-rip (this rewrites
+`assets/converted/<serial>/`, so keep a copy of edited PNGs). Unmodified art gives
 frames bit-identical to the original. PNG alpha: 0 = transparent, 255 = opaque; the semi-transparency
 bit is taken from the original pixel unless alpha is exactly 254 (forces it on). At exit the game
 prints how many texture uploads were replaced and why others were not; `DCB_LOG_HD=1` (or

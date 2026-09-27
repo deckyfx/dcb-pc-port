@@ -79,7 +79,8 @@ void CdRom::read_sector() {
         return;
     }
     if (trace_) std::fprintf(stderr, "[cd] sector %u submode %02X\n", read_lba_, sector_[18]);
-    LoadLog::instance().sector(read_lba_);
+    if (!streaming_) LoadLog::instance().sector(read_lba_);  // streams are logged as start edges
+    ++(streaming_ ? sectors_streamed_ : sectors_read_);
     ++read_lba_;
     // XA audio sectors (Form 2, audio submode) go to the audio path when XA playback is enabled,
     // filtered by file/channel; they never raise a data interrupt.
@@ -142,6 +143,8 @@ void CdRom::command(uint8_t cmd) {
             }
             stat_ = static_cast<uint8_t>((stat_ | kStatMotor | kStatRead) & ~kStatPlay);
             reading_ = true;
+            streaming_ = cmd == 0x1B;
+            if (streaming_) LoadLog::instance().stream(read_lba_);
             next_sector_ = now_ + kSeekDelay;
             push(3, {stat_}, kAckDelay);
             break;

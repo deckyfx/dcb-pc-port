@@ -122,6 +122,7 @@ struct ManifestEntry {
     uint64_t lba = 0;
     bool has_lba = false;
     std::string alt;  // DRV stem this copy was found under (dedup provenance)
+    std::vector<uint16_t> pal;  // indexed: the palette row this PNG was resolved with
 };
 
 struct Ripper {
@@ -194,6 +195,13 @@ bool Ripper::emit_tim_png(const vfs::Tim& tim, const std::string& drv, uint32_t 
         if (tim.has_clut && pal < row_hashes.size()) {
             e.clut = row_hashes[pal];
             e.has_clut = true;
+            // The palette itself (the entries an index can reach), so the runtime can convert art
+            // against the image's own colours instead of whatever palette was uploaded last.
+            const size_t row = static_cast<size_t>(pal) * tim.clut.w;
+            const size_t reach = std::min<size_t>(tim.clut.w, tim.bpp == 4 ? 16 : 256);
+            if (row + reach <= tim.clut.entries.size())
+                e.pal.assign(tim.clut.entries.begin() + static_cast<std::ptrdiff_t>(row),
+                             tim.clut.entries.begin() + static_cast<std::ptrdiff_t>(row + reach));
         }
         e.w = w;
         e.h = h;
@@ -355,6 +363,15 @@ void write_manifest(const Ripper& r) {
                 ",\"h\":" + std::to_string(e.h) + ",\"bpp\":" + std::to_string(e.bpp) + ",\"path\":";
         json_escape(json, e.path);
         if (e.has_clut) json += ",\"clut\":\"" + vfs::to_hex16(e.clut) + "\"";
+        if (!e.pal.empty()) {  // 4 hex digits per 15-bit entry, in palette order
+            json += ",\"pal\":\"";
+            char hex[5];
+            for (const uint16_t v : e.pal) {
+                std::snprintf(hex, sizeof hex, "%04x", v);
+                json += hex;
+            }
+            json += "\"";
+        }
         json += ",\"drv\":";
         json_escape(json, e.drv);
         json += ",\"drv_offset\":" + std::to_string(e.drv_offset) + ",\"drv_size\":" + std::to_string(e.drv_size);

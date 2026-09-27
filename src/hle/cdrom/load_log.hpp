@@ -96,6 +96,12 @@ public:
     /// Once per host frame with the MDEC output counter: emits the stop edge
     /// when no output happened this frame while a decode was active.
     void mdec_frame(uint64_t transfers);
+    /// A file opened through the native file layer (src/game/overrides/files.cpp): data that never
+    /// goes through the CD drive. `loose` = served from assets/<serial>/files/.
+    void file(const std::string& path, uint32_t bytes, bool loose);
+    /// A streaming read (ReadS: movie video + XA audio) starts at `lba`; its sectors are not
+    /// logged one by one.
+    void stream(uint32_t lba);
     /// End of frame (or shutdown): flush any pending coalesced range.
     void flush();
 

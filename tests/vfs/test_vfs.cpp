@@ -530,6 +530,28 @@ void test_hd_identity_e2e() {
     const uint64_t fits_before = hd.fit_hits();
     CHECK(hd.maybe_replace(0, 0, 2, 1, staged, 1) == hit);
     CHECK(hd.fit_hits() == fits_before + 1);
+
+    // 4. With the image's own palette in the manifest ("pal"), no palette upload is needed at
+    //    all: the image arrives first (as on the title screen) and still converts bit-for-bit.
+    std::string pal_hex;
+    for (const uint16_t e : entries) {
+        char h[5];
+        std::snprintf(h, sizeof h, "%04x", e);
+        pal_hex += h;
+    }
+    std::snprintf(manifest, sizeof manifest,
+                  "{\"version\":1,\"entries\":[{\"img\":\"%s\",\"w\":8,\"h\":1,\"bpp\":4,\"path\":\"e.png\","
+                  "\"clut\":\"%s\",\"pal\":\"%s\"}]}",
+                  vfs::to_hex16(img).c_str(), vfs::to_hex16(clut).c_str(), pal_hex.c_str());
+    f = std::fopen(man_path.c_str(), "wb");
+    CHECK(f);
+    std::fwrite(manifest, 1, std::strlen(manifest), f);
+    std::fclose(f);
+    hle::HdTextures own;
+    CHECK(own.load(man_path, (dir / "art").string()));
+    const std::vector<uint16_t>* first = own.maybe_replace(0, 0, 2, 1, staged, 1);  // no CLUT upload before
+    CHECK(first && first->size() == 2);
+    CHECK((*first)[0] == 0x3210u && (*first)[1] == 0x3214u);
 }
 
 // --- VAB / BRR ---------------------------------------------------------------

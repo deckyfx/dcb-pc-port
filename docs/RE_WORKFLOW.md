@@ -50,13 +50,19 @@ in A, changed counts (default: ≥10 calls both sides, ratio ≥2.0).
 
 ```text
 [load] frame 8 spu 0x67FC0 96 KB
-[load] frame 21 load meta lba 16 2 KB
-[load] frame 24 load A.DRV lba 379 4 KB
-[load] frame 2710 load B.DRV lba 5739 2048 KB
+[load] frame 20 file A:\SE1.PAK 285 KB
+[load] frame 26 file B:\CARD2.CDD 80 KB
+[load] frame 97 stream DIGIMON.MOV.raw2352 from lba 105731
 ```
 
-- **CD reads → files** via `extracted/<id>/layout.txt` (falls back to bare
-  LBAs on raw images). Contiguous sectors coalesce into one line.
+- **Game files**: the native file layer (`src/game/overrides/files.cpp`) serves
+  every data file without the CD drive and logs it by game path (`file X:\…`,
+  with `(loose file)` when it came from `assets/<id>/files/`).
+- **Streams**: a ReadS (movie video + XA audio) logs one `stream` line where it
+  starts, not every sector.
+- **Other CD reads → files** via `extracted/<id>/layout.txt` (falls back to bare
+  LBAs on raw images); contiguous sectors coalesce into one line. With
+  `DCB_CD_FILES=1` (original CD file path) data loads show up here instead.
 - **DRV entries**: resolve `lba → file offset → entry` with
   `tools/disc/drv_unpack.py` (the log gives file + LBA).
 - **SPU**: DMA channel 4 uploads coalesced per contiguous sound-RAM run

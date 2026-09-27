@@ -46,32 +46,40 @@ bool parse_hex4(const std::string& hex, uint8_t* out) {
 // ---------------------------------------------------------------------------------------------
 // Shared: ISO9660 access on top of read()
 
-std::vector<uint8_t> Disc::read_root_file(const std::string& name) {
+bool Disc::find_root_file(const std::string& name, uint32_t& lba, uint32_t& size) {
     // ISO9660 in Mode 2 Form 1 sectors: user data at raw offset 24. PVD at sector 16.
     uint8_t raw[kRawSector];
-    if (!read(16, raw) || std::memcmp(raw + 24 + 1, "CD001", 5) != 0) return {};
+    if (!read(16, raw) || std::memcmp(raw + 24 + 1, "CD001", 5) != 0) return false;
     const uint8_t* root = raw + 24 + 156;
     const uint32_t dir_lba = le32(root + 2), dir_size = le32(root + 10);
     for (uint32_t s = 0; s * 2048 < dir_size; ++s) {
-        if (!read(dir_lba + s, raw)) return {};
+        if (!read(dir_lba + s, raw)) return false;
         const uint8_t* d = raw + 24;
         for (uint32_t off = 0; off < 2048 && d[off] != 0; off += d[off]) {
             const uint8_t len = d[off + 32];
             std::string ident(reinterpret_cast<const char*>(d + off + 33), len);
             ident = ident.substr(0, ident.find(';'));
             if (ident != name) continue;
-            const uint32_t lba = le32(d + off + 2), size = le32(d + off + 10);
-            std::vector<uint8_t> out;
-            out.reserve(size);
-            for (uint32_t k = 0; out.size() < size; ++k) {
-                if (!read(lba + k, raw)) return {};
-                const size_t take = std::min<size_t>(2048, size - out.size());
-                out.insert(out.end(), raw + 24, raw + 24 + take);
-            }
-            return out;
+            lba = le32(d + off + 2);
+            size = le32(d + off + 10);
+            return true;
         }
     }
-    return {};
+    return false;
+}
+
+std::vector<uint8_t> Disc::read_root_file(const std::string& name) {
+    uint32_t lba = 0, size = 0;
+    if (!find_root_file(name, lba, size)) return {};
+    uint8_t raw[kRawSector];
+    std::vector<uint8_t> out;
+    out.reserve(size);
+    for (uint32_t k = 0; out.size() < size; ++k) {
+        if (!read(lba + k, raw)) return {};
+        const size_t take = std::min<size_t>(2048, size - out.size());
+        out.insert(out.end(), raw + 24, raw + 24 + take);
+    }
+    return out;
 }
 
 std::vector<uint8_t> Disc::read_boot_exe() {
@@ -165,6 +173,7 @@ ExtractedDisc::ExtractedDisc(const fs::path& dir) : dir_(dir) {
             if (!parse_hex4(first, r.first_sh) || !parse_hex4(last, r.last_sh))
                 throw std::runtime_error("bad subheader in layout.txt: " + line);
             r.path = dir / rel;
+            apply_override(r, rel);
         } else {
             continue;
         }
@@ -172,6 +181,31 @@ ExtractedDisc::ExtractedDisc(const fs::path& dir) : dir_(dir) {
         ranges_[r.lba] = std::move(r);
     }
     if (sectors_ == 0 || ranges_.empty()) throw std::runtime_error("empty layout.txt in " + dir.string());
+}
+
+void ExtractedDisc::apply_override(Range& r, const std::string& rel) {
+    const std::string name = rel.rfind("fs/", 0) == 0 ? rel.substr(3) : rel;
+    // Modifications live with the other assets (assets/<serial>/disc/), keeping extracted/ a
+    // clean copy of the player's dump; the older extracted/<serial>/overrides/ still works.
+    std::error_code ec;
+    fs::path candidate = fs::path("assets") / dir_.filename() / "disc" / name;
+    if (!fs::is_regular_file(candidate, ec)) {
+        candidate = dir_ / "overrides" / name;
+        if (!fs::is_regular_file(candidate, ec)) return;
+        std::fprintf(stderr, "[disc] %s: overrides now belong in %s\n", candidate.string().c_str(),
+                     (fs::path("assets") / dir_.filename() / "disc").string().c_str());
+    }
+    const uint64_t want = r.kind == Range::Raw ? uint64_t{r.count} * kRawSector : uint64_t{r.bytes};
+    const uint64_t have = fs::file_size(candidate, ec);
+    if (ec || have != want) {
+        std::fprintf(stderr, "[disc] override %s ignored: %llu bytes, the disc file has %llu (only same-size swaps)\n",
+                     candidate.string().c_str(), static_cast<unsigned long long>(have),
+                     static_cast<unsigned long long>(want));
+        return;
+    }
+    r.path = candidate;
+    r.overridden = true;
+    std::printf("[disc] override: %s <- %s\n", name.c_str(), candidate.string().c_str());
 }
 
 std::ifstream& ExtractedDisc::stream(const fs::path& path) {
@@ -206,6 +240,12 @@ bool ExtractedDisc::read(uint32_t lba, uint8_t* out) {
         f.clear();
         f.seekg(static_cast<std::streamoff>(lba - r->lba) * kRawSector);
         f.read(reinterpret_cast<char*>(out), kRawSector);
+        if (r->overridden) {  // from another pressing: its headers name that disc's positions
+            const uint32_t abs = lba + 150;
+            out[12] = bcd(abs / 4500);
+            out[13] = bcd(abs / 75 % 60);
+            out[14] = bcd(abs % 75);
+        }
         return true;
     }
 
