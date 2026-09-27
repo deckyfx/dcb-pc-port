@@ -302,6 +302,22 @@ int main(int argc, char** argv) {
             // While a native movie plays, its sound replaces the game's sound output.
             std::vector<int16_t> movie_audio;
             if (movie.active) movie_audio = movie.player.take_audio();
+            // DCB_TRACE_MOVIE: per second of wall time, host frames vs movie output (sync debugging).
+            static const bool trace_movie = std::getenv("DCB_TRACE_MOVIE") != nullptr;
+            if (trace_movie && movie.active) {
+                static auto t0 = std::chrono::steady_clock::now();
+                static uint64_t frames_s = 0, samples_s = 0;
+                ++frames_s;
+                samples_s += movie_audio.size() / 2;
+                const uint64_t video_s = movie.player.video_frames();
+                if (std::chrono::steady_clock::now() - t0 >= std::chrono::seconds(1)) {
+                    std::fprintf(stderr, "[movie] 1s: %llu host frames, %llu audio samples, %llu video frames so far\n",
+                                 static_cast<unsigned long long>(frames_s), static_cast<unsigned long long>(samples_s),
+                                 static_cast<unsigned long long>(video_s));
+                    t0 = std::chrono::steady_clock::now();
+                    frames_s = samples_s = 0;
+                }
+            }
             const std::vector<int16_t>& game_audio = mmio.take_audio();
             const std::vector<int16_t>& audio = movie.active ? movie_audio : game_audio;
             if (!audio.empty()) host->queue_audio(audio.data(), audio.size() / 2);
