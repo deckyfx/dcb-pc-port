@@ -290,6 +290,17 @@ void test_sprite_scale() {
     gpu->gp0(0u);
     gpu->gp0(xy(3, 1));
     CHECK(px(*gpu, 700, 10) == a && px(*gpu, 702, 10) == c && px(*gpu, 703, 10) == 0 && px(*gpu, 700, 11) == 0);
+
+    // Source size = draw size: one texel per pixel over a wider texture (a grown slot). The game
+    // asks for 2x1 at (800,20); the rule shows all 4 texels, centred: x 799..802.
+    gpu->set_sprite_scales(Gpu::parse_sprite_scales("192 0  0 0  2 1  4 1  4 1\n"));
+    gpu->gp0(0x65808080u);
+    gpu->gp0(xy(800, 20));
+    gpu->gp0(0u);
+    gpu->gp0(xy(2, 1));
+    CHECK(px(*gpu, 799, 20) == a && px(*gpu, 800, 20) == b && px(*gpu, 801, 20) == c && px(*gpu, 802, 20) == d);
+    CHECK(px(*gpu, 798, 20) == 0 && px(*gpu, 803, 20) == 0);
+    CHECK(Gpu::parse_sprite_scales("192 0  0 0  2 1  4 1  4\n").empty());  // 9 numbers: incomplete
 }
 
 void test_semi_transparency() {

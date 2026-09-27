@@ -33,6 +33,7 @@ struct ManifestEntry {
     uint64_t clut = 0;
     bool has_clut = false;
     int w = 0, h = 0, bpp = 0;
+    int slot_w = 0, slot_h = 0;  ///< "slot_w"/"slot_h": upload the art at this larger size (0 = w, h)
     std::string path;
     std::vector<uint16_t> pal;  ///< the image's own palette ("pal"), if the manifest has it
 };
@@ -233,10 +234,12 @@ bool parse_entry(const char*& p, const char* end, ManifestEntry& e) {
         } else if (key == "pal") {
             std::string hex;
             if (!parse_string(p, end, hex) || !parse_palette_hex(hex, e.pal)) return false;
-        } else if (key == "w" || key == "h" || key == "bpp") {
-            if (!parse_int(p, end, num) || num < 0) return false;
+        } else if (key == "w" || key == "h" || key == "bpp" || key == "slot_w" || key == "slot_h") {
+            if (!parse_int(p, end, num) || num < 0 || num > 1024) return false;
             if (key == "w") e.w = static_cast<int>(num);
             else if (key == "h") e.h = static_cast<int>(num);
+            else if (key == "slot_w") e.slot_w = static_cast<int>(num);
+            else if (key == "slot_h") e.slot_h = static_cast<int>(num);
             else e.bpp = static_cast<int>(num);
         } else {
             // Provenance for humans/debuggers ("drv", "drv_offset", "drv_size",
@@ -417,7 +420,8 @@ bool HdTextures::load(const std::string& manifest_path, const std::string& art_p
         return false;
     }
     for (auto& e : entries) {
-        index_[e.img].push_back({std::move(e.path), e.w, e.h, e.bpp, e.clut, e.has_clut, std::move(e.pal)});
+        index_[e.img].push_back(
+            {std::move(e.path), e.w, e.h, e.bpp, e.clut, e.has_clut, std::move(e.pal), e.slot_w, e.slot_h});
         if (e.has_clut) clut_hashes_.insert(e.clut);
         ++entry_total_;
     }
@@ -465,7 +469,9 @@ void HdTextures::note_clut(uint64_t hash, const uint32_t* staged, size_t staged_
 }
 
 const std::vector<uint16_t>* HdTextures::maybe_replace(int x, int y, int w, int h, const uint32_t* staged,
-                                                       size_t staged_words) {
+                                                       size_t staged_words, int* out_w, int* out_h) {
+    if (out_w) *out_w = w;
+    if (out_h) *out_h = h;
     if (!enabled() || !staged || w <= 0 || h <= 0 || w > 1024 || h > 512) {
         ++misses_;
         return nullptr;
@@ -524,7 +530,34 @@ const std::vector<uint16_t>* HdTextures::maybe_replace(int x, int y, int w, int 
                 }
             }
         }
-        if (pick) return replace(*pick, units, staged, staged_words);
+        if (pick) {
+            // A larger slot ("slot_w"/"slot_h", art whose layout grew, like the US title's wider
+            // copyright): upload the art at that size from the same corner. Palette images only
+            // (16-bit art inherits STP bits per staged texel, which has no counterpart outside the
+            // original rectangle).
+            int tw = pick->w, th = pick->h;
+            if (pick->slot_w || pick->slot_h) {
+                const int sw = pick->slot_w ? pick->slot_w : pick->w, sh = pick->slot_h ? pick->slot_h : pick->h;
+                int rw = 0, rh = 0;
+                if (pick->bpp != 16 && sw >= pick->w && sh >= pick->h && upload_rect(sw, sh, pick->bpp, rw, rh) &&
+                    x + rw <= 1024 && y + rh <= 512) {
+                    tw = sw;
+                    th = sh;
+                    if (out_w) *out_w = rw;
+                    if (out_h) *out_h = rh;
+                } else if (log_hd()) {
+                    std::printf("[hd] %s: slot %dx%d unusable (palette art only, >= %dx%d, whole units, inside VRAM)\n",
+                                pick->path.c_str(), sw, sh, pick->w, pick->h);
+                }
+            }
+            int rw = w, rh = h;
+            upload_rect(tw, th, pick->bpp, rw, rh);
+            const std::vector<uint16_t>* out =
+                replace(*pick, tw, th, static_cast<size_t>(rw) * static_cast<size_t>(rh), staged, staged_words);
+            if (!out && out_w) *out_w = w;
+            if (!out && out_h) *out_h = h;
+            return out;
+        }
         // Shape mismatches are pure coincidences; still sniff CLUTs below so a
         // palette upload with TIM-identical bytes refreshes the cache.
         if (shape_ok == 0) {
@@ -650,8 +683,8 @@ void HdTextures::reset_runtime() {
     miss_shape_ = miss_no_palette_ = miss_palette_not_live_ = miss_palette_shape_ = 0;
 }
 
-const std::vector<uint16_t>* HdTextures::replace(const Candidate& pick, size_t units, const uint32_t* staged,
-                                                     size_t staged_words) {
+const std::vector<uint16_t>* HdTextures::replace(const Candidate& pick, int tw, int th, size_t units,
+                                                 const uint32_t* staged, size_t staged_words) {
     // Indexed art re-quantizes against the live palette: key the fit on it so a
     // palette change refits instead of serving stale indices.
     FitKey key{pick.path, 0};
@@ -712,7 +745,7 @@ const std::vector<uint16_t>* HdTextures::replace(const Candidate& pick, size_t u
         return nullptr;
     }
     std::vector<uint8_t> fit;
-    if (!vfs::downsample_rgba(rgba, png_w, png_h, pick.w, pick.h, fit)) {
+    if (!vfs::downsample_rgba(rgba, png_w, png_h, tw, th, fit)) {
         ++misses_;  // PNG smaller than the TIM: refuse to upscale, keep original
         return nullptr;
     }
@@ -745,7 +778,7 @@ const std::vector<uint16_t>* HdTextures::replace(const Candidate& pick, size_t u
     } else {
         // Re-quantize to the palette chosen above (the image's own, or the uploaded one): same
         // shape the game uploaded (packed indices), sampled from the fitted art.
-        const size_t pixels = static_cast<size_t>(pick.w) * static_cast<size_t>(pick.h);
+        const size_t pixels = static_cast<size_t>(tw) * static_cast<size_t>(th);
         std::vector<uint8_t> indices(pixels);
         for (size_t i = 0; i < pixels; ++i) {
             const uint8_t r = fit[i * 4], g = fit[i * 4 + 1], b = fit[i * 4 + 2], a = fit[i * 4 + 3];
@@ -770,8 +803,8 @@ const std::vector<uint16_t>* HdTextures::replace(const Candidate& pick, size_t u
     ++hits_;
     // Fresh replacements only: repeats come from the fit cache and stay quiet.
     if (log_hd())
-        std::printf("[hd] replaced %s (%dx%d, %d-bit, from a %dx%d PNG)%s\n", pick.path.c_str(), pick.w, pick.h,
-                    pick.bpp, png_w, png_h, psx::backtrace_string(psx::active_context()).c_str());
+        std::printf("[hd] replaced %s (%dx%d%s, %d-bit, from a %dx%d PNG)%s\n", pick.path.c_str(), tw, th,
+                    tw != pick.w || th != pick.h ? " slot" : "", pick.bpp, png_w, png_h, psx::backtrace_string(psx::active_context()).c_str());
     // Cache the fitted result; return the cached copy so the pointer stays
     // valid across later replacements reusing scratch_.
     store_fit(key, scratch_);

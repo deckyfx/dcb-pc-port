@@ -97,8 +97,10 @@ public:
     /// first — exactly as write_transfer_word() consumes them.
     /// Returns replacement PSX15/index words on a hit, nullptr on any miss/failure
     /// (caller must then use the original bytes).
+    /// `out_w`/`out_h` (optional) receive the rectangle actually written, in 16-bit units: larger
+    /// than w x h when the manifest gives the art a bigger slot ("slot_w"/"slot_h").
     const std::vector<uint16_t>* maybe_replace(int x, int y, int w, int h, const uint32_t* staged,
-                                               size_t staged_words);
+                                               size_t staged_words, int* out_w = nullptr, int* out_h = nullptr);
 
 private:
     struct Candidate {
@@ -108,6 +110,7 @@ private:
         uint64_t clut = 0;
         bool has_clut = false;
         std::vector<uint16_t> pal;  ///< the image's own palette (manifest "pal"); empty on old manifests
+        int slot_w = 0, slot_h = 0;  ///< larger upload size in pixels (manifest "slot_w"/"slot_h"), 0 = w, h
     };
 
     /// VRAM rect (in 16-bit units) a TIM of these pixel dims occupies when the
@@ -125,7 +128,9 @@ private:
     /// Substitute PNG art for an image hit; nullptr on any failure (miss counted).
     /// `staged`/`staged_words` are the raw upload words (for 16-bit STP
     /// inheritance, see below); `units` is the w*h word count already validated.
-    const std::vector<uint16_t>* replace(const Candidate& pick, size_t units, const uint32_t* staged,
+    /// `tw` x `th` is the pixel size to fit the art to (the TIM's, or its larger slot); `units`
+    /// the matching upload word count.
+    const std::vector<uint16_t>* replace(const Candidate& pick, int tw, int th, size_t units, const uint32_t* staged,
                                          size_t staged_words);
 
     /// Fitted (decoded + downsampled to TIM size) art cache, keyed by manifest

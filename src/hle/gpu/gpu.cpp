@@ -98,10 +98,12 @@ std::vector<Gpu::SpriteScale> Gpu::parse_sprite_scales(const std::string& text) 
         const std::size_t first = line.find_first_not_of(" \t\r");
         if (first == std::string::npos || line[first] == '#') continue;
         SpriteScale s;
-        if (std::sscanf(line.c_str(), "%d %d %d %d %d %d %d %d", &s.tex_x, &s.tex_y, &s.u, &s.v, &s.w, &s.h, &s.draw_w,
-                        &s.draw_h) != 8 ||
-            s.w <= 0 || s.h <= 0 || s.draw_w <= 0 || s.draw_h <= 0) {
-            std::fprintf(stderr, "[gpu] sprites.txt line %d: expected tex_x tex_y u v w h draw_w draw_h\n", line_no);
+        const int n = std::sscanf(line.c_str(), "%d %d %d %d %d %d %d %d %d %d", &s.tex_x, &s.tex_y, &s.u, &s.v, &s.w,
+                                  &s.h, &s.draw_w, &s.draw_h, &s.src_w, &s.src_h);
+        if ((n != 8 && n != 10) || s.w <= 0 || s.h <= 0 || s.draw_w <= 0 || s.draw_h <= 0 || s.src_w < 0 ||
+            s.src_h < 0 || s.u + (s.src_w ? s.src_w : s.w) > 256 || s.v + (s.src_h ? s.src_h : s.h) > 256) {
+            std::fprintf(stderr, "[gpu] sprites.txt line %d: expected tex_x tex_y u v w h draw_w draw_h [src_w src_h]\n",
+                         line_no);
             continue;
         }
         rules.push_back(s);
@@ -328,15 +330,24 @@ void Gpu::draw_rect() {
     if (p.textured) {
         for (const SpriteScale& s : sprite_scales_) {
             if (s.tex_x != p.tex_x || s.tex_y != p.tex_y || s.u != origin.u || s.v != origin.v || s.w != w || s.h != h) continue;
-            // Two triangles covering the scaled rectangle; UVs span the sprite's texels exactly.
-            Vertex q[4];
             const int32_t x0 = origin.x + (w - s.draw_w) / 2, y0 = origin.y + (h - s.draw_h) / 2;
+            const int32_t sw = s.src_w ? s.src_w : w, sh = s.src_h ? s.src_h : h;
+            if (sw == s.draw_w && sh == s.draw_h) {
+                // Same texel and pixel size: still a plain sprite, only larger.
+                Vertex o = origin;
+                o.x = x0;
+                o.y = y0;
+                draw_sprite(o, sw, sh, p);
+                return;
+            }
+            // Two triangles covering the scaled rectangle; UVs span the texels exactly.
+            Vertex q[4];
             for (int k = 0; k < 4; ++k) {
                 q[k] = origin;
                 q[k].x = x0 + ((k & 1) ? s.draw_w : 0);
                 q[k].y = y0 + ((k & 2) ? s.draw_h : 0);
-                q[k].u = origin.u + ((k & 1) ? w : 0);
-                q[k].v = origin.v + ((k & 2) ? h : 0);
+                q[k].u = origin.u + ((k & 1) ? sw : 0);
+                q[k].v = origin.v + ((k & 2) ? sh : 0);
             }
             draw_triangle(q[0], q[1], q[2], p);  // sprites are never dithered or shaded: p as is
             draw_triangle(q[1], q[2], q[3], p);
@@ -417,14 +428,15 @@ void Gpu::begin_cpu_to_vram() {
 
 void Gpu::commit_staged_upload() {
     mode_ = Mode::Command;
+    int out_w = write_.w, out_h = write_.h;  // a replacement may fill a larger slot
     const std::vector<uint16_t>* replacement =
-        hd_ ? hd_->maybe_replace(write_.x, write_.y, write_.w, write_.h, staged_.data(), staged_.size())
+        hd_ ? hd_->maybe_replace(write_.x, write_.y, write_.w, write_.h, staged_.data(), staged_.size(), &out_w, &out_h)
             : nullptr;
-    if (replacement) {
+    if (replacement && replacement->size() == static_cast<size_t>(out_w) * static_cast<size_t>(out_h)) {
         // HD hit: commit the substitute pixels through the same masked path.
         size_t i = 0;
-        for (int32_t row = 0; row < write_.h; ++row) {
-            for (int32_t col = 0; col < write_.w; ++col) put_masked(write_.x + col, write_.y + row, (*replacement)[i++]);
+        for (int32_t row = 0; row < out_h; ++row) {
+            for (int32_t col = 0; col < out_w; ++col) put_masked(write_.x + col, write_.y + row, (*replacement)[i++]);
         }
     } else {
         // Miss or disabled mid-transfer: replay the original words verbatim.

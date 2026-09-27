@@ -41,11 +41,14 @@ public:
         int32_t tex_x = 0, tex_y = 0;  ///< texture page base in VRAM (x in 16-bit units)
         int32_t u = 0, v = 0, w = 0, h = 0;
         int32_t draw_w = 0, draw_h = 0;
+        /// Texels to show, from (u, v); 0 = w x h. Larger than w x h when the art's slot grew
+        /// (manifest "slot_w"/"slot_h"); equal to draw_w x draw_h draws one texel per pixel.
+        int32_t src_w = 0, src_h = 0;
     };
     void set_sprite_scales(std::vector<SpriteScale> rules) { sprite_scales_ = std::move(rules); }
-    /// Parse sprites.txt: one rule per line, `tex_x tex_y u v w h draw_w draw_h` (anything after
-    /// the eighth number, and lines starting with '#', are comments). Bad lines are reported and
-    /// skipped.
+    /// Parse sprites.txt: one rule per line, `tex_x tex_y u v w h draw_w draw_h [src_w src_h]`
+    /// (text after the numbers, and lines starting with '#', are comments). Bad lines are reported
+    /// and skipped.
     static std::vector<SpriteScale> parse_sprite_scales(const std::string& text);
 
     /// RAM address of the linked-list node being fed (0 outside DMA); DCB_TRACE_PRIMS prints it.
