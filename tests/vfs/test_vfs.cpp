@@ -206,8 +206,12 @@ void test_fnv() {
 
 // --- pak + vfs -------------------------------------------------------------
 
+/// The running case's name: ctest runs the cases as parallel processes, so each gets its own
+/// scratch folder (a shared one let one case delete another's files mid-test).
+const char* g_case = "all";
+
 fs::path scratch_dir() {
-    fs::path dir = fs::temp_directory_path() / "dcb_vfs_test";
+    fs::path dir = fs::temp_directory_path() / (std::string("dcb_vfs_test_") + g_case);
     std::error_code ec;
     fs::remove_all(dir, ec);
     fs::create_directories(dir, ec);
@@ -840,6 +844,7 @@ int main(int argc, char** argv) {
     int ran = 0;
     for (const Case& c : kCases) {
         if (argc > 1 && std::strcmp(argv[1], c.name) != 0) continue;
+        g_case = c.name;
         c.fn();
         std::printf("vfs.%s: ok\n", c.name);
         ++ran;
