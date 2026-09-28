@@ -185,6 +185,7 @@ class Candidate:
     us: bytes      # the US upload payload
     jp: bytes      # the JP payload it replaces
     label: str     # "DRV:entry" it came from
+    image: str = ""  # palettes: the JP image hash of the TIM the palette belongs to
 
 
 def resolve(key_name: str, cands: list[Candidate]) -> tuple[Candidate | None, str]:
@@ -293,7 +294,7 @@ def main() -> int:
                     pkey = fnv1a64(jt.palette)
                     paired_palettes.add(pkey)
                     if ut.palette != jt.palette:
-                        palettes[pkey].append(Candidate(ut.palette, jt.palette, label))
+                        palettes[pkey].append(Candidate(ut.palette, jt.palette, label, key))
                         palette_rect[pkey] = (jt.clut[2], jt.clut[3])
 
     # A JP palette also used by TIMs outside the swap would recolour them. The regular game
@@ -319,12 +320,19 @@ def main() -> int:
             image_plan[key] = pick
         if note:
             notes.append((Path(image_meta[key]["path"]).name, note))
-    shared_palettes = []
+    shared_palettes, palette_conflicts = [], 0
     for pkey, cands in sorted(palettes.items()):
         if pkey in outside:
             shared_palettes.append(pkey)
             continue
-        pick, _ = resolve("", cands)  # several US palettes for one JP palette: first changed one
+        # The palette of the pair whose image was picked, so a picked image never shows with
+        # another pair's palette. JP images sharing identical palette bytes that the US build
+        # gave different palettes (one upload, one pick) follow the first such image.
+        pick = next((c for c in cands if c.image in image_plan and image_plan[c.image].label == c.label), None)
+        if pick is None:
+            pick, _ = resolve("", cands)
+        if len({c.us for c in cands}) > 1:
+            palette_conflicts += 1
         if pick:
             palette_plan[pkey] = pick
 
@@ -370,6 +378,9 @@ def main() -> int:
     if shared_palettes or clash:
         print(f"{len(shared_palettes) + len(clash)} JP palettes kept (also used by images not swapped, "
               f"so the US image shows in JP colours there)")
+    if palette_conflicts:
+        print(f"{palette_conflicts} JP palettes stand for several US ones (the same bytes uploaded for "
+              f"different images); each follows its picked image, so one of the others may show off-colour")
     if hash_mismatch:
         print(f"{hash_mismatch} images skipped: the manifest hash is not over the TIM's pixels")
     if shared_entries:
