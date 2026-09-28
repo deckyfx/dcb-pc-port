@@ -17,4 +17,5 @@ documented in [../RE_WORKFLOW.md](../RE_WORKFLOW.md).
 
 ## Pages
 
-(none yet — the first one lands with the worked example in RE_WORKFLOW.md)
+- [Text engine](text-engine.md) — SJIS/ASCII encoding, the JP/US renderers, fonts and glyph
+  cache, string sources, override plan and the state of the English-text port.

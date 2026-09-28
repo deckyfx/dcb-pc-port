@@ -115,6 +115,12 @@ Gpu::Gpu() : vram_(static_cast<std::size_t>(kVramWidth) * kVramHeight, 0) { rese
 
 Gpu::~Gpu() = default;
 
+void Gpu::upload_rect(int x, int y, int w, int h, const uint16_t* pixels) {
+    if (!pixels || w <= 0 || h <= 0) return;
+    for (int row = 0; row < h; ++row)
+        for (int col = 0; col < w; ++col) at(x + col, y + row) = pixels[row * w + col];
+}
+
 // ---------------------------------------------------------------------------------------------
 // GP0
 // ---------------------------------------------------------------------------------------------

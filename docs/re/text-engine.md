@@ -2,8 +2,7 @@
 
 Reverse-engineering notes on how the JP game stores, lays out and draws text, as groundwork for an
 English build that keeps the JP code and uses the US text and fonts
-([HYBRID_EN_ASSETS.md §4](HYBRID_EN_ASSETS.md#4-text-q3) has the asset-level picture). This file
-will move under `docs/re/` later.
+([HYBRID_EN_ASSETS.md §4](../HYBRID_EN_ASSETS.md#4-text-q3) has the asset-level picture).
 
 Evidence sources: Ghidra project `DCB` (JP program `/SLPS-03101/SLPS_031.01`, read only), the
 recompiled C in `generated/SLPS-03101/*.c` (every `jal` is kept as a comment, so it gives the
@@ -209,6 +208,12 @@ The counts are static `jal` sites from the recompiled code.
 The US ASCII sheet overwrites the rows that JP uses for the mini-font kana (v ≈ 42–115). **Loading the
 US `SYSTEM.TIM` breaks the JP mini font's kana, and moves the icons.** (M)
 
+Cell rows: the cells start at **sheet row 48** (the `+0x30` in the draw formula), so glyph `i` is at
+sheet rows `48 + (i/16)·12 .. +11`; sheet rows 42–47 are the tail of the block above, and slicing
+from row 42 instead splits every glyph across the row boundary (bottom half of one cell on top of
+the top half of the next). The converter (`tools/text/en_text.py`) takes sheet rows 48–223 (the
+extra rows are unused by the ASCII path). (H: verified by ASCII-art decode of the extracted rows)
+
 ### 4.3 US engine for reference
 
 | US address | Signature | JP counterpart |
@@ -310,8 +315,15 @@ look for bare-letter codes in ASCII strings. (H)
 
 Option A: load the whole US `SYSTEM.TIM` and patch the icon base. The JP mini-font kana is then gone,
 which only matters for untranslated JP strings drawn with `800288c8`. Option B: copy only the US
-font rows into free VRAM (for example a spare 64×72-halfword area) and point the ASCII path there. B
-keeps every JP path intact and is the recommended one. (M)
+font rows into free VRAM and point the ASCII path there. B keeps every JP path intact and is the
+recommended one, and what the implementation does: 64 halfwords × 176 rows at **(512, 320)–(575,
+495)** (empty in a full-VRAM survey; tpage 0x18 = page x 8, y 1), re-uploaded on **every** ASCII
+draw call so a later screen texture cannot break text. (M → H: verified at runtime)
+
+The first placement at (0, 320) failed: that area sits inside the 320×480 framebuffer region
+((0,0)–(319,495), two stacked 320×240 buffers), so the frame background painted over the font every
+frame and glyphs sampled screen stripes instead of letters; the JP dialog was unaffected because it
+draws from the kanji glyph cache at (960, 0). (H)
 
 ### 7.4 Risks
 
@@ -337,6 +349,18 @@ keeps every JP path intact and is the recommended one. (M)
 | VS screen | big-name font |
 | Any untranslated JP string | still renders through the JP path |
 | Headless regression | `DCB_HEADLESS=1 DCB_FAST=1 DCB_SNAPSHOT=…` frame dumps at fixed frames with the pad script, compared before and after |
+
+### 7.6 Implementation status
+
+| Item | Status |
+|---|---|
+| The four dispatch overrides (`dcb_text_draw`, `dcb_text_measure`, condensed pair) | **done** — `src/game/overrides/text.cpp`, registered in `config/SLPS-03101/overrides.json`. The original stays compiled as `f_<addr>` and runs for SJIS strings or when `en_font.bin` is missing, so untranslated JP still renders. |
+| Shared parser (`*` codes → glyphs/icons/newlines) for measure and draw | **done** — one `run_string`, so a string can never be measured with one path and drawn with another. |
+| Font + width-table assets | **done** — `tools/text/en_text.py` writes gitignored `assets/SLPS-03101/en_font.bin` (sheet rows 48–223 + the 96-byte width table from `0x8006DF9C`); the header is checked at load and a wrong file falls back to JP. |
+| VRAM placement | **done** — option B at (512, 320), re-uploaded per ASCII draw (see §7.3). |
+| Card/deck text | **done** — the converter grafts US names/attack names/effect lines into `CARD2.CDD`, deck/owner names into `DECK2.DEK`; lines too long for the JP slot are listed in the local `en_text_report.txt`. DEK field layout measured from both dumps: deck JP 13 / US 19 B at +60, owner 21 B at JP +73 / US +79, 10-byte tail at JP +94 / US +100. |
+| Battle banner / tutorial / slot expanders, the five extra renderers, EXE + MSD strings | not started (later milestones). |
+| Verification | headless runs with `DCB_TRACE_TEXT=1` + `DCB_SNAPSHOT`: an ASCII message (poked into the memory-card dialog source at OPENSEG `0x801E27F4`, draw buffer `0x800E5638`) renders through the US port, and a clean run of the same build renders the JP string through the fallback. |
 
 ## 8. Proposed names
 
@@ -414,14 +438,25 @@ Data:
 
 ## 9. Open questions
 
-1. The OPENSEG code that expands `S`/`E` (slot) and the consumer of the pointer table at
-   `0x801f5440`: not located.
+1. The OPENSEG code that expands `S`/`E` (slot): **behaviour observed at runtime, code not yet
+   located.** The memory-card dialog copies the source string at OPENSEG `0x801E27F4` into the draw
+   buffer `0x800E5638` each frame and replaces **every bare `S` and every bare `E`** with the slot
+   digit (`SLOT` → `1LOT`, `START` → `1TART`, `GAME` → `GAM1` in a slot-1 run) — the bare-letter
+   scan of the summary, so it corrupts English words and needs its own override. The consumer of
+   the pointer table at `0x801f5440` is still not traced.
 2. The SAISEG host command that shows MSD text in cities (op 0x0A–0x0E `cmd` id → text register):
    not traced. The tutorial path is known.
-3. Where `DAT_801d7438` (text palettes) comes from, and whether the US palettes differ.
+3. Where `DAT_801d7438` (text palettes) comes from, and whether the US palettes differ. The
+   implementation sidesteps it: the ASCII path uses the JP CLUT base (`g_text_clut_x/y`) and the JP
+   colours look right on screen.
 4. Whether the US `*p` is really the tutorial name code (only `*P0/*P1`, `*S`, `*E`, `*s0` were
    seen in the sampled strings).
-5. Whether `config/SLPS-03101/overrides.json` covers overlay addresses and `function_table.c`
-   dispatch (needed for `KAWSEG::801ed334`, `80044684`, `8001a590`).
+5. **Answered: yes, both mechanisms work.** `overrides.json` entries with `"overlay": "OPENSEG"`
+   replace overlay addresses (e.g. `dcb_movie_play`), and guest calls into main-EXE functions are
+   routed through `function_table.c`, which the recompiler rewires to the override symbols —
+   observed at runtime: the OPENSEG dialog reached `dcb_text_draw` (ASCII) and, with cheats off,
+   `f_8002AE00` (SJIS).
 6. The meaning of the FNT header byte 5 (`0x10` / `0x30`) and the MSD header word at +0x0C.
-7. Not observed at runtime: this study did not run the game. The claims come from code and data.
+7. **Resolved:** the game is run headless (`DCB_HEADLESS=1 DCB_FAST=1`, pad script, save states and
+   VRAM dumps), and the claims marked above were re-checked against runtime state (JP dialog,
+   ASCII draw, framebuffer/VRAM layout).

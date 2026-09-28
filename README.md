@@ -33,6 +33,7 @@ executable: MIPS R3000A → C, with native HLE of the kernel and Psy-Q libraries
 - [x] One-time asset import from the player's own dump: no disc needed afterwards, no copyrighted data in the download (`dcb --import`, or a file picker on first run)
 - [ ] Windows x64 release build tested on Windows
 - [ ] English build: JP code + English assets from the player's US dump (SLUS-01328) ([research and plan](docs/HYBRID_EN_ASSETS.md))
+- [x] English text renderer: ASCII strings draw with the US font/widths through native overrides, Shift-JIS falls back to the JP renderer; card/deck names, attacks and effects grafted from the US dump (`tools/text/en_text.py`, [notes](docs/re/text-engine.md))
 - [x] PC options: `settings.ini` (initial window size, filtering, aspect, key/gamepad rebinding, volume); resizable window, picture fits it (F8: fit / integer)
 - [x] Native pause menu: Esc / F1 (gamepad Start+Select) with save/load slots, settings, controls, memory-card backup/restore, about, quit with confirmation
 - [x] Performance overlay (FPS, game FPS, CPU/GPU load, audio queue): F3
@@ -72,6 +73,7 @@ tools/disc/             extract_disc.py (+ tests), verify_import.sh
 tools/ghidra/           setup_ghidra_mcp.sh, import_ghidra.sh
 tools/recomp/           the MIPS→C recompiler (C++ host tool)
 tools/assets/           TIM / VAB / XA / STR converters
+tools/text/             en_text.py: English font/widths + card/deck graft from the US dump (+ tests)
 tests/                  runtime unit tests (ctest)
 ```
 
@@ -276,6 +278,21 @@ first, `dcb --import <us.cue> <dir>`):
 mkdir -p assets/SLPS-03101/disc
 cp <dir>/SLUS-01328/fs/DIGIMON.MOV.raw2352 assets/SLPS-03101/disc/
 ```
+
+**English text.** Native overrides (`src/game/overrides/text.cpp`) draw plain ASCII strings with
+the US font and width table while Shift-JIS strings keep going through the JP renderer, so
+untranslated Japanese still shows. The local assets are built from the player's own dumps
+(gitignored; nothing copyrighted is committed):
+
+```sh
+python3 tools/text/en_text.py --jp extracted/SLPS-03101 --us extracted/SLUS-01328 --out assets/SLPS-03101
+# -> en_font.bin (font rows + width table), files/B/CARD2.CDD, files/B/DECK2.DEK, en_text_report.txt
+```
+
+Without `en_font.bin` the ASCII path falls back to JP rendering. The grafted `CARD2.CDD` /
+`DECK2.DEK` are served through the loose-file mechanism above. Effect lines and deck names that do
+not fit the JP slots are listed in `en_text_report.txt` for hand-shortening. Engine notes:
+[docs/re/text-engine.md](docs/re/text-engine.md).
 
 **Game assets (textures).** `dcb_asset_ripper` (built with the tools) rips the images and sound
 banks from the game data into `assets/` (gitignored), and packs them into one file:

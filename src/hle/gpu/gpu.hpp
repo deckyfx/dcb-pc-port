@@ -62,6 +62,9 @@ public:
 
     /// 1024x512 VRAM, row-major, PS1 pixel format (bit15 mask, 5:5:5 BGR, red in bits 0-4).
     const uint16_t* vram() const { return vram_.data(); }
+    /// Host-side VRAM rectangle write (x in 16-bit units): for native overrides that
+    /// upload replacement art (e.g. the English font rows). Bounds-checked, wraps like at().
+    void upload_rect(int x, int y, int w, int h, const uint16_t* pixels);
 
     /// Display configuration from GP1(03h,05h,06h,07h,08h).
     struct Display {
