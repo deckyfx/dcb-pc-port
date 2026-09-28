@@ -12,6 +12,7 @@
 #include "input_log.hpp"
 #include "memcard.hpp"
 #include "menu.hpp"
+#include "overrides/battle.hpp"
 #include "overrides/movies.hpp"
 #include "overrides/native_files.hpp"
 #include "platform.hpp"
@@ -572,6 +573,8 @@ int main(int argc, char** argv) {
                 host->show_message("No save states during movies");  // the player's state is host-side
                 commands &= ~(platform::kSaveState | platform::kLoadState);
             }
+            if (const std::string notice = dcb::battle_hotkeys(machine.ctx(), commands); !notice.empty())
+                host->show_message(notice);  // F9-F12 in a card battle (overrides/battle.cpp)
             if (states.handle(commands)) {  // save states: between frames, also while paused
                 read_display();
                 host->present(mmio.gpu().vram(), area);

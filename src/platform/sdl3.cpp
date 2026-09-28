@@ -345,11 +345,15 @@ public:
 
     // ---- Save states: hotkeys and the on-screen notice ------------------------------------------
 
-    /// HostCommand bit for a save-state hotkey, or 0.
+    /// HostCommand bit for a save-state or battle hotkey, or 0.
     uint32_t state_command(SDL_Scancode sc) const {
         if (bound(settings_.save_state_keys, sc)) return kSaveState;
         if (bound(settings_.load_state_keys, sc)) return kLoadState;
         if (bound(settings_.state_slot_keys, sc)) return kNextStateSlot;
+        if (bound(settings_.battle_p1_max_keys, sc)) return kBattleP1Max;
+        if (bound(settings_.battle_p1_zero_keys, sc)) return kBattleP1Zero;
+        if (bound(settings_.battle_p2_max_keys, sc)) return kBattleP2Max;
+        if (bound(settings_.battle_p2_zero_keys, sc)) return kBattleP2Zero;
         return 0;
     }
 
@@ -508,6 +512,8 @@ private:
             {"fast_forward", settings_.fast_forward_keys}, {"scale_mode", settings_.scale_mode_keys},
             {"trainer", settings_.trainer_keys},     {"save_state", settings_.save_state_keys},
             {"load_state", settings_.load_state_keys}, {"state_slot", settings_.state_slot_keys},
+            {"battle_p1_max", settings_.battle_p1_max_keys}, {"battle_p1_zero", settings_.battle_p1_zero_keys},
+            {"battle_p2_max", settings_.battle_p2_max_keys}, {"battle_p2_zero", settings_.battle_p2_zero_keys},
         };
         for (const auto& [name, keys] : hotkeys) out.push_back(std::string("  ") + name + ": " + binding_names(keys, false));
         out.push_back("Gamepad: d-pad arrows, south confirm, east back,");

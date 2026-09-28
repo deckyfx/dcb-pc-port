@@ -370,6 +370,12 @@ IniDocument default_settings_ini() {
     doc.set("hotkeys", "save_state", "F5");
     doc.set("hotkeys", "load_state", "F7");
     doc.set("hotkeys", "state_slot", "F6");
+    doc.add_comment("hotkeys", "Battle cheats (during a card battle): max sets HP and the circle/triangle/cross");
+    doc.add_comment("hotkeys", "attacks to 9999 and DP to 99, zero sets them to 0; DP stays until the battle ends.");
+    doc.set("hotkeys", "battle_p1_max", "F9");
+    doc.set("hotkeys", "battle_p1_zero", "F10");
+    doc.set("hotkeys", "battle_p2_max", "F11");
+    doc.set("hotkeys", "battle_p2_zero", "F12");
     return doc;
 }
 
@@ -412,6 +418,10 @@ Settings parse_settings(const IniDocument& doc, const BindingResolvers& resolver
     s.save_state_keys = hotkey("save_state", "F5");
     s.load_state_keys = hotkey("load_state", "F7");
     s.state_slot_keys = hotkey("state_slot", "F6");
+    s.battle_p1_max_keys = hotkey("battle_p1_max", "F9");
+    s.battle_p1_zero_keys = hotkey("battle_p1_zero", "F10");
+    s.battle_p2_max_keys = hotkey("battle_p2_max", "F11");
+    s.battle_p2_zero_keys = hotkey("battle_p2_zero", "F12");
     return s;
 }
 

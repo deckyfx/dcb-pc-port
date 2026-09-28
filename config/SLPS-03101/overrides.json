@@ -9,6 +9,7 @@
     { "addr": "0x80015FF8", "symbol": "dcb_file_close", "why": "file API: close a handle" },
     { "addr": "0x80016080", "symbol": "dcb_file_read",  "why": "file API: read into RAM; native, instant (the original polls CdReadSync)" },
     { "addr": "0x801E38A0", "overlay": "OPENSEG", "symbol": "dcb_movie_play", "why": "play movie N (0 opening, 1 credits, 2 BANDAI logo): native MPEG-1 from movie/movie<N>.mpg when present, else the CD stream" },
+    { "addr": "0x80043B00", "symbol": "dcb_dp_calc", "why": "battle DP of player a0: returns the value a battle hotkey locked (src/game/overrides/battle.cpp), else the original" },
     { "addr": "0x80059D30", "symbol": "dcb_cd_search_file", "why": "libcd CdSearchFile: answered from the disc's root directory without reading it through the drive (the movie player looks up DIGIMON.MOV)" }
   ]
 }

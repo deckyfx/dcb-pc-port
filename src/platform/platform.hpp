@@ -69,6 +69,10 @@ enum HostCommand : uint32_t {
     kSaveState = 1u << 2,     ///< [hotkeys] save_state: into the selected slot
     kLoadState = 1u << 3,     ///< [hotkeys] load_state: from the selected slot
     kNextStateSlot = 1u << 4, ///< [hotkeys] state_slot: select the next slot
+    kBattleP1Max = 1u << 5,   ///< [hotkeys] battle_p1_max: P1 HP/attacks 9999, DP 99
+    kBattleP1Zero = 1u << 6,  ///< [hotkeys] battle_p1_zero: P1 HP/attacks/DP 0
+    kBattleP2Max = 1u << 7,   ///< [hotkeys] battle_p2_max
+    kBattleP2Zero = 1u << 8,  ///< [hotkeys] battle_p2_zero
 };
 
 class Platform {
