@@ -301,15 +301,18 @@ prints how many texture uploads were replaced and why others were not; `DCB_LOG_
 first *n* uploads that match no manifest entry (movie frames arrive as 24-pixel-wide strips and never match).
 
 **US images in the JP game.** With both games ripped (`assets/converted/SLPS-03101/` and
-`assets/converted/SLUS-01328/`), `tools/assets/swap_us_images.py` copies the US image over the JP
-one wherever the layout is the same: attack names, mini cards, battle UI, card art, the opening,
-partner, friend and trade screens (about 1,160 images). It pairs images by their layout on the
-disc, not by file name, and lists what it leaves alone (the title, the MATCH/WIN name plates, and
-attack names with no US version). Where one JP image stands for attacks the US build named
-differently, it picks the translated one and lists the choice. Run it without options for a dry
-run, with `--apply` to copy (the JP originals go to `assets/SLPS-03101/backup/us_images/`), or
-`--restore` to put them back; then re-pack. `SYSTEM.TIM` is never swapped (the JP text engine
-draws its font from it).
+`assets/converted/SLUS-01328/`), `tools/assets/swap_us_images.py` makes the JP game show the US
+images wherever the layout is the same: attack names, mini cards, battle UI, card art, the
+opening, partner, friend and trade screens (about 960 images and 570 palettes). The US data goes
+in exactly as the US disc has it: each changed image (and its palette, where the US build changed
+it) is written to `assets/converted/SLPS-03101/us/*.raw`, and the manifest entry points there. A
+manifest path ending in `.raw` is uploaded as it is, with no palette conversion, so colours and
+palette animation match the US game; the JP PNGs are not touched. Images pair by their layout on
+the disc, not by file name; the script lists what it leaves alone (the title, the MATCH/WIN name
+plates, attacks with no US version) and, where one JP image stands for attacks the US build named
+differently, which one it picked. Run it without options for a dry run, with `--apply` to write
+(the manifest is backed up to `assets/SLPS-03101/backup/us_images/`), or `--restore` to undo;
+then re-pack. `SYSTEM.TIM` is never swapped (the JP text engine draws its font from it).
 
 **Resizing sprites.** The game draws each sprite one texel per pixel, at its original size. When
 replacement art needs a different size on screen (a longer English line, a smaller logo), put a

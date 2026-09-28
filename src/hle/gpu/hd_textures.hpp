@@ -26,6 +26,10 @@
 //                    "bpp": 4|8|16, "path": "textures/....png",
 //                    "clut": "<16 hex>", "drv": "B.DRV", "drv_offset": N,
 //                    "drv_size": M, "lba": L, "alt": "B_BG_off...." }, ... ] }
+// A "path" ending in ".raw" is the upload's own words (w*h 16-bit units, little endian),
+// committed as they are: exact pixel indices or palette entries from another build of the game
+// (tools/assets/swap_us_images.py), with no palette conversion. CLUT uploads can be replaced
+// this way too (bpp 16, w x h = the CLUT rectangle).
 // Only "img", "w", "h", "bpp", "path" are load-bearing; unknown entry keys are
 // skipped generically so the ripper can grow provenance without breaking older
 // game builds. One manifest per game serial (assets/converted/<id>/); content
