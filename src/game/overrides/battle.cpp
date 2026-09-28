@@ -25,7 +25,7 @@ constexpr uint32_t kDpCalc = 0x80043B00u;       // DP of player a0
 constexpr int kA0 = 4, kV0 = 2;
 
 constexpr uint32_t kHp = 0x118, kAttack = 0x11A, kDp = 0x120, kBattleAttack = 0x158;
-constexpr uint16_t kMaxStat = 9999, kMaxDp = 99;
+constexpr uint16_t kMaxStat = 9990, kMaxDp = 90;  // the game's own caps (HP/attacks, DP)
 /// A DP lock ends when the DP calculation has not run for this many frames (the battle is over).
 constexpr uint64_t kLockIdleFrames = 600;
 
@@ -76,7 +76,7 @@ std::string battle_hotkeys(PsxContext& ctx, uint32_t commands) {
         psx_write16(&ctx, data + kDp, dp);
         DpLock& lock = g_locks[static_cast<size_t>(k.player)];
         lock = {true, dp, data, g_frame};
-        notice = who + (k.max ? ": HP/attacks 9999, DP 99" : ": HP/attacks/DP 0");
+        notice = who + (k.max ? ": HP/attacks 9990, DP 90" : ": HP/attacks/DP 0");
     }
     return notice;
 }

@@ -36,6 +36,11 @@ has the same layout 4 bytes shorter before these fields.
 The current-battle attacks (`+0x158..`) rest on the counts only; the in-game test is the
 confirmation.
 
+## Limits
+
+The game caps HP and the attacks at 9990 and DP at 90 (the US codes write 9999 and 99); the
+hotkeys use the game's caps.
+
 ## DP
 
 The game recalculates DP every update, so a written DP would be undone. The US codes no-op the

@@ -371,7 +371,7 @@ IniDocument default_settings_ini() {
     doc.set("hotkeys", "load_state", "F7");
     doc.set("hotkeys", "state_slot", "F6");
     doc.add_comment("hotkeys", "Battle cheats (during a card battle): max sets HP and the circle/triangle/cross");
-    doc.add_comment("hotkeys", "attacks to 9999 and DP to 99, zero sets them to 0; DP stays until the battle ends.");
+    doc.add_comment("hotkeys", "attacks to 9990 and DP to 90 (the game's caps), zero sets them to 0; DP stays until the battle ends.");
     doc.set("hotkeys", "battle_p1_max", "F9");
     doc.set("hotkeys", "battle_p1_zero", "F10");
     doc.set("hotkeys", "battle_p2_max", "F11");
