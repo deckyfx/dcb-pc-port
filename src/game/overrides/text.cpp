@@ -164,8 +164,8 @@ void load_names() {
 }
 
 /// A guest string copied to the host (NUL included) with the English expansions applied: long
-/// names (en_names.txt) and "デック" after an English name, which becomes " Deck" like the US
-/// "%s Deck" (the JP "%sデック" at 800114E0).
+/// names (en_names.txt), and the "デック" deck label (at the end of a string, or after an English
+/// name) becomes " Deck" like the US "%s Deck".
 struct Text {
     std::vector<uint8_t> b;
     uint8_t at(size_t i) const { return i < b.size() ? b[i] : 0; }
@@ -182,9 +182,16 @@ Text load_text(PsxContext& ctx, uint32_t str) {
     for (const LongName& n : g_names)
         for (size_t p = s.find(n.key); p != std::string::npos; p = s.find(n.key, p + n.full.size()))
             s.replace(p, n.key.size(), n.full);
+    // The deck label: "<name>デック" from "%sデック" formats (EXE 800114E0, patched at load; three
+    // more in overlays), or "デック" alone (name entry). The name before it is left as typed.
     static const std::string kDeck = "\x83\x66\x83\x62\x83\x4e";  // デック
+    if (s.size() >= kDeck.size() && s.compare(s.size() - kDeck.size(), kDeck.size(), kDeck) == 0 &&
+        s.find('\n') == std::string::npos) {
+        s.resize(s.size() - kDeck.size());
+        s += s.empty() || s.back() == ' ' ? "Deck" : " Deck";
+    }
     for (size_t p = s.find(kDeck); p != std::string::npos; p = s.find(kDeck, p + 1)) {
-        const auto prev = p ? static_cast<uint8_t>(s[p - 1]) : 0;
+        const auto prev = p ? static_cast<uint8_t>(s[p - 1]) : 0;  // after an English name
         if (prev > 0x20 && prev < 0x7F) s.replace(p, kDeck.size(), " Deck");
     }
     Text t;
