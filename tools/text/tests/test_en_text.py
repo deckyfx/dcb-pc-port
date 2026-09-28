@@ -171,17 +171,29 @@ class TestGraftDek(unittest.TestCase):
         self.assertEqual(stats["names"], self.N)
         self.assertEqual(stats["owners"], self.N)
 
-    def test_overlong_truncates_and_reports(self) -> None:
+    def test_long_name_keyed_and_owner_reported(self) -> None:
         jp, us = self.make(deck=b"XXXXXXXXXXXXXXXX", owner=b"Y" * 21)
         report: list[str] = []
         out, stats = en_text.graft_dek(bytes(jp), bytes(us), report)
         jo = 8 + 0 * self.JP_STRIDE
-        self.assertEqual(out[jo + 60:jo + 73], b"X" * 12 + b"\0")
+        # 11 letters + tag 1 in the slot; one en_names.txt entry for all records sharing it
+        self.assertEqual(out[jo + 60:jo + 73], b"X" * 11 + b"\x01\0")
+        self.assertEqual(stats["long_names"], [(b"X" * 11, 1, b"X" * 16)])
         self.assertEqual(out[jo + 73:jo + 94], b"Y" * 20 + b"\0")
-        self.assertEqual(len(stats["overlong"]), 2 * self.N)
-        self.assertEqual(len(report), 2 * self.N)
-        self.assertIn("deck 0 name", report[0])
-        self.assertIn("deck 0 owner", report[1])
+        self.assertEqual(len(stats["overlong"]), self.N)
+        self.assertEqual(len(report), self.N)
+        self.assertIn("deck 0 owner", report[0])
+
+    def test_long_names_sharing_a_prefix_get_distinct_tags(self) -> None:
+        jp, us = self.make()
+        for i, name in ((0, b"Mountain Crusher"), (1, b"Mountain CrusherDX")):
+            uo = 8 + i * self.US_STRIDE
+            us[uo + 60:uo + 79] = name.ljust(19, b"\0")
+        out, stats = en_text.graft_dek(bytes(jp), bytes(us), [])
+        self.assertEqual(out[8 + 60:8 + 73], b"Mountain Cr\x01\0")
+        jo = 8 + self.JP_STRIDE
+        self.assertEqual(out[jo + 60:jo + 73], b"Mountain Cr\x02\0")
+        self.assertEqual([t for _, t, _ in stats["long_names"]], [1, 2])
 
     def test_card_list_mismatch_rejected(self) -> None:
         jp, us = self.make()

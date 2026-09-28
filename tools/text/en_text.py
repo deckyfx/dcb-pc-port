@@ -9,7 +9,11 @@ gitignored assets/SLPS-03101/ (never into git):
   files/B/CARD2.CDD   JP file with US names, attack names, effect text
                  (effect lines re-slotted 21 -> 19 bytes; overlong lines
                  listed in en_text_report.txt for hand-shortening)
-  files/B/DECK2.DEK   same graft for deck/owner names
+  files/B/DECK2.DEK   same graft for deck/owner names; a deck name too long
+                 for its 13-byte slot is stored as 11 letters + a tag byte
+  en_names.txt   those long names: "<11 letters>\t<tag>\t<full name>" per
+                 line; the renderer (src/game/overrides/text.cpp) draws the
+                 full name wherever the key shows up
 
 Usage: en_text.py --jp <extracted/SLPS-03101> --us <extracted/SLUS-01328>
                   --out <assets/SLPS-03101>
@@ -143,16 +147,27 @@ def graft_dek(jp: bytes, us: bytes, report: list[str]) -> tuple[bytes, dict]:
     assert jp[:4] == b"20KD" and us[:4] == b"30KD", "bad DEK magic"
     assert len(jp) == 8 + 159 * 104 and len(us) == 8 + 159 * 110, "bad DEK size"
     out = bytearray(jp)
-    stats = {"names": 0, "owners": 0, "overlong": []}
+    stats = {"names": 0, "owners": 0, "overlong": [], "long_names": []}
+    tags: dict[bytes, int] = {}    # prefix -> tags used
+    tag_of: dict[bytes, int] = {}  # full name -> its tag
     for i in range(159):
         jo, uo = 8 + i * 104, 8 + i * 110
         assert bytes(out[jo:jo + 60]) == us[uo:uo + 60], f"deck {i}: card list differs"
         # deck: US field [60, 79) -> JP field [60, 73)
         src = us[uo + 60:uo + 79].split(b"\0", 1)[0]
         if len(src) + 1 > 13:
-            stats["overlong"].append((f"deck {i} name", src))
-            report.append(f"deck {i} name ({len(src)} chars): {src!r}")
-        out[jo + 60:jo + 73] = src[:12].ljust(13, b"\0")
+            # Too long for the slot: the first 11 letters and a tag byte (1, 2... per shared
+            # prefix) key the full name in en_names.txt; the renderer draws the full name.
+            prefix = src[:11]
+            if src not in tag_of:
+                tags[prefix] = tags.get(prefix, 0) + 1
+                tag_of[src] = tags[prefix]
+                stats["long_names"].append((prefix, tag_of[src], src))
+            tag = tag_of[src]
+            assert tag <= 9, f"deck {i}: more than 9 long names share {prefix!r}"
+            out[jo + 60:jo + 73] = (prefix + bytes([tag])).ljust(13, b"\0")
+        else:
+            out[jo + 60:jo + 73] = src.ljust(13, b"\0")
         stats["names"] += 1
         # owner: US field [79, 100) -> JP field [73, 94)
         src = us[uo + 79:uo + 100].split(b"\0", 1)[0]
@@ -207,7 +222,11 @@ def main(argv=None) -> int:
     grafted_dek, dek_stats = graft_dek(jp_dek, us_dek, report)
     (out / "files" / "B" / "DECK2.DEK").write_bytes(grafted_dek)
     print(f"dek: {dek_stats['names']} deck names, {dek_stats['owners']} owners, "
+          f"{len(dek_stats['long_names'])} long names -> en_names.txt, "
           f"{len(dek_stats['overlong'])} overlong")
+    (out / "en_names.txt").write_bytes(b"".join(
+        prefix + b"\t" + str(tag).encode() + b"\t" + full + b"\n"
+        for prefix, tag, full in dek_stats["long_names"]))
 
     (out / "en_text_report.txt").write_text(
         "Overlong strings (US text + NUL > JP slot; shorten by hand):\n" +
