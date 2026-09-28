@@ -69,6 +69,9 @@ enum HostCommand : uint32_t {
     kSaveState = 1u << 2,     ///< [hotkeys] save_state: into the selected slot
     kLoadState = 1u << 3,     ///< [hotkeys] load_state: from the selected slot
     kNextStateSlot = 1u << 4, ///< [hotkeys] state_slot: select the next slot
+    kBattleP1 = 1u << 5,      ///< [hotkeys] battle_p1: apply the trainer's P1 battle actions
+    kBattleP2 = 1u << 6,      ///< [hotkeys] battle_p2: apply the P2 battle actions
+    kBattleReset = 1u << 7,   ///< [hotkeys] battle_reset: put the changed battle stats back
 };
 
 class Platform {
@@ -109,6 +112,8 @@ public:
     /// Bindings + hotkeys as text lines for the menu's Controls page
     /// (empty when the backend has none).
     virtual std::vector<std::string> controls_lines() { return {}; }
+    /// Every hotkey with what it does, for the menu's Hotkeys page (empty when none).
+    virtual std::vector<std::string> hotkey_lines() { return {}; }
     /// The trainer panel ([hotkeys] trainer) to route keys to and draw; backends without a
     /// window ignore it. The host loop keeps the game paused while trainer->is_open().
     virtual void attach_trainer(trainer::Trainer* trainer) { (void)trainer; }

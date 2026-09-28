@@ -34,7 +34,7 @@ void test_main_nav() {
     CHECK(m.is_open() && m.page() == Page::Main && m.selection() == 0);
     CHECK(m.key(Key::Down) == Action::None && m.selection() == 1);
     CHECK(m.key(Key::Up) == Action::None && m.selection() == 0);
-    CHECK(m.key(Key::Up) == Action::None && m.selection() == 6);  // wraps
+    CHECK(m.key(Key::Up) == Action::None && m.selection() == 8);  // wraps
     CHECK(m.key(Key::Down) == Action::None && m.selection() == 0);
     CHECK(m.key(Key::Close) == Action::Resume);
     m.set_open(true);
@@ -46,11 +46,11 @@ void test_main_nav() {
     m.key(Key::Down);
     CHECK(m.key(Key::Enter) == Action::OpenStates && m.page() == Page::States);
     m.set_open(true);
-    for (int i = 0; i < 6; ++i) m.key(Key::Down);
+    for (int i = 0; i < 8; ++i) m.key(Key::Down);
     CHECK(m.key(Key::Enter) == Action::None && m.page() == Page::ConfirmQuit);
     CHECK(m.key(Key::Enter) == Action::Resume);  // default selection is No
     m.set_open(true);
-    for (int i = 0; i < 6; ++i) m.key(Key::Down);
+    for (int i = 0; i < 8; ++i) m.key(Key::Down);
     CHECK(m.key(Key::Enter) == Action::None && m.page() == Page::ConfirmQuit);
     m.key(Key::Up);  // Yes
     CHECK(m.key(Key::Enter) == Action::Quit);
@@ -217,6 +217,18 @@ void test_render_bounds() {
     }
     CHECK(contains(m.render(56, 28), "PAUSE MENU"));
     CHECK(contains(m.render(56, 28), "Quit to desktop"));
+    // Trainer asks the host to open the trainer; Hotkeys is a read-only page.
+    {
+        Menu h;
+        h.set_open(true);
+        for (int i = 0; i < 5; ++i) h.key(Key::Down);
+        CHECK(h.key(Key::Enter) == Action::OpenTrainer && h.page() == Page::Main);
+        h.key(Key::Down);
+        CHECK(h.key(Key::Enter) == Action::OpenHotkeys && h.page() == Page::Hotkeys);
+        h.set_info(Page::Hotkeys, {"F1           Pause menu (Esc too)"});
+        CHECK(contains(h.render(56, 28), "Pause menu"));
+        CHECK(h.key(Key::Enter) == Action::None && h.page() == Page::Main);
+    }
     // Info pages render their lines.
     m.set_open(true);
     for (int i = 0; i < 2; ++i) m.key(Key::Down);

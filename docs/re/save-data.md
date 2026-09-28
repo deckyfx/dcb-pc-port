@@ -19,7 +19,7 @@ Per-player data repeats every **10040 bytes** (`0x2738`): player 0 is you (the s
 | Offset | Size | What | Written by | Conf. |
 |---|---|---|---|---|
 | `+0x24` | u32 | play time (frames) | `playtime_tick` (`80014E24`), every frame | H |
-| `+0x3C` | 16 bits | Digi parts owned, one bit per part (0-15), RAM `800DF200` | `digipart_give` (`8004BE48`); `digipart_has` (`8004C010`) tests | H |
+| `+0x3C` | 16 bytes | Digi parts owned, one bit per part (parts 0-126), RAM `800DF200`-`800DF20F` | `digipart_give` (`8004BE48`); `digipart_has` (`8004C010`) tests | H |
 | `+0x2F9` | u8 | partner level | `partner_gain_exp` (KAWSEG `801F7600`) | M |
 | `+0x2FA` | u16 | partner EXP | `partner_gain_exp` (KAWSEG `801F7600`) | M |
 | `+0x818` | u16 × 32 | battle counters (capped at 999), role unknown (maybe wins per opponent), RAM `800DF9DC` | `battle_counters_add` (KAWSEG `801FCF78`) | M |
@@ -36,9 +36,11 @@ Per-player data repeats every **10040 bytes** (`0x2738`): player 0 is you (the s
 | 0x40 | seen before (no "new" marker on the next first copy) |
 | 0x80 | obtained |
 
-`collection_add_card(player, card, count)` refuses cards 172-190 (returns -3); those 19 match the
-19 images of `P_CARD.ARC`, so they are probably the partner cards, which the game gives another
-way.
+`collection_add_card(player, card, count)` refuses cards 172-190 (returns -3). They are the armor
+Digimon and the Digimon Adventure 02 partners (Flamedramon, Magnamon, Veemon ... Armadillomon),
+which the game gives another way; the partner's own card is kept at one copy with the "full" flag
+(`51`: seen, full, 1). The all-cards preset writes those 19 only while their byte is 0, so the
+partner card and cards already owned are left alone.
 
 Examples from two battles: Tentomon (97) `00 -> E2` (first two copies: obtained, seen, new, 2),
 Palmon (98) `C1 -> C2`, card 30 `41 -> 42 -> C2`.
@@ -64,5 +66,5 @@ a battle: `+0x250E` +1, likely a win count), KAWSEG `801EF968` and `801ED064`.
 
 ## Trainer codes
 
-`cheats/SLPS-03101.txt` (local): all cards ×4 (cards 172-190 left out) and all Digi parts (bits 0-15),
+`cheats/SLPS-03101.txt` (local): all cards ×4 (cards 172-190 only where not owned yet) and all 127 Digi parts,
 as repeat codes over the tables above. See [../cheats.example.txt](../cheats.example.txt).

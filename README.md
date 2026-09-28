@@ -46,7 +46,7 @@ executable: MIPS R3000A → C, with native HLE of the kernel and Psy-Q libraries
 - [ ] Enhance / upscale assets (needs a renderer with higher internal resolution to show HD art)
 - [ ] Enhancements: widescreen, translation
 - [x] Save states within a run: F5 save, F7 load, F6 slot (bit-identical after a load)
-- [x] Trainer: GameShark-style cheat codes (`cheats/<serial>.txt`) and memory search, F4 panel
+- [x] Trainer (F4, or the F1 menu): built-in presets (all cards, all Digi parts), your own GameShark-style codes (`cheats/<serial>.txt`), battle actions on F10/F11/F12, memory search
 - [ ] Network Battle
 - [ ] Custom Battle mode: pick the opponent and the arena
 - [ ] Rust port of the game logic
@@ -160,8 +160,23 @@ stores only changes, starts with a `DCB-INPUT <version> <game id>` header (logs 
 version or game are rejected) and is flushed about once a second, so a crash still leaves a
 usable file. Both variables can be combined to re-record a replay.
 
-**Trainer (cheats and memory search).** `F4` (`[hotkeys] trainer`) opens a panel over the game,
-which stays paused while it is open; `F4` or `Esc` closes it, `Tab` switches between its two pages.
+**Trainer (cheats and memory search).** `F4` (`[hotkeys] trainer`), or Trainer in the `F1` menu,
+opens a panel over the game, which stays paused while it is open; `F4` or `Esc` closes it, `Tab`
+switches between its pages:
+
+- **Presets:** cheats built into the port for this game (all cards ×4, all 127 Digi parts). They
+  cannot be edited; their on/off state is saved in the cheat file as `!preset <name> on|off`.
+- **Battle:** during a card battle, `F10` (`[hotkeys] battle_p1`) applies the P1 lines that are
+  on (HP, circle/triangle/cross attack, DP, each with its value), `F11` (`battle_p2`) the P2
+  lines, and `F12` (`battle_reset`) puts every stat they changed back. Values are multiples of 10
+  up to the game's caps (9990, DP 90): Left/Right step by 10, PgUp/PgDn by 1000, or type a
+  number and press Enter. Saved in the cheat file as `!battle` lines. See
+  [docs/re/battle.md](docs/re/battle.md).
+- **Custom:** your own codes from the cheat file below, and what you freeze on the Search page.
+- **Search:** memory search, below.
+
+The `F1` menu's Hotkeys page lists every hotkey and what it does.
+
 Cheats live in `cheats/<serial>.txt` (e.g. `cheats/SLPS-03101.txt`), looked up in the current
 directory, then next to the executable (`DCB_CHEATS=<file>` overrides); the folder is gitignored
 and [`docs/cheats.example.txt`](docs/cheats.example.txt) is a template. The format is a name in

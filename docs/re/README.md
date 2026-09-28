@@ -19,3 +19,5 @@ documented in [../RE_WORKFLOW.md](../RE_WORKFLOW.md).
 
 - [Game data and save](save-data.md) — save layout in RAM, card collection, Digi parts, partner
   level/EXP, battle rewards, and the functions that write them.
+- [Battle data](battle.md) — players' HP, attacks and DP in a card battle (translated from the
+  US GameShark codes), and the battle hotkeys.

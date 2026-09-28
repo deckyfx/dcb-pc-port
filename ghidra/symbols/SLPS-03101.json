@@ -21,6 +21,16 @@
    "source": "re",
    "note": "clears/initialises the game data block at boot and new game. Conf M"
   },
+  "0x80040EF4": {
+   "name": "battle_stats_update",
+   "source": "re",
+   "note": "per player: six stat helpers, then DP = battle_dp_calc(player) into battle_data+0x120. Matches US 8003E4F0 (the US GameShark DP codes no-op its store at 8003E56C). Conf H"
+  },
+  "0x80043B00": {
+   "name": "battle_dp_calc",
+   "source": "re",
+   "note": "(player): the player's DP, stored at battle_data+0x120 by battle_stats_update (80040F70). Overridden by dcb_dp_calc for the battle hotkeys. Matches US 8004110C. Conf H"
+  },
   "0x800481D8": {
    "name": "card_db_load",
    "source": "re",

@@ -12,6 +12,8 @@
 #include "input_log.hpp"
 #include "memcard.hpp"
 #include "menu.hpp"
+#include "cheat_presets.hpp"
+#include "overrides/battle.hpp"
 #include "overrides/movies.hpp"
 #include "overrides/native_files.hpp"
 #include "platform.hpp"
@@ -187,14 +189,19 @@ void refresh_cards(menu::Menu& m) {
 /// was loaded (the caller re-reads the display). Save/load are safe at any
 /// frame boundary; everything else touches host objects only.
 bool handle_menu_action(menu::Action action, platform::Platform& host, menu::Menu& menu, dcb::SaveStates& states,
-                        hle::Bios& bios, hle::Mmio& mmio, const platform::DisplayArea& area) {
+                        hle::Bios& bios, hle::Mmio& mmio, const platform::DisplayArea& area, trainer::Trainer& cheats) {
     switch (action) {
     case menu::Action::None:
     case menu::Action::Resume: menu.set_open(false); return false;
     case menu::Action::OpenStates: refresh_slots(menu, states); return false;
     case menu::Action::OpenSettings:
     case menu::Action::OpenControls:
-    case menu::Action::OpenAbout: return false;  // navigation only
+    case menu::Action::OpenAbout:
+    case menu::Action::OpenHotkeys: return false;  // navigation only
+    case menu::Action::OpenTrainer:
+        menu.set_open(false);
+        cheats.set_open(true);
+        return false;
     case menu::Action::OpenCards: refresh_cards(menu); return false;
     case menu::Action::Quit: host.request_quit(); return false;
     case menu::Action::SaveSlot: {
@@ -419,6 +426,9 @@ int main(int argc, char** argv) {
         static platform::InputLog input_log = platform::InputLog::from_env(DCB_GAME_ID);
         // Trainer: cheats/<serial>.txt (DCB_CHEATS) applied at each frame boundary, F4 panel.
         const std::unique_ptr<trainer::Trainer> cheats = trainer::make_trainer(machine.ctx().ram, DCB_GAME_ID);
+        cheats->set_presets(dcb::cheat_presets());  // the Presets tab (cheat_presets.cpp)
+        std::printf("[cheats] %zu built-in presets (%zu on)\n", cheats->presets().cheats().size(),
+                    cheats->presets().enabled_count());
         host->attach_trainer(cheats.get());
         // Host work after each game frame (the game is suspended at its VBLANK): input for the
         // next frame, present, audio, overlay numbers, debug dumps.
@@ -572,6 +582,9 @@ int main(int argc, char** argv) {
                 host->show_message("No save states during movies");  // the player's state is host-side
                 commands &= ~(platform::kSaveState | platform::kLoadState);
             }
+            if (const std::string notice = dcb::battle_hotkeys(machine.ctx(), commands, cheats->battle());
+                !notice.empty())
+                host->show_message(notice);  // F10-F12 in a card battle (overrides/battle.cpp)
             if (states.handle(commands)) {  // save states: between frames, also while paused
                 read_display();
                 host->present(mmio.gpu().vram(), area);
@@ -596,12 +609,13 @@ int main(int argc, char** argv) {
                         menu->set_info(menu::Page::Settings, host->settings_lines());
                         menu->set_info(menu::Page::Controls, controls_lines(*host));
                         menu->set_info(menu::Page::About, about_lines());
+                        menu->set_info(menu::Page::Hotkeys, host->hotkey_lines());
                     }
                     bool reloaded = false;
                     for (menu::Action action = static_cast<menu::Action>(host->take_menu_action());
                          action != menu::Action::None;
                          action = static_cast<menu::Action>(host->take_menu_action())) {
-                        if (handle_menu_action(action, *host, *menu, states, bios, mmio, area)) reloaded = true;
+                        if (handle_menu_action(action, *host, *menu, states, bios, mmio, area, *cheats)) reloaded = true;
                     }
                     if (reloaded) {
                         read_display();

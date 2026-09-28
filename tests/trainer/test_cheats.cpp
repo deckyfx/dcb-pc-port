@@ -271,7 +271,7 @@ void test_example_file() {
     const CheatSet set = CheatSet::parse(*text);
     for (const std::string& w : set.warnings()) std::fprintf(stderr, "example: %s\n", w.c_str());
     CHECK(set.warnings().empty());
-    CHECK(set.cheats().size() == 3);
+    CHECK(set.cheats().size() == 5);  // play time, all cards, all Digi parts, two code-type examples
     CHECK(set.enabled_count() == 0);
 }
 

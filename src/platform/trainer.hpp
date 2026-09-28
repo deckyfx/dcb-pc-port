@@ -8,6 +8,7 @@
 // loop pumps events and calls apply_frame() between two resume_guest() calls, so everything
 // here runs at the frame boundary.
 
+#include "trainer_battle.hpp"
 #include "trainer_cheats.hpp"
 #include "trainer_search.hpp"
 
@@ -16,6 +17,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace trainer {
@@ -48,7 +50,14 @@ public:
     /// Write the cheat file (creating cheats/). False on failure (status() says why).
     bool save();
 
-    /// Apply the enabled cheats; call once per frame while the game is suspended.
+    /// The port's built-in cheats for this game (GameShark text, like the cheat file), shown on the
+    /// Presets tab. They cannot be edited or removed; their on/off state is kept in the cheat file
+    /// as "!preset <name> on|off" lines. Call before or after load(); either order keeps the state.
+    void set_presets(std::string_view text);
+    const CheatSet& presets() const { return presets_; }
+
+    /// Apply the enabled cheats (presets and the file's); call once per frame while the game is
+    /// suspended.
     ApplyStats apply_frame();
     /// Log every frame's cheat writes to stderr (DCB_TRACE_CHEATS).
     void set_trace(bool on) { trace_ = on; }
@@ -66,17 +75,25 @@ public:
     std::vector<Line> render(int cols, int rows) const;
 
     const CheatSet& cheats() const { return cheats_; }
+    /// The Battle tab's actions (the battle hotkeys read them).
+    const BattleActions& battle() const { return battle_; }
     const MemorySearch& search() const { return search_; }
     const std::filesystem::path& cheat_path() const { return path_; }
     const std::string& status() const { return status_; }
     bool dirty() const { return dirty_; }
 
 private:
-    enum class Tab : uint8_t { Cheats, Search };
+    enum class Tab : uint8_t { Presets, Cheats, Battle, Search };
     /// Rows of the Search tab before the result list.
     enum SearchRow : int { kRowSize, kRowSigned, kRowValue, kRowFilter, kRowNew, kSearchControls };
 
     void cheats_key(Key k);
+    void presets_key(Key k);
+    void presets_char(char c);
+    void apply_preset_states();
+    void battle_key(Key k);
+    void battle_char(char c);
+    void battle_step(int delta);
     void search_key(Key k);
     void cheats_char(char c);
     void search_char(char c);
@@ -93,13 +110,19 @@ private:
     uint8_t* ram_;
     std::filesystem::path path_;
     CheatSet cheats_;
+    CheatSet presets_;
+    std::vector<std::pair<std::string, bool>> preset_states_;  ///< "!preset" lines from the file
+    BattleActions battle_;
     MemorySearch search_;
     bool open_ = false;
     bool dirty_ = false;
     bool trace_ = false;
     uint64_t frame_ = 0;
-    Tab tab_ = Tab::Cheats;
+    Tab tab_ = Tab::Battle;  ///< the first tab; Presets once the game supplies some
     int cheat_sel_ = 0;
+    int preset_sel_ = 0;
+    int battle_sel_ = 0;
+    std::string battle_edit_;  ///< digits typed on the Battle tab, applied with Enter
     int search_sel_ = kRowValue;
     int size_index_ = 1;  ///< 16-bit
     int filter_index_ = 0;
