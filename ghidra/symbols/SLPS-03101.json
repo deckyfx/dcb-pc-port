@@ -11,6 +11,11 @@
    "source": "re",
    "note": "increments the u32 play-time counter at game_data + 0x24 every frame. Conf H"
   },
+  "0x8001ABF4": {
+   "name": "pad_update",
+   "source": "re",
+   "note": "once a frame: computes the pad words at *8008C420 (= 8008FEE8): +10 buttons pressed this frame (PS1 bits, active high; Start 0x0800, Cross 0x0040). Overridden by dcb_pad_update (title: any button counts as Start). Found with the write watch. Conf H"
+  },
   "0x80029EF4": {
    "name": "gfx_packet_pool_full",
    "source": "re",
@@ -76,7 +81,7 @@
    "name": "title_init",
    "overlay": "OPENSEG",
    "source": "re",
-   "note": "loads B:TITLE.ARC and uploads each TIM at its own VRAM position"
+   "note": "loads B:TITLE.ARC and uploads each TIM at its own VRAM position; its loop is the title state machine (state u32 at 801F9EE0: 0-5 light-ball animation, 6-7 Press Start Button, 8+ main menu), Start tested at 801EEAAC / 801EEB68"
   },
   "0x801F7600": {
    "name": "partner_gain_exp",

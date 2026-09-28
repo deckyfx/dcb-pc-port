@@ -1,6 +1,7 @@
 {
   "_comment": "Guest functions replaced by native code (src/game/overrides). The original is still compiled as f_<addr> and callable from the override.",
   "overrides": [
+    { "addr": "0x8001ABF4", "symbol": "dcb_pad_update", "why": "pad_update: on the title (light ball, Press Start Button) any button also counts as Start (src/game/overrides/title_input.cpp)" },
     { "addr": "0x80014BFC", "symbol": "dcb_task_yield", "why": "task switch: saves context and jumps into another task's stack" },
     { "addr": "0x80014D3C", "symbol": "dcb_task_sleep", "why": "task switch: sleep n frames (yield n times)" },
     { "addr": "0x80014BC4", "symbol": "dcb_task_exit",  "why": "task switch: return address of every task entry; unlinks and switches away" },
