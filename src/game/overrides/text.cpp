@@ -80,6 +80,18 @@ void wr32(PsxContext& ctx, uint32_t a, uint32_t v) { psx_write32(&ctx, a, v); }
 
 void load_names();
 
+/// The JP deck label format "%sデック" (EXE 800114E0, sprintf'd with the deck name) becomes the
+/// US "%s Deck", so every deck name, English or a JP name the player typed, reads "<name> Deck".
+/// Only when the bytes are the stock ones (8 of the 9 bytes plus padding fit).
+constexpr uint32_t kDeckFormat = 0x800114E0u;
+void patch_deck_format(PsxContext& ctx) {
+    static const uint8_t jp[] = {'%', 's', 0x83, 0x66, 0x83, 0x62, 0x83, 0x4E, 0};
+    static const char us[] = "%s Deck";  // 7 letters + NUL
+    for (uint32_t i = 0; i < sizeof(jp); ++i)
+        if (psx_read8(&ctx, kDeckFormat + i) != jp[i]) return;
+    for (uint32_t i = 0; i < sizeof(us); ++i) psx_write8(&ctx, kDeckFormat + i, static_cast<uint8_t>(us[i]));
+}
+
 // en_font.bin payload (no game data in git; built on the player's machine).
 std::vector<uint8_t> g_font_rows;  // 176 rows x 128 bytes (4 bpp, 64 halfwords/row)
 uint8_t g_widths[96] = {0};        // width[c - 0x20]: hi nibble u offset, lo nibble advance
@@ -119,6 +131,7 @@ bool load_font(PsxContext& ctx) {
         units[i] = static_cast<uint16_t>(g_font_rows[i * 2] | (g_font_rows[i * 2 + 1] << 8));
     mmio->gpu().set_private_sheet(std::move(units), kSheetUnits, kFontRows);
     load_names();
+    patch_deck_format(ctx);
     return true;
 }
 
