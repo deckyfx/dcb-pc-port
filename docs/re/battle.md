@@ -1,7 +1,8 @@
 # Battle data (SLPS-03101)
 
 The players' stats during a card battle, found by translating the US version's GameShark codes
-(SLUS-01328, by Code Master) to the JP build. Used by the battle hotkeys (F9-F12,
+(SLUS-01328, by Code Master) to the JP build. Used by the trainer's Battle tab and its hotkeys
+(F10 applies the P1 actions that are on, F11 the P2 ones, F12 puts the stats back;
 `src/game/overrides/battle.cpp`).
 
 ## Where it is
@@ -46,4 +47,9 @@ hotkeys use the game's caps.
 The game recalculates DP every update, so a written DP would be undone. The US codes no-op the
 store; this port overrides `battle_dp_calc` instead (`dcb_dp_calc`): after a hotkey, it returns
 the set value until the battle ends (the calculation stops running for ~10 s, or the player's
-data pointer changes).
+data pointer changes) or F12 resets.
+
+## Reset
+
+F12 writes back each field's value from before the first change in this battle (kept per player
+while its data pointer stays the same) and releases the DP locks.

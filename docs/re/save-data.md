@@ -19,7 +19,7 @@ Per-player data repeats every **10040 bytes** (`0x2738`): player 0 is you (the s
 | Offset | Size | What | Written by | Conf. |
 |---|---|---|---|---|
 | `+0x24` | u32 | play time (frames) | `playtime_tick` (`80014E24`), every frame | H |
-| `+0x3C` | 16 bits | Digi parts owned, one bit per part (0-15), RAM `800DF200` | `digipart_give` (`8004BE48`); `digipart_has` (`8004C010`) tests | H |
+| `+0x3C` | 16 bytes | Digi parts owned, one bit per part (parts 0-126), RAM `800DF200`-`800DF20F` | `digipart_give` (`8004BE48`); `digipart_has` (`8004C010`) tests | H |
 | `+0x2F9` | u8 | partner level | `partner_gain_exp` (KAWSEG `801F7600`) | M |
 | `+0x2FA` | u16 | partner EXP | `partner_gain_exp` (KAWSEG `801F7600`) | M |
 | `+0x818` | u16 × 32 | battle counters (capped at 999), role unknown (maybe wins per opponent), RAM `800DF9DC` | `battle_counters_add` (KAWSEG `801FCF78`) | M |
@@ -64,5 +64,5 @@ a battle: `+0x250E` +1, likely a win count), KAWSEG `801EF968` and `801ED064`.
 
 ## Trainer codes
 
-`cheats/SLPS-03101.txt` (local): all cards ×4 (cards 172-190 left out) and all Digi parts (bits 0-15),
+`cheats/SLPS-03101.txt` (local): all cards ×4 (cards 172-190 left out) and all 127 Digi parts,
 as repeat codes over the tables above. See [../cheats.example.txt](../cheats.example.txt).

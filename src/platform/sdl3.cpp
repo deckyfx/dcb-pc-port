@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cstdlib>
 #include <cstring>
 #include <cstdio>
@@ -350,10 +351,9 @@ public:
         if (bound(settings_.save_state_keys, sc)) return kSaveState;
         if (bound(settings_.load_state_keys, sc)) return kLoadState;
         if (bound(settings_.state_slot_keys, sc)) return kNextStateSlot;
-        if (bound(settings_.battle_p1_max_keys, sc)) return kBattleP1Max;
-        if (bound(settings_.battle_p1_zero_keys, sc)) return kBattleP1Zero;
-        if (bound(settings_.battle_p2_max_keys, sc)) return kBattleP2Max;
-        if (bound(settings_.battle_p2_zero_keys, sc)) return kBattleP2Zero;
+        if (bound(settings_.battle_p1_keys, sc)) return kBattleP1;
+        if (bound(settings_.battle_p2_keys, sc)) return kBattleP2;
+        if (bound(settings_.battle_reset_keys, sc)) return kBattleReset;
         return 0;
     }
 
@@ -505,19 +505,53 @@ private:
             line += binding_names(settings_.gamepad[i], true);
             out.push_back(line);
         }
-        out.push_back("Hotkeys:");
-        const std::pair<const char*, const std::vector<int>&> hotkeys[] = {
-            {"menu", settings_.menu_keys},           {"overlay", settings_.overlay_keys},
-            {"pause", settings_.pause_keys},         {"frame_advance", settings_.frame_advance_keys},
-            {"fast_forward", settings_.fast_forward_keys}, {"scale_mode", settings_.scale_mode_keys},
-            {"trainer", settings_.trainer_keys},     {"save_state", settings_.save_state_keys},
-            {"load_state", settings_.load_state_keys}, {"state_slot", settings_.state_slot_keys},
-            {"battle_p1_max", settings_.battle_p1_max_keys}, {"battle_p1_zero", settings_.battle_p1_zero_keys},
-            {"battle_p2_max", settings_.battle_p2_max_keys}, {"battle_p2_zero", settings_.battle_p2_zero_keys},
-        };
-        for (const auto& [name, keys] : hotkeys) out.push_back(std::string("  ") + name + ": " + binding_names(keys, false));
+        out.push_back("Hotkeys: see the Hotkeys page.");
         out.push_back("Gamepad: d-pad arrows, south confirm, east back,");
         out.push_back("  Start+Select toggles the menu.");
+        return out;
+    }
+
+    /// The Hotkeys page: every port hotkey with what it does, F1..F12 first, then the others
+    /// (the keys come from settings.ini [hotkeys], so rebinding shows here).
+    std::vector<std::string> hotkey_lines() override {
+        const struct {
+            const std::vector<int>& keys;
+            const char* what;
+        } hotkeys[] = {
+            {settings_.menu_keys, "Pause menu (Esc too)"},
+            {settings_.overlay_keys, "Performance overlay"},
+            {settings_.trainer_keys, "Trainer: cheats, battle, memory search"},
+            {settings_.save_state_keys, "Save state (selected slot)"},
+            {settings_.state_slot_keys, "Next save state slot"},
+            {settings_.load_state_keys, "Load state (selected slot)"},
+            {settings_.scale_mode_keys, "Scaling: fit / integer"},
+            {settings_.battle_p1_keys, "Battle: P1 actions (trainer Battle tab)"},
+            {settings_.battle_p2_keys, "Battle: P2 actions (trainer Battle tab)"},
+            {settings_.battle_reset_keys, "Battle: put changed stats back"},
+            {settings_.pause_keys, "Pause / resume"},
+            {settings_.frame_advance_keys, "While paused: one frame"},
+            {settings_.fast_forward_keys, "Hold: fast forward"},
+        };
+        // Sort key: F-keys by number first, then everything else by name.
+        const auto order = [](const std::string& name) {
+            if (name.size() >= 2 && name[0] == 'F' && std::isdigit(static_cast<unsigned char>(name[1])))
+                return std::make_pair(0, std::string(4 - std::min<size_t>(name.size(), 4), '0') + name.substr(1));
+            return std::make_pair(1, name);
+        };
+        std::vector<std::pair<std::pair<int, std::string>, std::string>> rows;
+        for (const auto& h : hotkeys) {
+            const std::string keys = binding_names(h.keys, false);
+            char line[96];
+            std::snprintf(line, sizeof line, "%-12s %s", keys.c_str(), h.what);
+            const std::string first = h.keys.empty() ? std::string("~") : binding_names({h.keys.front()}, false);
+            rows.push_back({order(first), line});
+        }
+        std::sort(rows.begin(), rows.end());
+        std::vector<std::string> out;
+        for (const auto& r : rows) out.push_back(r.second);
+        out.push_back("Alt+Enter    Fullscreen");
+        out.push_back("");
+        out.push_back("Rebind them in settings.ini, section [hotkeys].");
         return out;
     }
 

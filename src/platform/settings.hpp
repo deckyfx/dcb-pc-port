@@ -123,10 +123,9 @@ struct Settings {
     std::vector<int> save_state_keys;     ///< [hotkeys] save_state: save into the selected slot
     std::vector<int> load_state_keys;     ///< [hotkeys] load_state: load the selected slot
     std::vector<int> state_slot_keys;     ///< [hotkeys] state_slot: select the next slot (1-4)
-    std::vector<int> battle_p1_max_keys;  ///< [hotkeys] battle_p1_max: in battle, P1 HP/attacks 9990, DP 90
-    std::vector<int> battle_p1_zero_keys; ///< [hotkeys] battle_p1_zero: in battle, P1 HP/attacks/DP 0
-    std::vector<int> battle_p2_max_keys;  ///< [hotkeys] battle_p2_max: the same for the opponent
-    std::vector<int> battle_p2_zero_keys; ///< [hotkeys] battle_p2_zero
+    std::vector<int> battle_p1_keys;      ///< [hotkeys] battle_p1: apply the trainer's P1 battle actions
+    std::vector<int> battle_p2_keys;      ///< [hotkeys] battle_p2: apply the P2 battle actions
+    std::vector<int> battle_reset_keys;   ///< [hotkeys] battle_reset: put the changed battle stats back
 };
 
 /// Maps one binding name to an input code, or nullopt if the name is unknown.

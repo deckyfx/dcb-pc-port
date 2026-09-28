@@ -1,7 +1,8 @@
 #pragma once
-// Battle hotkeys (see battle.cpp): set a player's HP, attacks and DP during a card battle.
+// Battle hotkeys (see battle.cpp): apply the trainer's Battle-tab actions during a card battle.
 
 #include "platform.hpp"
+#include "trainer_battle.hpp"
 
 #include <psx/recomp.h>
 
@@ -10,13 +11,12 @@
 
 namespace dcb {
 
-using platform::kBattleP1Max;
-using platform::kBattleP1Zero;
-using platform::kBattleP2Max;
-using platform::kBattleP2Zero;
+using platform::kBattleP1;
+using platform::kBattleP2;
+using platform::kBattleReset;
 
-/// Once per frame with the host commands: apply the battle_* hotkeys that were pressed. Returns a
-/// notice for the screen ("P1: HP/attacks 9990, DP 90", "P2: not in a battle"), or "".
-std::string battle_hotkeys(PsxContext& ctx, uint32_t commands);
+/// Once per frame with the host commands: battle_p1 / battle_p2 apply the actions that are on for
+/// that player, battle_reset puts every changed stat back. Returns a notice for the screen, or "".
+std::string battle_hotkeys(PsxContext& ctx, uint32_t commands, const trainer::BattleActions& actions);
 
 }  // namespace dcb

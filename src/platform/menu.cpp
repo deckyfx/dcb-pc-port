@@ -8,10 +8,10 @@ namespace menu {
 
 namespace {
 
-const char* kMainItems[] = {"Resume",           "Save / Load state", "Settings",
-                            "Controls",         "Memory card",       "About",
+const char* kMainItems[] = {"Resume",   "Save / Load state", "Settings", "Controls",
+                            "Memory card", "Trainer (cheats, battle, memory search)", "Hotkeys", "About",
                             "Quit to desktop"};
-constexpr int kMainCount = 7;
+constexpr int kMainCount = 9;
 
 const char* kSlotNames[4] = {"Slot 1", "Slot 2", "Slot 3", "Slot 4"};
 
@@ -42,6 +42,7 @@ void Menu::set_info(Page page, std::vector<std::string> lines) {
     case Page::Controls: info_controls_ = std::move(lines); break;
     case Page::Cards: break;
     case Page::About: info_about_ = std::move(lines); break;
+    case Page::Hotkeys: info_hotkeys_ = std::move(lines); break;
     case Page::ConfirmQuit: break;
     }
 }
@@ -54,6 +55,7 @@ int Menu::item_count() const {
     case Page::Controls: return 1;    // read-only; any Enter goes back
     case Page::Cards: return cards_.empty() ? 1 : static_cast<int>(cards_.size()) + 2;
     case Page::About: return 1;
+    case Page::Hotkeys: return 1;      // read-only; any Enter goes back
     case Page::ConfirmQuit: return 2;  // Yes / No
     }
     return 1;
@@ -68,8 +70,10 @@ Action Menu::activate(int item) {
         case 2: page_ = Page::Settings; sel_ = 0; scroll_ = 0; return Action::OpenSettings;
         case 3: page_ = Page::Controls; sel_ = 0; scroll_ = 0; return Action::OpenControls;
         case 4: page_ = Page::Cards; sel_ = 0; scroll_ = 0; return Action::OpenCards;
-        case 5: page_ = Page::About; sel_ = 0; scroll_ = 0; return Action::OpenAbout;
-        case 6: page_ = Page::ConfirmQuit; sel_ = 1; scroll_ = 0; return Action::None;
+        case 5: return Action::OpenTrainer;  // the host closes the menu and opens the trainer
+        case 6: page_ = Page::Hotkeys; sel_ = 0; scroll_ = 0; return Action::OpenHotkeys;
+        case 7: page_ = Page::About; sel_ = 0; scroll_ = 0; return Action::OpenAbout;
+        case 8: page_ = Page::ConfirmQuit; sel_ = 1; scroll_ = 0; return Action::None;
         }
         break;
     case Page::States:
@@ -89,6 +93,7 @@ Action Menu::activate(int item) {
         }
         break;
     case Page::Controls:
+    case Page::Hotkeys:
     case Page::About: page_ = Page::Main; sel_ = 0; scroll_ = 0; return Action::None;
     case Page::Cards:
         if (cards_.empty()) {
@@ -219,6 +224,7 @@ void Menu::render_info(std::vector<Line>& out, const char* title) const {
     if (page_ == Page::Settings) lines = &info_settings_;
     else if (page_ == Page::Controls) lines = &info_controls_;
     else if (page_ == Page::About) lines = &info_about_;
+    else if (page_ == Page::Hotkeys) lines = &info_hotkeys_;
     if (lines) {
         for (const std::string& l : *lines) out.push_back({l, Style::Normal});
     }
@@ -269,6 +275,7 @@ std::vector<Line> Menu::render(int cols, int rows) const {
         else if (page_ == Page::Controls) title = "CONTROLS";
         else if (page_ == Page::Cards) title = "MEMORY CARD";
         else if (page_ == Page::About) title = "ABOUT";
+        else if (page_ == Page::Hotkeys) title = "HOTKEYS";
         else if (page_ == Page::ConfirmQuit) title = "QUIT?";
         render_info(all, title);
         break;

@@ -50,7 +50,8 @@ void test_workflow() {
     // Search tab: 16-bit (default), value 1234.
     write_value(ram.data(), 0x0B1234, ValueSize::U16, 1234);
     write_value(ram.data(), 0x000100, ValueSize::U16, 1234);
-    t.key(Key::Tab);
+    t.key(Key::Tab);  // Battle
+    t.key(Key::Tab);  // Search
     t.text("1234");  // the value row is selected first
     t.key(Key::Enter);
     CHECK(t.search().count() == 2);
@@ -133,11 +134,12 @@ void test_invalid_cheat_and_rendering() {
     CHECK(t.status().find("cannot enable") != std::string::npos);
     CHECK(contains(t.render(kPanelCols, kPanelRows), "[!] Bad"));
     // Every size renders within bounds, including tiny ones, on both tabs, with long results.
-    for (int tab = 0; tab < 2; ++tab) {
+    for (int tab = 0; tab < 3; ++tab) {
         for (int cols : {1, 8, 20, 38, 64, 200})
             for (int rows : {1, 4, 12, 22, 30, 80}) check_fits(t, cols, rows);
         t.key(Key::Tab);
     }
+    t.key(Key::Tab);  // battle tab
     t.key(Key::Tab);  // search tab
     t.text("0");
     t.key(Key::Enter);
@@ -149,11 +151,123 @@ void test_invalid_cheat_and_rendering() {
     fs::remove_all(dir);
 }
 
+// The Battle tab: values are multiples of 10 within the game's caps, the lines round-trip through
+// the cheat file next to the cheats (which the cheat parser never sees), bad lines are reported.
+void test_battle_tab() {
+    CHECK(snap_battle_value(5005, 9990) == 5000);
+    CHECK(snap_battle_value(99999, 9990) == 9990);
+    CHECK(snap_battle_value(95, 90) == 90);
+    CHECK(snap_battle_value(-20, 90) == 0);
+    BattleActions actions;
+    CHECK(actions.list().size() == 10);
+    CHECK(actions.list()[0].id == "p1_hp" && actions.list()[0].value == 9990 && !actions.list()[0].enabled);
+    CHECK(actions.list()[4].id == "p1_dp" && actions.list()[4].value == 90);
+    CHECK(actions.list()[5].id == "p2_hp" && actions.list()[5].value == 0);
+    CHECK(actions.parse_line("!battle p2_circle on 1235") && actions.list()[6].enabled && actions.list()[6].value == 1230);
+    CHECK(!actions.parse_line("!battle p3_hp on 10") && !actions.parse_line("!battle p1_hp maybe 10"));
+    CHECK(BattleActions::owns_line("  !battle p1_hp on 0") && BattleActions::owns_line("#!battle comment"));
+    CHECK(!BattleActions::owns_line("[Cheat] on") && !BattleActions::owns_line("# comment"));
+
+    const fs::path dir = fs::temp_directory_path() / "dcb_test_trainer_battle";
+    fs::remove_all(dir);
+    fs::create_directories(dir);
+    const fs::path file = dir / "cheats.txt";
+    CHECK(platform::write_text_file(file, "[Keep me] on\n80000100 0001\n!battle p1_dp on 50\n!battle nonsense\n"));
+    std::vector<uint8_t> ram(kRamSize, 0);
+    Trainer t(ram.data(), file);
+    const std::vector<std::string> log = t.load();
+    CHECK(t.cheats().cheats().size() == 1 && t.cheats().enabled_count() == 1);
+    CHECK(t.battle().list()[4].enabled && t.battle().list()[4].value == 50);
+    bool reported = false;
+    for (const std::string& line : log) reported = reported || line.find("bad battle line") != std::string::npos;
+    CHECK(reported);
+
+    t.set_open(true);
+    t.key(Key::Tab);  // Battle tab, P1 HP selected
+    CHECK(contains(t.render(kPanelCols, kPanelRows), "[Battle]"));
+    t.text(" ");  // P1 HP on
+    CHECK(t.battle().list()[0].enabled);
+    t.key(Key::Left);  // -10
+    CHECK(t.battle().list()[0].value == 9980);
+    t.key(Key::Right);
+    t.key(Key::Right);  // capped
+    CHECK(t.battle().list()[0].value == 9990);
+    t.text("5005");
+    t.key(Key::Enter);  // typed value, snapped
+    CHECK(t.battle().list()[0].value == 5000 && t.battle().list()[0].enabled);
+    for (int i = 0; i < 4; ++i) t.key(Key::Down);  // P1 DP
+    t.text("95");
+    t.key(Key::Enter);
+    CHECK(t.battle().list()[4].value == 90);
+    check_fits(t, kPanelCols, kPanelRows);
+    check_fits(t, 20, 12);
+    t.text("s");
+    CHECK(!t.dirty());
+    const std::string saved = *platform::read_text_file(file);
+    CHECK(saved.find("[Keep me] on\n80000100 0001\n") != std::string::npos);
+    CHECK(saved.find("!battle p1_hp on 5000\n") != std::string::npos);
+    CHECK(saved.find("!battle p1_dp on 90\n") != std::string::npos);
+    CHECK(saved.find("nonsense") == std::string::npos);
+    // Saving again does not pile up the block.
+    Trainer again(ram.data(), file);
+    again.load();
+    CHECK(again.battle().list()[0].value == 5000 && again.cheats().cheats().size() == 1);
+    CHECK(again.save());
+    const std::string twice = *platform::read_text_file(file);
+    CHECK(twice.find("#!battle") == twice.rfind("#!battle"));
+    fs::remove_all(dir);
+}
+
+// Presets: built-in cheats on their own tab (first when there are any), toggled, applied, and
+// their state kept in the cheat file as "!preset" lines (not as cheats).
+void test_presets() {
+    const fs::path dir = fs::temp_directory_path() / "dcb_test_trainer_presets";
+    fs::remove_all(dir);
+    fs::create_directories(dir);
+    const fs::path file = dir / "cheats.txt";
+    CHECK(platform::write_text_file(file, "[Mine] off\n80000200 0002\n!preset Two words on\n"));
+    std::vector<uint8_t> ram(kRamSize, 0);
+    Trainer t(ram.data(), file);
+    t.load();
+    t.set_presets("[One] off\n80000100 0001\n[Two words] off\n80000102 0005\n");
+    CHECK(t.presets().cheats().size() == 2 && !t.presets().cheats()[0].enabled && t.presets().cheats()[1].enabled);
+    CHECK(t.cheats().cheats().size() == 1);  // presets are not custom cheats
+    t.apply_frame();
+    CHECK(read_value(ram.data(), 0x102, ValueSize::U16) == 5 && read_value(ram.data(), 0x100, ValueSize::U16) == 0);
+    t.set_open(true);
+    CHECK(contains(t.render(kPanelCols, kPanelRows), "[Presets]"));
+    t.text(" ");  // One on
+    CHECK(t.presets().cheats()[0].enabled);
+    t.key(Key::Delete);  // presets cannot be removed
+    CHECK(t.presets().cheats().size() == 2);
+    t.key(Key::Tab);
+    CHECK(contains(t.render(kPanelCols, kPanelRows), "[Custom]"));
+    t.key(Key::Tab);
+    t.key(Key::Tab);
+    t.key(Key::Tab);  // Search -> back to Presets
+    CHECK(contains(t.render(kPanelCols, kPanelRows), "[Presets]"));
+    check_fits(t, 20, 12);
+    CHECK(t.save());
+    const std::string saved = *platform::read_text_file(file);
+    CHECK(saved.find("!preset One on\n") != std::string::npos && saved.find("!preset Two words on\n") != std::string::npos);
+    CHECK(saved.find("[One]") == std::string::npos);
+    Trainer again(ram.data(), file);
+    again.set_presets("[One] off\n80000100 0001\n[Two words] off\n80000102 0005\n");
+    again.load();  // either order works
+    CHECK(again.presets().cheats()[0].enabled && again.presets().cheats()[1].enabled);
+    CHECK(again.save());
+    const std::string twice = *platform::read_text_file(file);
+    CHECK(twice.find("!preset One on") == twice.rfind("!preset One on"));
+    fs::remove_all(dir);
+}
+
 }  // namespace
 
 int main() {
     test_workflow();
     test_invalid_cheat_and_rendering();
+    test_battle_tab();
+    test_presets();
     std::puts("trainer panel: all tests passed");
     return 0;
 }

@@ -45,6 +45,8 @@ enum class Action : uint8_t {
     OpenControls,      ///< submenu: bindings + hotkeys (read-only)
     OpenCards,         ///< submenu: memory-card backup/restore
     OpenAbout,         ///< submenu: version/build/credits
+    OpenTrainer,       ///< close the menu and open the trainer panel
+    OpenHotkeys,       ///< submenu: every hotkey and what it does (read-only)
     Quit,              ///< quit (backend asks for confirmation first)
     SaveSlot,          ///< save into the selected slot (with thumbnail)
     LoadSlot,          ///< load from the selected slot
@@ -61,7 +63,7 @@ enum class Action : uint8_t {
 };
 
 /// Which page is shown.
-enum class Page : uint8_t { Main, States, Settings, Controls, Cards, About, ConfirmQuit };
+enum class Page : uint8_t { Main, States, Settings, Controls, Cards, About, Hotkeys, ConfirmQuit };
 
 class Menu {
 public:
@@ -130,6 +132,7 @@ private:
     std::vector<std::string> info_settings_;
     std::vector<std::string> info_controls_;
     std::vector<std::string> info_about_;
+    std::vector<std::string> info_hotkeys_;
     mutable int scroll_ = 0;  ///< first visible row (render keeps selection visible)
 };
 

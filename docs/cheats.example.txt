@@ -26,7 +26,8 @@
 800DF1E8 0000
 800DF1EA 0000
 
-# --- Found with the write watch (docs/re/save-data.md) -------------------------------------------
+# --- Found with the write watch (docs/re/save-data.md). The port also has these two built in,
+# on the trainer's Presets tab; they are here as examples of the repeat code.
 # Card collection: one byte per card at 800E0646 + card number (low 3 bits = copies, max 6).
 # Cards 172-190 are left out: the game's add-card function refuses them.
 [All cards x4] off
@@ -35,10 +36,12 @@
 50006E01 0000
 300E0705 00C4
 
-# Digi parts: one bit per part at 800DF200 (parts 0-15; the starters give 0, 10 and 15).
-# FFFF sets all of them. Found with the write watch (digipart_give 8004BE48).
+# Digi parts: one bit per part at 800DF200-800DF20F, parts 0-126 (the starters give 0, 10
+# and 15). This sets all 127. Found with the write watch (digipart_give 8004BE48).
 [All Digi parts] off
+50000702 0000
 800DF200 FFFF
+800DF20E 7FFF
 
 # --- Examples of the code types (addresses are placeholders; keep them off) --------------------
 [Example: set a value only while it is below 100] off
