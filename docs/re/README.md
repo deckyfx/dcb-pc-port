@@ -17,4 +17,5 @@ documented in [../RE_WORKFLOW.md](../RE_WORKFLOW.md).
 
 ## Pages
 
-(none yet — the first one lands with the worked example in RE_WORKFLOW.md)
+- [Game data and save](save-data.md) — save layout in RAM, card collection, Digi parts, partner
+  level/EXP, battle rewards, and the functions that write them.

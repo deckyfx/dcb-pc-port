@@ -16,7 +16,8 @@
 # Comments start with '#' or ';' (also after a code line).
 
 # --- Found by memory search, UNVERIFIED --------------------------------------------------------
-# 800DF1E8 is a 32-bit counter inside the loaded save data (RAM 800DEFC4 holds the save image)
+# 800DF1E8 is a 32-bit counter inside the loaded save data (RAM 800DEFC4 holds the save image;
+# playtime_tick 80014E24 increments it, docs/re/save-data.md)
 # that the game increments every frame, both in menus and in the field; probably the play-time
 # counter shown on the load screen. Found with the trainer's search engine on RAM dumps of a
 # scripted run ("increased" filter over six snapshots); holding it was checked headless (the game
@@ -24,6 +25,20 @@
 [Play time counter held at 0 (unverified)] off
 800DF1E8 0000
 800DF1EA 0000
+
+# --- Found with the write watch (docs/re/save-data.md) -------------------------------------------
+# Card collection: one byte per card at 800E0646 + card number (low 3 bits = copies, max 6).
+# Cards 172-190 are left out: the game's add-card function refuses them.
+[All cards x4] off
+5000AC01 0000
+300E0646 00C4
+50006E01 0000
+300E0705 00C4
+
+# Digi parts: 32 16-bit counts at 800DF9DC (the game caps them at 999).
+[All Digi parts x99] off
+50002002 0000
+800DF9DC 0063
 
 # --- Examples of the code types (addresses are placeholders; keep them off) --------------------
 [Example: set a value only while it is below 100] off
