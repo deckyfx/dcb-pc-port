@@ -862,8 +862,27 @@ const std::vector<uint16_t>* HdTextures::replace(const Candidate& pick, int tw, 
         // shape the game uploaded (packed indices), sampled from the fitted art.
         const size_t pixels = static_cast<size_t>(tw) * static_cast<size_t>(th);
         std::vector<uint8_t> indices(pixels);
+        // A pixel whose colour is still the one its original index gives keeps that index. A
+        // palette can hold the same colour twice (Tyrannomon's card: entries 14 and 58), and
+        // a colour alone cannot say which one the art used; the game recolours palettes in
+        // battle, so picking the other one shows (a pink belly). Unedited art thus comes out
+        // bit-identical, and edited art keeps its indices wherever the artist left it alone.
+        const bool same_size = tw == pick.w && th == pick.h && staged != nullptr;
+        const int per_unit = pick.bpp == 8 ? 2 : 4;
         for (size_t i = 0; i < pixels; ++i) {
             const uint8_t r = fit[i * 4], g = fit[i * 4 + 1], b = fit[i * 4 + 2], a = fit[i * 4 + 3];
+            if (same_size) {
+                const size_t unit = i / static_cast<size_t>(per_unit);
+                if (unit / 2 < staged_words) {
+                    const auto word = static_cast<uint16_t>(staged[unit / 2] >> ((unit & 1) * 16));
+                    const unsigned slot = static_cast<unsigned>(i % static_cast<size_t>(per_unit));
+                    const unsigned orig = pick.bpp == 8 ? (word >> (slot * 8)) & 0xFFu : (word >> (slot * 4)) & 0xFu;
+                    if (orig < per && (*pal_ptr)[orig] == vfs::rgba_to_psx15(r, g, b, a)) {
+                        indices[i] = static_cast<uint8_t>(orig);
+                        continue;
+                    }
+                }
+            }
             // Pass alpha through unchanged: 0 = transparent (exact-match 0x0000
             // below), 254 = STP set, anything else = opaque STP-clear. Inverting
             // either bit (e.g. mapping 255 -> STP) would corrupt palettes that
