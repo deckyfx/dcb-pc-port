@@ -72,6 +72,7 @@ tools/disc/             extract_disc.py (+ tests), verify_import.sh
 tools/ghidra/           setup_ghidra_mcp.sh, import_ghidra.sh
 tools/recomp/           the MIPS→C recompiler (C++ host tool)
 tools/assets/           TIM / VAB / XA / STR converters, swap_us_images.py (+ tests)
+tools/text/             en_text.py: English font and card/deck text from the US dump (+ tests)
 tests/                  runtime unit tests (ctest)
 ```
 
@@ -292,6 +293,20 @@ first, `dcb --import <us.cue> <dir>`):
 mkdir -p assets/SLPS-03101/disc
 cp <dir>/SLUS-01328/fs/DIGIMON.MOV.raw2352 assets/SLPS-03101/disc/
 ```
+
+**English text.** A native override draws plain-ASCII strings with the US font and widths, while
+Shift-JIS strings keep going through the JP renderer (untranslated Japanese still shows). The
+English data is built from the player's own dumps into gitignored `assets/`:
+
+```sh
+python3 tools/text/en_text.py --jp extracted/SLPS-03101 --us extracted/SLUS-01328 --out assets/SLPS-03101
+# -> en_font.bin (US font rows + width table), files/B/CARD2.CDD and DECK2.DEK (US card and deck
+#    names, attacks, effect lines), en_text_report.txt (lines too long for the JP slots)
+```
+
+Without `en_font.bin` the game draws everything with the JP renderer; deleting `files/B/` brings
+the Japanese card and deck text back. The font lives in a private texture sheet in the GPU, not
+in the game's VRAM. Notes: [docs/re/text-engine.md](docs/re/text-engine.md).
 
 **Game assets (textures).** `dcb_asset_ripper` (built with the tools) rips the images and sound
 banks from the game data into `assets/` (gitignored), and packs them into one file:

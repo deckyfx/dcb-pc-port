@@ -21,3 +21,5 @@ documented in [../RE_WORKFLOW.md](../RE_WORKFLOW.md).
   level/EXP, battle rewards, and the functions that write them.
 - [Battle data](battle.md) — players' HP, attacks and DP in a card battle (translated from the
   US GameShark codes), and the battle hotkeys.
+- [Text engine](text-engine.md) — SJIS/ASCII encoding, the JP/US renderers, fonts and glyph
+  cache, string sources, override plan and the state of the English-text port.

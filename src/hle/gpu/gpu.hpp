@@ -51,6 +51,15 @@ public:
     /// and skipped.
     static std::vector<SpriteScale> parse_sprite_scales(const std::string& text);
 
+    /// A private texture sheet, outside VRAM: 4-bit texels, `width` 16-bit units by `height` rows
+    /// (row-major, 4 texels per unit, low nibble first, like a 4-bit texture page). The textured
+    /// rectangle right after a GP0(EFh) command of the form kSheetMarker | semi mode (a no-op on
+    /// the real GPU) samples its texels from this sheet at its UV instead of from the texture page;
+    /// its palette still comes from VRAM. For port-supplied art the game must not see or
+    /// overwrite, e.g. the English font (src/game/overrides/text.cpp).
+    void set_private_sheet(std::vector<uint16_t> units, int width, int height);
+    static constexpr uint32_t kSheetMarker = 0xEFD00000u;
+
     /// RAM address of the linked-list node being fed (0 outside DMA); DCB_TRACE_PRIMS prints it.
     void set_packet_address(uint32_t addr) { packet_addr_ = addr; }
     /// GP1 port 0x1F801814 write: control commands.
@@ -124,6 +133,7 @@ private:
         bool textured = false, raw = false, semi = false, gouraud = false, dither = false;
         uint32_t semi_mode = 0;         ///< 0: B/2+F/2, 1: B+F, 2: B-F, 3: B+F/4
         uint32_t depth = 0;             ///< 0: 4-bit CLUT, 1: 8-bit CLUT, 2/3: 15-bit direct
+        bool sheet = false;             ///< 4-bit texels from the private sheet, not VRAM
         int32_t tex_x = 0, tex_y = 0;   ///< texture page base in VRAM
         int32_t clut_x = 0, clut_y = 0; ///< CLUT position in VRAM
     };
@@ -146,6 +156,10 @@ private:
     std::size_t fifo_len_ = 0, fifo_need_ = 0;
     uint32_t packet_addr_ = 0;
     std::vector<SpriteScale> sprite_scales_;
+    std::vector<uint16_t> sheet_;       ///< private sheet (set_private_sheet)
+    int32_t sheet_w_ = 0, sheet_h_ = 0;
+    bool sheet_next_ = false;           ///< a marker armed the sheet for the next textured rectangle
+    uint32_t sheet_semi_mode_ = 0;
     Transfer write_{}, read_{};
     // Polyline continuation state (GP0 48h-5Fh)
     Vertex poly_last_{};

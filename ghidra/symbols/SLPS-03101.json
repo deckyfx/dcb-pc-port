@@ -11,20 +11,115 @@
    "source": "re",
    "note": "increments the u32 play-time counter at game_data + 0x24 every frame. Conf H"
   },
+  "0x80019FF0": {
+   "name": "dialog_setup",
+   "source": "re",
+   "note": "message/Yes-No dialog: sizes the window from text_measure, centred on 320x240"
+  },
   "0x8001ABF4": {
    "name": "pad_update",
    "source": "re",
    "note": "once a frame: computes the pad words at *8008C420 (= 8008FEE8): +10 buttons pressed this frame (PS1 bits, active high; Start 0x0800, Cross 0x0040). Overridden by dcb_pad_update (title: any button counts as Start). Found with the write watch. Conf H"
+  },
+  "0x80021198": {
+   "name": "msd_vm_step",
+   "source": "re",
+   "note": "run the MSD VM until the next host command; op 8 loads a text pointer into a register"
+  },
+  "0x800270D4": {
+   "name": "text_system_init",
+   "source": "re",
+   "note": "SYSTEM.TIM, text CLUTs, fonts, primitive pool"
+  },
+  "0x8002745C": {
+   "name": "text_prim_reset",
+   "source": "re",
+   "note": "per-frame reset of the text primitive pointer (801D9714)"
+  },
+  "0x80028554": {
+   "name": "text_draw_tiny",
+   "source": "re",
+   "note": "6x6 mini font renderer"
+  },
+  "0x800288C8": {
+   "name": "text_draw_mini",
+   "source": "re",
+   "note": "8x7 half-width kana mini font"
+  },
+  "0x80028CB4": {
+   "name": "text_draw_digits",
+   "source": "re",
+   "note": "6x11 ASCII/digit font"
+  },
+  "0x80029010": {
+   "name": "text_draw_bigdigits",
+   "source": "re",
+   "note": "16x21 digits"
   },
   "0x80029EF4": {
    "name": "gfx_packet_pool_full",
    "source": "re",
    "note": "1 when the frame's 28-byte sprite packet pool (ptr 801D9714) has reached its end (exact compare)"
   },
+  "0x80029F70": {
+   "name": "text_icon",
+   "source": "re",
+   "note": "(x, y, mode, index, rgb*, ot): inline icon/mini icon/big icon; called directly by the ASCII override"
+  },
+  "0x8002A37C": {
+   "name": "sjis_to_mini",
+   "source": "re",
+   "note": "SJIS to mini-font bytes (drops ASCII letters)"
+  },
+  "0x8002AA30": {
+   "name": "glyph_cache_find",
+   "source": "re",
+   "note": "SJIS glyph lookup in the (960,0) cache, kind 0"
+  },
+  "0x8002AB64": {
+   "name": "glyph_cache_add",
+   "source": "re",
+   "note": "insert into the glyph cache, flush when full"
+  },
+  "0x8002ADC8": {
+   "name": "text_draw_grey",
+   "source": "re",
+   "note": "text_draw wrapper with rgb 0x808080"
+  },
+  "0x8002AE00": {
+   "name": "text_draw",
+   "source": "re",
+   "note": "main string renderer (x, y, clut, prop, rgb*, ot, str) (overridden: src/game/overrides/text.cpp)"
+  },
+  "0x8002B638": {
+   "name": "text_measure",
+   "source": "re",
+   "note": "string width/height into g_text_w/h (overridden: src/game/overrides/text.cpp)"
+  },
+  "0x8002BD3C": {
+   "name": "text_draw_condensed",
+   "source": "re",
+   "note": "8-px condensed renderer (overridden: src/game/overrides/text.cpp)"
+  },
+  "0x8002C574": {
+   "name": "text_measure_condensed",
+   "source": "re",
+   "note": "measure for the condensed renderer (overridden: src/game/overrides/text.cpp)"
+  },
+  "0x8002D564": {
+   "name": "kanji_font_load",
+   "source": "re",
+   "note": "loads KANJI0/1.FNT into RAM"
+  },
   "0x8002FD64": {
    "name": "game_data_init",
    "source": "re",
    "note": "clears/initialises the game data block at boot and new game. Conf M"
+  },
+  "0x8003C0B0": {
+   "name": "battle_card_panel_draw",
+   "source": "re",
+   "note": "card info HUD: name, 3 attack names, 4 effect lines from CARD2.CDD"
   },
   "0x80040EF4": {
    "name": "battle_stats_update",
@@ -50,6 +145,16 @@
    "name": "deck_shuffle_2",
    "source": "re",
    "note": "the same over the second 30-byte array at battle_data+0x197 (count from 80042B28); what that array is was not worked out. Conf M"
+  },
+  "0x800466D0": {
+   "name": "battle_banner_draw",
+   "source": "re",
+   "note": "top banner, expands bare P0/P1 before draw, clipped to 288 px"
+  },
+  "0x80046A3C": {
+   "name": "battle_helpline_draw",
+   "source": "re",
+   "note": "bottom help line at x=80, clipped ~224 px"
   },
   "0x800481D8": {
    "name": "card_db_load",
@@ -85,6 +190,47 @@
    "name": "digipart_has",
    "source": "re",
    "note": "(player, part): tests the same bit. Conf H"
+  },
+  "0x801D9704": {
+   "name": "g_systim_x",
+   "source": "re",
+   "note": "SYSTEM.TIM VRAM x (u16)"
+  },
+  "0x801D9706": {
+   "name": "g_systim_y",
+   "source": "re",
+   "note": "SYSTEM.TIM VRAM y (u16)"
+  },
+  "0x801D9708": {
+   "name": "g_text_w",
+   "source": "re",
+   "note": "measure/draw result: widest line (u32)"
+  },
+  "0x801D970C": {
+   "name": "g_text_h",
+   "source": "re",
+   "note": "measure/draw result: height (u32)"
+  },
+  "0x801D9710": {
+   "name": "g_text_clut_x",
+   "source": "re",
+   "note": "text CLUT block base x (u16); colours 0..n at base + (n%2)*16"
+  },
+  "0x801D9712": {
+   "name": "g_text_clut_y",
+   "source": "re",
+   "note": "text CLUT block base y (u16)"
+  },
+  "0x801D9714": {
+   "name": "g_text_prim",
+   "source": "re",
+   "note": "next free text primitive (u32), 28-byte packets"
+  },
+  "0x801ED334": {
+   "name": "tutorial_msg_show",
+   "overlay": "KAWSEG",
+   "source": "re",
+   "note": "BETA.MSD message: p expansion into a 144-byte stack buffer + box"
   },
   "0x801ED8D0": {
    "name": "title_draw_sprite",
