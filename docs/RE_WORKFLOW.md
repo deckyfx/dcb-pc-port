@@ -13,6 +13,7 @@ Runs are bit-identical run to run. The pieces:
 | `DCB_HEADLESS=1 DCB_FAST=1` | no window, unthrottled (scripted runs) |
 | `DCB_PAD_SCRIPT="<from>-<to>:<Button>,..."` | hold buttons on frames (e.g. `600-610:Start`) |
 | `DCB_RECORD=<file>` / `DCB_REPLAY=<file>` (+ `DCB_REPLAY_EXIT=1`) | record and replay host input |
+| `DCB_WATCH=<ranges>` (`./dcb.sh -W`) | log the game's writes to RAM ranges (`800E0000-800E1800`, `800E036A+2`, comma-separated): frame, address, old -> new value, the recompiled function that stored it, and the guest call chain. Unchanged stores are skipped; each address logs 8 changes at most. Guest stores only (not file reads or DMA). |
 | Save states: F5/F7, `DCB_STATE_SAVE_AT` / `LOAD_AT` | rewind to just before the interesting call |
 | `DCB_EXIT_AT=<frame>` | quit cleanly after N frames |
 | `DCB_SNAPSHOT=<dir>` | frame PPMs every 30 frames; compare hashes across runs |

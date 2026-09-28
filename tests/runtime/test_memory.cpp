@@ -32,6 +32,22 @@ int main() {
 
     CHECK(psx_ram_offset(0x1F801810u) == -1);  // GPU register is not RAM
 
+    // Write watch (DCB_WATCH): the span check sees any store that touches a watched byte, and
+    // only those; a bad spec watches nothing. Stores still land either way.
+    CHECK(psx_watch_configure("80010100+4") == 1);
+    CHECK(psx_watch_lo == 0x10100u && psx_watch_size == 4u);
+    CHECK(PSX_WATCHED(0x100FF, 2));   // 16-bit store over the first watched byte
+    CHECK(PSX_WATCHED(0x100FD, 4));   // 32-bit store ending on it
+    CHECK(PSX_WATCHED(0x10103, 1));   // last watched byte
+    CHECK(!PSX_WATCHED(0x10104, 4));  // just after
+    CHECK(!PSX_WATCHED(0x100FC, 4));  // just before
+    psx_write16(ctx, 0x80010102u, 0xBEEFu);
+    CHECK(psx_read16(ctx, 0x80010102u) == 0xBEEFu);
+    CHECK(psx_watch_configure("800E0000-800E1800,801DAF40+0x200") == 1);
+    CHECK(psx_watch_lo == 0x0E0000u && psx_watch_size == 0x1DAF40u + 0x200u - 0x0E0000u);
+    CHECK(psx_watch_configure("nonsense") == 0 && psx_watch_size == 0u);
+    CHECK(!PSX_WATCHED(0, 4) && !PSX_WATCHED(0x10100, 1));  // nothing watched: never a hit
+
     std::puts("runtime.memory: ok");
     return 0;
 }
