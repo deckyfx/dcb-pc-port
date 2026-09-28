@@ -685,6 +685,30 @@ void HdTextures::reset_runtime() {
 
 const std::vector<uint16_t>* HdTextures::replace(const Candidate& pick, int tw, int th, size_t units,
                                                  const uint32_t* staged, size_t staged_words) {
+    // Raw art (".raw"): the upload's own words, taken as they are (pixel indices or palette
+    // entries from another build of the game, e.g. the US one). No palette conversion, so the
+    // result is exact and palette animation keeps working.
+    if (pick.path.size() > 4 && pick.path.compare(pick.path.size() - 4, 4, ".raw") == 0) {
+        const FitKey raw_key{pick.path, 0};
+        if (const std::vector<uint16_t>* hit = cached_fit(raw_key, units)) return hit;
+        std::vector<uint8_t> bytes;
+        if (!vfs_->read(pick.path, bytes) || bytes.size() != units * 2) {
+            if (log_hd())
+                std::printf("[hd] kept %s: raw art missing or not %zu bytes%s\n", pick.path.c_str(), units * 2,
+                            psx::backtrace_string(psx::active_context()).c_str());
+            ++misses_;
+            return nullptr;
+        }
+        std::vector<uint16_t> words(units);
+        for (size_t i = 0; i < units; ++i) words[i] = static_cast<uint16_t>(bytes[i * 2] | (bytes[i * 2 + 1] << 8));
+        ++hits_;
+        if (log_hd())
+            std::printf("[hd] replaced %s (%zu words, raw)%s\n", pick.path.c_str(), units,
+                        psx::backtrace_string(psx::active_context()).c_str());
+        store_fit(raw_key, std::move(words));
+        const auto it = fit_cache_.find(raw_key);
+        return it != fit_cache_.end() ? &it->second.pixels : nullptr;
+    }
     // Indexed art re-quantizes against the live palette: key the fit on it so a
     // palette change refits instead of serving stale indices.
     FitKey key{pick.path, 0};

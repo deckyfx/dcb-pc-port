@@ -610,6 +610,52 @@ void test_hd_slot() {
     CHECK(clipped && out_w == 2 && out_h == 1 && clipped->size() == 2);
 }
 
+// A ".raw" manifest path is the upload's own words, committed as they are (the US images of
+// tools/assets/swap_us_images.py): no palette conversion, for image and palette uploads alike.
+void test_hd_raw() {
+    const fs::path dir = scratch_dir();
+    fs::create_directories(dir / "art" / "us");
+    const uint32_t image[2] = {0x32143210u, 0x76547654u};  // an 8x2 4-bit upload: 2x2 units
+    const uint32_t clut[8] = {0x001F0000u, 0x7C0003E0u, 0x80018000u, 0, 0, 0, 0, 0x7FFF7FFFu};
+    const uint8_t us_image[8] = {1, 2, 3, 4, 5, 6, 7, 8};
+    uint8_t us_clut[32];
+    for (int i = 0; i < 32; ++i) us_clut[i] = static_cast<uint8_t>(0xA0 + i);
+    const auto write = [&](const fs::path& p, const uint8_t* data, size_t n) {
+        FILE* f = std::fopen(p.string().c_str(), "wb");
+        CHECK(f);
+        CHECK(std::fwrite(data, 1, n, f) == n);
+        std::fclose(f);
+    };
+    write(dir / "art" / "us" / "img.raw", us_image, sizeof us_image);
+    write(dir / "art" / "us" / "clut.raw", us_clut, sizeof us_clut);
+    write(dir / "art" / "us" / "short.raw", us_image, 4);
+    const uint64_t img = vfs::fnv1a64(image, sizeof image);
+    const uint64_t pal = vfs::fnv1a64(clut, sizeof clut);
+    const uint32_t other[2] = {1, 2};
+    char manifest[512];
+    std::snprintf(manifest, sizeof manifest,
+                  "{\"version\":1,\"entries\":["
+                  "{\"img\":\"%s\",\"w\":8,\"h\":2,\"bpp\":4,\"path\":\"us/img.raw\"},"
+                  "{\"img\":\"%s\",\"w\":16,\"h\":1,\"bpp\":16,\"path\":\"us/clut.raw\"},"
+                  "{\"img\":\"%s\",\"w\":8,\"h\":2,\"bpp\":4,\"path\":\"us/short.raw\"}]}",
+                  vfs::to_hex16(img).c_str(), vfs::to_hex16(pal).c_str(),
+                  vfs::to_hex16(vfs::fnv1a64(other, sizeof other)).c_str());
+    const std::string man_path = (dir / "m.json").string();
+    write(man_path, reinterpret_cast<const uint8_t*>(manifest), std::strlen(manifest));
+
+    hle::HdTextures hd;
+    CHECK(hd.load(man_path, (dir / "art").string()));
+    // Image: the raw words, no palette needed (none was uploaded, none is in the manifest).
+    const std::vector<uint16_t>* hit = hd.maybe_replace(0, 0, 2, 2, image, 2);
+    CHECK(hit && hit->size() == 4);
+    CHECK((*hit)[0] == 0x0201u && (*hit)[1] == 0x0403u && (*hit)[2] == 0x0605u && (*hit)[3] == 0x0807u);
+    // Palette upload (16x1, 16-bit): replaced verbatim, STP bits included.
+    const std::vector<uint16_t>* p = hd.maybe_replace(0, 480, 16, 1, clut, 8);
+    CHECK(p && p->size() == 16 && (*p)[0] == 0xA1A0u && (*p)[15] == 0xBFBEu);
+    // A raw file of the wrong size keeps the original upload.
+    CHECK(hd.maybe_replace(0, 0, 2, 2, other, 2) == nullptr);
+}
+
 // --- VAB / BRR ---------------------------------------------------------------
 // Hand-computed vectors for the SPU-ADPCM formula (spu-adpcm, psx-spx "SPU
 // ADPCM Samples"): sample = (nibble<<12 >> shift) + ((old*pos + older*neg + 32) >> 6).
@@ -732,6 +778,7 @@ constexpr Case kCases[] = {
     {"hd_identity_stp", test_hd_identity_stp},
     {"hd_identity_e2e", test_hd_identity_e2e},
     {"hd_slot", test_hd_slot},
+    {"hd_raw", test_hd_raw},
     {"brr_block", test_brr_block},
     {"vab_parse", test_vab_parse},
     {"vab_decode", test_vab_decode},
