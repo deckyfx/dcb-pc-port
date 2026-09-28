@@ -35,10 +35,10 @@
 50006E01 0000
 300E0705 00C4
 
-# Digi parts: 32 16-bit counts at 800DF9DC (the game caps them at 999).
-[All Digi parts x99] off
-50002002 0000
-800DF9DC 0063
+# Digi parts: one bit per part at 800DF200 (parts 0-15; the starters give 0, 10 and 15).
+# FFFF sets all of them. Found with the write watch (digipart_give 8004BE48).
+[All Digi parts] off
+800DF200 FFFF
 
 # --- Examples of the code types (addresses are placeholders; keep them off) --------------------
 [Example: set a value only while it is below 100] off

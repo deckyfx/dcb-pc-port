@@ -19,9 +19,10 @@ Per-player data repeats every **10040 bytes** (`0x2738`): player 0 is you (the s
 | Offset | Size | What | Written by | Conf. |
 |---|---|---|---|---|
 | `+0x24` | u32 | play time (frames) | `playtime_tick` (`80014E24`), every frame | H |
+| `+0x3C` | 16 bits | Digi parts owned, one bit per part (0-15), RAM `800DF200` | `digipart_give` (`8004BE48`); `digipart_has` (`8004C010`) tests | H |
 | `+0x2F9` | u8 | partner level | `partner_gain_exp` (KAWSEG `801F7600`) | M |
 | `+0x2FA` | u16 | partner EXP | `partner_gain_exp` (KAWSEG `801F7600`) | M |
-| `+0x818` | u16 × 32 | Digi part counts (capped at 999), RAM `800DF9DC` | `digipart_rewards_grant` (KAWSEG `801FCF78`) | H |
+| `+0x818` | u16 × 32 | battle counters (capped at 999), role unknown (maybe wins per opponent), RAM `800DF9DC` | `battle_counters_add` (KAWSEG `801FCF78`) | M |
 | `+0x1482` | u8 × 301 | card collection, one byte per card number, RAM `800E0646` | `collection_add_card` (`8004850C`) | H |
 | `+0x272C` | u16 × 3 | last battle's reward cards (`0xFFFF` = none) | `battle_rewards_pick` (`80048D68`) | H |
 
@@ -47,8 +48,11 @@ Palmon (98) `C1 -> C2`, card 30 `41 -> 42 -> C2`.
 1. `battle_rewards_pick` (`80048D68`) writes the three reward card numbers at `+0x272C` when the
    battle is set up (and `collection_clear_new` clears the "new" flags first).
 2. After the battle, `battle_rewards_grant` (`80049280`, **M**) calls `collection_add_card` for
-   each, and KAWSEG `digipart_rewards_grant` adds one to every Digi part the battle's reward flags
-   name.
+   each; a Digi part won is set with `digipart_give` (part 15 in the recorded run: `+0x3D`
+   `04 -> 84`), and KAWSEG `battle_counters_add` adds one to the battle counters at `+0x818`.
+   (That array was first taken for the Digi parts: a cheat filling it gave nothing. The
+   starting partners' table at `80071AD8`, `0A 0F 00`, gives the three starter parts 10, 15
+   and 0.)
 3. `partner_gain_exp` (KAWSEG `801F7600`) raises the partner's EXP one step per frame, then the
    level (Veemon 3 -> 4: EXP `0x11 -> 0x18`, level `3 -> 4`).
 
@@ -60,5 +64,5 @@ a battle: `+0x250E` +1, likely a win count), KAWSEG `801EF968` and `801ED064`.
 
 ## Trainer codes
 
-`cheats/SLPS-03101.txt` (local): all cards ×4 (cards 172-190 left out) and all Digi parts ×99,
+`cheats/SLPS-03101.txt` (local): all cards ×4 (cards 172-190 left out) and all Digi parts (bits 0-15),
 as repeat codes over the tables above. See [../cheats.example.txt](../cheats.example.txt).
