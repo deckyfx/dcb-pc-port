@@ -53,3 +53,18 @@ data pointer changes) or F12 resets.
 
 F12 writes back each field's value from before the first change in this battle (kept per player
 while its data pointer stays the same) and releases the DP locks.
+
+## Deck shuffle
+
+The deck is 30 card bytes at `+0x179`; drawn cards are at the front, the `n` undrawn ones at the
+end (`n = deck_cards_left(player)`, `80042C24`). `deck_shuffle(player)` (`80043E24`) runs `+0x116`
+passes (u16, "shuffles pending") of swapping each undrawn card with a random undrawn one
+(`rand() % n`), then clears `+0x116`. Battle start calls it (KAWSEG `801F5518`), and so do card
+effects that shuffle, e.g. Reserve Seven (card 291): they set `+0x116` to 300 and call it (KAWSEG
+`801EBC50` / `801EBC80`). `deck_shuffle_2` (`80043F78`) is the same code over a second 30-byte
+array at `+0x197`, not worked out.
+
+The trainer's Battle tab has "deck in order (no shuffle)" for P1 and P2: while one is on,
+`dcb_deck_shuffle` only clears the pending count, so that player draws in deck order (the order
+of the deck as built). Boss A's "move the partner to the bottom, no shuffle" is presumably the
+game doing the same for its own deck; its code was not traced.

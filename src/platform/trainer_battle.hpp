@@ -18,7 +18,9 @@
 
 namespace trainer {
 
-enum class BattleStat : uint8_t { Hp, Circle, Triangle, Cross, Dp };
+/// NoShuffle is not a value: while it is on, that player's deck is never shuffled (cards are drawn
+/// in deck order); the hotkeys skip it.
+enum class BattleStat : uint8_t { Hp, Circle, Triangle, Cross, Dp, NoShuffle };
 
 struct BattleAction {
     std::string id;     ///< "p1_hp": the name in the cheat file
@@ -26,7 +28,9 @@ struct BattleAction {
     BattleStat stat = BattleStat::Hp;
     bool enabled = false;
     int value = 0;      ///< always a multiple of 10 within [0, max()]
-    int max() const { return stat == BattleStat::Dp ? 90 : 9990; }
+    int max() const { return stat == BattleStat::NoShuffle ? 0 : stat == BattleStat::Dp ? 90 : 9990; }
+    /// A toggle that works on its own (no value, not applied by a hotkey).
+    bool is_toggle() const { return stat == BattleStat::NoShuffle; }
     /// "P1 HP", "P2 circle attack", ...
     std::string label() const;
 };
@@ -36,11 +40,14 @@ int snap_battle_value(int value, int max);
 
 class BattleActions {
 public:
-    /// The ten actions (P1 then P2: HP, circle, triangle, cross, DP), all off. P1 values start at
-    /// the game's caps, P2 values at 0 (the useful direction for each side).
+    /// The ten actions (P1 then P2: HP, circle, triangle, cross, DP), then the two no-shuffle
+    /// toggles (P1, P2), all off. P1 values start at the game's caps, P2 values at 0 (the useful
+    /// direction for each side).
     BattleActions();
 
     const std::vector<BattleAction>& list() const { return list_; }
+    /// Whether `player`'s deck must keep its order (the no-shuffle toggle is on).
+    bool no_shuffle(int player) const;
     void set_enabled(size_t i, bool on);
     /// Sets the value (snapped). Returns the value stored.
     int set_value(size_t i, int value);
