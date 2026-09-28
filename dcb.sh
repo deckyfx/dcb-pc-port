@@ -10,14 +10,15 @@
 #   ./dcb.sh -s SERIAL   game id (default SLPS-03101)
 #   ./dcb.sh -H          log each replacement texture as it is used (DCB_LOG_HD=1)
 #   ./dcb.sh -T          log every file load and texture upload, with its source file (DCB_LOG_LOADS=1 DCB_LOG_TEX=1)
+#   ./dcb.sh -W RANGES   log the game's writes to RAM ranges, e.g. -W 800E0000-800E1800 (DCB_WATCH)
 #   ./dcb.sh -G          open Ghidra (ghidra/ghidra_12.1.2_PUBLIC, MCP scripting on) instead
 # Flags combine: ./dcb.sh -r -t
 set -euo pipefail
 cd "$(dirname "$0")"
 
 SERIAL="SLPS-03101"
-RECOMPILE=0 TRACE=0 GDB=0 RUN=1 WINDOWS=0 LOG_HD=0 LOG_TEX=0
-while getopts "rtgbws:GHTh" opt; do
+RECOMPILE=0 TRACE=0 GDB=0 RUN=1 WINDOWS=0 LOG_HD=0 LOG_TEX=0 WATCH=""
+while getopts "rtgbws:GHTW:h" opt; do
     case "$opt" in
         r) RECOMPILE=1 ;;
         t) TRACE=1 ;;
@@ -28,7 +29,8 @@ while getopts "rtgbws:GHTh" opt; do
         G) exec tools/ghidra/ghidra_gui.sh ;;
         H) LOG_HD=1 ;;
         T) LOG_TEX=1 ;;
-        *) sed -n '2,14p' "$0"; exit 2 ;;
+        W) WATCH="$OPTARG" ;;
+        *) sed -n '2,15p' "$0"; exit 2 ;;
     esac
 done
 
@@ -53,6 +55,7 @@ fi
 (( TRACE )) && export DCB_TRACE_BIOS=1
 (( LOG_HD )) && export DCB_LOG_HD=1
 (( LOG_TEX )) && export DCB_LOG_LOADS=1 DCB_LOG_TEX=1
+[[ -n "$WATCH" ]] && export DCB_WATCH="$WATCH"
 mkdir -p logs
 if (( GDB )); then
     exec gdb -q -ex run -ex bt --args ./build/linux-debug/dcb

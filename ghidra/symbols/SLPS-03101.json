@@ -1,9 +1,84 @@
 {
  "program": "SLPS_031.01",
  "symbols": {
-  "0x80014D3C": {"name": "task_sleep", "source": "re", "note": "yield the current game task for a0 frames (overridden: src/game/overrides/tasks.cpp)"},
-  "0x80029EF4": {"name": "gfx_packet_pool_full", "source": "re", "note": "1 when the frame's 28-byte sprite packet pool (ptr 801D9714) has reached its end (exact compare)"},
-  "0x801ED8D0": {"name": "title_draw_sprite", "overlay": "OPENSEG", "source": "re", "note": "(x, y, vram_x, vram_y, w, h, clut_x, clut_y, depth, semi, semi_mode, brightness, ot_layer): DR_MODE + SPRT packet into the pool"},
-  "0x801EE850": {"name": "title_init", "overlay": "OPENSEG", "source": "re", "note": "loads B:TITLE.ARC and uploads each TIM at its own VRAM position"}
+  "0x80014D3C": {
+   "name": "task_sleep",
+   "source": "re",
+   "note": "yield the current game task for a0 frames (overridden: src/game/overrides/tasks.cpp)"
+  },
+  "0x80014E24": {
+   "name": "playtime_tick",
+   "source": "re",
+   "note": "increments the u32 play-time counter at game_data + 0x24 every frame. Conf H"
+  },
+  "0x80029EF4": {
+   "name": "gfx_packet_pool_full",
+   "source": "re",
+   "note": "1 when the frame's 28-byte sprite packet pool (ptr 801D9714) has reached its end (exact compare)"
+  },
+  "0x8002FD64": {
+   "name": "game_data_init",
+   "source": "re",
+   "note": "clears/initialises the game data block at boot and new game. Conf M"
+  },
+  "0x800481D8": {
+   "name": "card_db_load",
+   "source": "re",
+   "note": "loads B:CARD2.CDD (docs/re/text-engine.md). Conf H"
+  },
+  "0x800484AC": {
+   "name": "collection_clear_new",
+   "source": "re",
+   "note": "clears the 0x20 'new' flag of collection bytes (andi 0xDF). Conf H"
+  },
+  "0x8004850C": {
+   "name": "collection_add_card",
+   "source": "re",
+   "note": "(player, card, count): collection byte at game_data + player*10040 + 0x1482 + card; count = low 3 bits, capped at 6 (flag 0x10 full, 0x50/0x56), 0x20 'new' on a first copy; refuses cards 172-190 (returns -3). Write watch: adds battle rewards. Conf H"
+  },
+  "0x80048D68": {
+   "name": "battle_rewards_pick",
+   "source": "re",
+   "note": "writes the battle's reward card numbers as u16 at game_data + 0x272C (save 0x292C), 0xFFFF = none. Conf H"
+  },
+  "0x80049280": {
+   "name": "battle_rewards_grant",
+   "source": "re",
+   "note": "calls collection_add_card for the picked rewards; writes game_data + 0x2732.. Conf M"
+  },
+  "0x8004BE48": {
+   "name": "digipart_give",
+   "source": "re",
+   "note": "(player, part): sets bit part%8 of game_data + player*10040 + 0x3C + part/8. Conf H"
+  },
+  "0x8004C010": {
+   "name": "digipart_has",
+   "source": "re",
+   "note": "(player, part): tests the same bit. Conf H"
+  },
+  "0x801ED8D0": {
+   "name": "title_draw_sprite",
+   "overlay": "OPENSEG",
+   "source": "re",
+   "note": "(x, y, vram_x, vram_y, w, h, clut_x, clut_y, depth, semi, semi_mode, brightness, ot_layer): DR_MODE + SPRT packet into the pool"
+  },
+  "0x801EE850": {
+   "name": "title_init",
+   "overlay": "OPENSEG",
+   "source": "re",
+   "note": "loads B:TITLE.ARC and uploads each TIM at its own VRAM position"
+  },
+  "0x801F7600": {
+   "name": "partner_gain_exp",
+   "overlay": "KAWSEG",
+   "source": "re",
+   "note": "adds partner EXP (u16 game_data + 0x2FA) and raises the level (u8 game_data + 0x2F9) after a battle. Conf M"
+  },
+  "0x801FCF78": {
+   "name": "battle_counters_add",
+   "overlay": "KAWSEG",
+   "source": "re",
+   "note": "after a battle: for 32 slots whose battle flag is set, u16 counter+1 at game_data + 0x818 + 2*i (capped at 999). Not the Digi parts; role not known (maybe wins per opponent). Conf M"
+  }
  }
 }

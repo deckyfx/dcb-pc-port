@@ -121,6 +121,8 @@ file(GLOB_RECURSE DCB_GAME_SOURCES CONFIGURE_DEPENDS src/game/*.c src/game/*.cpp
 add_executable(dcb ${DCB_GAME_SOURCES})
 target_link_libraries(dcb PRIVATE dcb_recompiled dcb_platform psx_hle psx_runtime dcb_vfs dcb::warnings)
 target_compile_definitions(dcb PRIVATE DCB_GAME_ID="${DCB_GAME_ID}")
+# Export symbols so the write watch (DCB_WATCH) can name the recompiled function that stored.
+set_target_properties(dcb PROPERTIES ENABLE_EXPORTS ON)
 # About page: version (git describe at configure time), build type, platform.
 find_package(Git QUIET)
 if(GIT_FOUND)

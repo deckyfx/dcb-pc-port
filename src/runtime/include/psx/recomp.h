@@ -86,17 +86,37 @@ static inline uint8_t psx_read8(PsxContext* ctx, uint32_t addr) {
     int32_t off = psx_ram_offset(addr);
     return off >= 0 ? ctx->ram[off] : psx_slow_read8(ctx, addr);
 }
+/* ---- RAM write watch (runtime/src/watch.cpp, DCB_WATCH): every RAM store checks one span.
+ * The span is empty unless a watch is set (psx_watch_size 0), so the check is a subtract, a
+ * compare and a predictable branch; a hit logs the store before it happens. ---- */
+extern uint32_t psx_watch_lo, psx_watch_size;  /* RAM offsets covering every watched range */
+extern uint64_t psx_watch_frame;                /* host frame for the log (the host loop sets it) */
+void psx_watch_hit(PsxContext* ctx, uint32_t off, uint32_t value, int bytes);
+/* Set the watched ranges ("800E0000-800E1800,801DAF40+0x200"); DCB_WATCH does this at start-up.
+ * Returns 0 (and watches nothing) on a bad spec. */
+int psx_watch_configure(const char* spec);
+#define PSX_WATCHED(off, n) ((uint32_t)(off) + (uint32_t)(n) - 1u - psx_watch_lo < psx_watch_size + (uint32_t)(n) - 1u)
+
 static inline void psx_write32(PsxContext* ctx, uint32_t addr, uint32_t v) {
     int32_t off = psx_ram_offset(addr);
-    if (off >= 0) memcpy(ctx->ram + off, &v, 4); else psx_slow_write32(ctx, addr, v);
+    if (off >= 0) {
+        if (PSX_WATCHED(off, 4)) psx_watch_hit(ctx, (uint32_t)off, v, 4);
+        memcpy(ctx->ram + off, &v, 4);
+    } else psx_slow_write32(ctx, addr, v);
 }
 static inline void psx_write16(PsxContext* ctx, uint32_t addr, uint16_t v) {
     int32_t off = psx_ram_offset(addr);
-    if (off >= 0) memcpy(ctx->ram + off, &v, 2); else psx_slow_write16(ctx, addr, v);
+    if (off >= 0) {
+        if (PSX_WATCHED(off, 2)) psx_watch_hit(ctx, (uint32_t)off, v, 2);
+        memcpy(ctx->ram + off, &v, 2);
+    } else psx_slow_write16(ctx, addr, v);
 }
 static inline void psx_write8(PsxContext* ctx, uint32_t addr, uint8_t v) {
     int32_t off = psx_ram_offset(addr);
-    if (off >= 0) ctx->ram[off] = v; else psx_slow_write8(ctx, addr, v);
+    if (off >= 0) {
+        if (PSX_WATCHED(off, 1)) psx_watch_hit(ctx, (uint32_t)off, v, 1);
+        ctx->ram[off] = v;
+    } else psx_slow_write8(ctx, addr, v);
 }
 
 /* ---- overlays: several code images share one load window; the runtime picks the resident one ---- */

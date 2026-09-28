@@ -332,7 +332,10 @@ that's safe. Then add a rule with `src` = `draw` = the slot size. `DCB_TRACE_PRI
 textured draw once (packet address, draw mode, raw GP0 words), which is where the numbers come from:
 `tex_x` = (mode & 15) × 64, `tex_y` = ((mode >> 4) & 1) × 256, and u, v, w, h come from the sprite's words.
 
-**Reverse engineering.** `DCB_COVERAGE=<file>` writes per-function call counts (address, overlay,
+**Reverse engineering.** `DCB_WATCH=800E0000-800E1800` (or `./dcb.sh -W 800E0000-800E1800`) logs
+every write the game makes into those RAM ranges, with the old and new value, the function that
+wrote it and its callers: do something in the game (win a card, level up) and read which address
+changed and which code changed it. `DCB_COVERAGE=<file>` writes per-function call counts (address, overlay,
 calls, first frame) at exit; `DCB_TRACE_CALLS=<n>` logs the first *n* calls live. `DCB_LOG_LOADS=1`
 logs named asset loads (disc files, SPU uploads, XA streams, MDEC decodes) with frame numbers.
 `tools/re/coverage_diff.py a.json b.json` diffs two coverage runs. Full loop (play → trace →
