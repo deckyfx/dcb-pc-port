@@ -170,8 +170,9 @@ switches between its pages:
   on (HP, circle/triangle/cross attack, DP, each with its value), `F11` (`battle_p2`) the P2
   lines, and `F12` (`battle_reset`) puts every stat they changed back. Values are multiples of 10
   up to the game's caps (9990, DP 90): Left/Right step by 10, PgUp/PgDn by 1000, or type a
-  number and press Enter. Saved in the cheat file as `!battle` lines. See
-  [docs/re/battle.md](docs/re/battle.md).
+  number and press Enter. Two more lines, "P1 / P2 deck in order (no shuffle)", work on their own
+  while ticked: that player's deck is never shuffled, so cards are drawn in deck order. Saved in
+  the cheat file as `!battle` lines. See [docs/re/battle.md](docs/re/battle.md).
 - **Custom:** your own codes from the cheat file below, and what you freeze on the Search page.
 - **Search:** memory search, below.
 

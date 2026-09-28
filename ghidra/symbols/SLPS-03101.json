@@ -26,10 +26,25 @@
    "source": "re",
    "note": "per player: six stat helpers, then DP = battle_dp_calc(player) into battle_data+0x120. Matches US 8003E4F0 (the US GameShark DP codes no-op its store at 8003E56C). Conf H"
   },
+  "0x80042C24": {
+   "name": "deck_cards_left",
+   "source": "re",
+   "note": "(player): undrawn cards in the deck (deck_shuffle's n). Conf M"
+  },
   "0x80043B00": {
    "name": "battle_dp_calc",
    "source": "re",
    "note": "(player): the player's DP, stored at battle_data+0x120 by battle_stats_update (80040F70). Overridden by dcb_dp_calc for the battle hotkeys. Matches US 8004110C. Conf H"
+  },
+  "0x80043E24": {
+   "name": "deck_shuffle",
+   "source": "re",
+   "note": "(player): +0x116 passes of swapping each undrawn card (last n of the 30-byte deck at battle_data+0x179) with a random undrawn one; clears +0x116. Battle start and card effects (Reserve Seven, card 291: 300 passes) call it. Overridden by dcb_deck_shuffle (trainer 'deck in order'). Conf H"
+  },
+  "0x80043F78": {
+   "name": "deck_shuffle_2",
+   "source": "re",
+   "note": "the same over the second 30-byte array at battle_data+0x197 (count from 80042B28); what that array is was not worked out. Conf M"
   },
   "0x800481D8": {
    "name": "card_db_load",

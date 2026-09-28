@@ -161,7 +161,10 @@ void test_battle_tab() {
     CHECK(snap_battle_value(95, 90) == 90);
     CHECK(snap_battle_value(-20, 90) == 0);
     BattleActions actions;
-    CHECK(actions.list().size() == 10);
+    CHECK(actions.list().size() == 12);
+    CHECK(actions.list()[10].id == "p1_noshuffle" && actions.list()[10].is_toggle() && actions.list()[10].max() == 0);
+    CHECK(actions.list()[11].id == "p2_noshuffle" && !actions.no_shuffle(0) && !actions.no_shuffle(1));
+    CHECK(actions.parse_line("!battle p2_noshuffle on 0") && actions.no_shuffle(1) && !actions.no_shuffle(0));
     CHECK(actions.list()[0].id == "p1_hp" && actions.list()[0].value == 9990 && !actions.list()[0].enabled);
     CHECK(actions.list()[4].id == "p1_dp" && actions.list()[4].value == 90);
     CHECK(actions.list()[5].id == "p2_hp" && actions.list()[5].value == 0);
@@ -202,9 +205,20 @@ void test_battle_tab() {
     CHECK(t.battle().list()[4].value == 90);
     check_fits(t, kPanelCols, kPanelRows);
     check_fits(t, 20, 12);
+    // The toggles at the end: Space turns one on; values and typing do nothing there.
+    for (int i = 0; i < 6; ++i) t.key(Key::Down);  // P1 deck in order
+    t.text(" ");
+    t.key(Key::Right);
+    t.text("50");
+    t.key(Key::Enter);  // nothing typed on a toggle: Enter toggles it back
+    CHECK(!t.battle().no_shuffle(0));
+    t.text(" ");
+    CHECK(t.battle().no_shuffle(0) && t.battle().list()[10].value == 0);
+    CHECK(contains(t.render(kPanelCols, kPanelRows), "deck in order"));
     t.text("s");
     CHECK(!t.dirty());
     const std::string saved = *platform::read_text_file(file);
+    CHECK(saved.find("!battle p1_noshuffle on 0\n") != std::string::npos);
     CHECK(saved.find("[Keep me] on\n80000100 0001\n") != std::string::npos);
     CHECK(saved.find("!battle p1_hp on 5000\n") != std::string::npos);
     CHECK(saved.find("!battle p1_dp on 90\n") != std::string::npos);

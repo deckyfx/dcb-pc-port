@@ -21,6 +21,7 @@ constexpr StatInfo kStats[] = {
     {BattleStat::Triangle, "triangle", "triangle attack"},
     {BattleStat::Cross, "cross", "cross attack"},
     {BattleStat::Dp, "dp", "DP"},
+    {BattleStat::NoShuffle, "noshuffle", "deck in order (no shuffle)"},
 };
 
 }  // namespace
@@ -34,8 +35,12 @@ std::string BattleAction::label() const {
 int snap_battle_value(int value, int max) { return std::clamp(value, 0, max) / 10 * 10; }
 
 BattleActions::BattleActions() {
-    for (int player = 0; player < 2; ++player) {
+    // The value actions per player, then the no-shuffle toggles (kept last so the value rows keep
+    // their places).
+    for (int toggles = 0; toggles < 2; ++toggles) {
+      for (int player = 0; player < 2; ++player) {
         for (const StatInfo& s : kStats) {
+            if ((s.stat == BattleStat::NoShuffle) != (toggles == 1)) continue;
             BattleAction a;
             a.id = std::string(player == 0 ? "p1_" : "p2_") + s.id;
             a.player = player;
@@ -43,7 +48,14 @@ BattleActions::BattleActions() {
             a.value = player == 0 ? a.max() : 0;
             list_.push_back(a);
         }
+      }
     }
+}
+
+bool BattleActions::no_shuffle(int player) const {
+    for (const BattleAction& a : list_)
+        if (a.player == player && a.stat == BattleStat::NoShuffle) return a.enabled;
+    return false;
 }
 
 void BattleActions::set_enabled(size_t i, bool on) {
