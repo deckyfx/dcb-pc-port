@@ -71,7 +71,7 @@ src/game/               entry point + hand-written overrides of recompiled funct
 tools/disc/             extract_disc.py (+ tests), verify_import.sh
 tools/ghidra/           setup_ghidra_mcp.sh, import_ghidra.sh
 tools/recomp/           the MIPS→C recompiler (C++ host tool)
-tools/assets/           TIM / VAB / XA / STR converters
+tools/assets/           TIM / VAB / XA / STR converters, swap_us_images.py (+ tests)
 tests/                  runtime unit tests (ctest)
 ```
 
@@ -299,6 +299,17 @@ bit is taken from the original pixel unless alpha is exactly 254 (forces it on).
 prints how many texture uploads were replaced and why others were not; `DCB_LOG_HD=1` (or
 `./dcb.sh -H`) logs each texture as it is replaced (file, size, format); `DCB_TRACE_HD=<n>` logs the
 first *n* uploads that match no manifest entry (movie frames arrive as 24-pixel-wide strips and never match).
+
+**US images in the JP game.** With both games ripped (`assets/converted/SLPS-03101/` and
+`assets/converted/SLUS-01328/`), `tools/assets/swap_us_images.py` copies the US image over the JP
+one wherever the layout is the same: attack names, mini cards, battle UI, card art, the opening,
+partner, friend and trade screens (about 1,160 images). It pairs images by their layout on the
+disc, not by file name, and lists what it leaves alone (the title, the MATCH/WIN name plates, and
+attack names with no US version). Where one JP image stands for attacks the US build named
+differently, it picks the translated one and lists the choice. Run it without options for a dry
+run, with `--apply` to copy (the JP originals go to `assets/SLPS-03101/backup/us_images/`), or
+`--restore` to put them back; then re-pack. `SYSTEM.TIM` is never swapped (the JP text engine
+draws its font from it).
 
 **Resizing sprites.** The game draws each sprite one texel per pixel, at its original size. When
 replacement art needs a different size on screen (a longer English line, a smaller logo), put a
