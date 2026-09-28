@@ -112,7 +112,7 @@ std::vector<std::string> Trainer::load() {
 void Trainer::set_presets(std::string_view text) {
     presets_ = CheatSet::parse(text);
     apply_preset_states();
-    tab_ = presets_.cheats().empty() ? Tab::Cheats : Tab::Presets;
+    tab_ = presets_.cheats().empty() ? Tab::Battle : Tab::Presets;
 }
 
 void Trainer::apply_preset_states() {
@@ -175,13 +175,13 @@ void Trainer::key(Key k) {
         open_ = false;
         return;
     }
-    if (k == Key::Tab) {  // Presets (when the game has any) -> Custom -> Battle -> Search
+    if (k == Key::Tab) {  // Presets (when the game has any) -> Battle -> Custom -> Search
         const bool presets = !presets_.cheats().empty();
-        tab_ = tab_ == Tab::Presets  ? Tab::Cheats
-               : tab_ == Tab::Cheats ? Tab::Battle
-               : tab_ == Tab::Battle ? Tab::Search
+        tab_ = tab_ == Tab::Presets  ? Tab::Battle
+               : tab_ == Tab::Battle ? Tab::Cheats
+               : tab_ == Tab::Cheats ? Tab::Search
                : presets             ? Tab::Presets
-                                     : Tab::Cheats;
+                                     : Tab::Battle;
         return;
     }
     if (tab_ == Tab::Presets) presets_key(k);
@@ -488,8 +488,8 @@ std::vector<Line> Trainer::render(int cols, int rows) const {
         std::string tabs;
         const auto tab = [&](Tab t, const char* name) { tabs += tab_ == t ? std::string("[") + name + "] " : std::string(" ") + name + "  "; };
         if (!presets_.cheats().empty()) tab(Tab::Presets, "Presets");
-        tab(Tab::Cheats, "Custom");
         tab(Tab::Battle, "Battle");
+        tab(Tab::Cheats, "Custom");
         tab(Tab::Search, "Search");
         add("TRAINER " + tabs + (dirty_ ? " *unsaved" : ""), Style::Title);
     }

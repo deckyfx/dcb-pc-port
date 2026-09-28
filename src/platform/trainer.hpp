@@ -118,7 +118,7 @@ private:
     bool dirty_ = false;
     bool trace_ = false;
     uint64_t frame_ = 0;
-    Tab tab_ = Tab::Cheats;
+    Tab tab_ = Tab::Battle;  ///< the first tab; Presets once the game supplies some
     int cheat_sel_ = 0;
     int preset_sel_ = 0;
     int battle_sel_ = 0;

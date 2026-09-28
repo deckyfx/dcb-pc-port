@@ -166,13 +166,13 @@ switches between its pages:
 
 - **Presets:** cheats built into the port for this game (all cards ×4, all 127 Digi parts). They
   cannot be edited; their on/off state is saved in the cheat file as `!preset <name> on|off`.
-- **Custom:** your own codes from the cheat file below, and what you freeze on the Search page.
 - **Battle:** during a card battle, `F10` (`[hotkeys] battle_p1`) applies the P1 lines that are
   on (HP, circle/triangle/cross attack, DP, each with its value), `F11` (`battle_p2`) the P2
   lines, and `F12` (`battle_reset`) puts every stat they changed back. Values are multiples of 10
   up to the game's caps (9990, DP 90): Left/Right step by 10, PgUp/PgDn by 1000, or type a
   number and press Enter. Saved in the cheat file as `!battle` lines. See
   [docs/re/battle.md](docs/re/battle.md).
+- **Custom:** your own codes from the cheat file below, and what you freeze on the Search page.
 - **Search:** memory search, below.
 
 The `F1` menu's Hotkeys page lists every hotkey and what it does.

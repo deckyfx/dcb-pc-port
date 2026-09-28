@@ -45,12 +45,13 @@ void test_workflow() {
     CHECK(t.cheats().cheats().empty());
     t.set_open(true);
     CHECK(t.is_open());
+    CHECK(contains(t.render(kPanelCols, kPanelRows), "[Battle]"));  // the first tab without presets
+    t.key(Key::Tab);  // Custom
     CHECK(contains(t.render(kPanelCols, kPanelRows), "No cheats"));
 
     // Search tab: 16-bit (default), value 1234.
     write_value(ram.data(), 0x0B1234, ValueSize::U16, 1234);
     write_value(ram.data(), 0x000100, ValueSize::U16, 1234);
-    t.key(Key::Tab);  // Battle
     t.key(Key::Tab);  // Search
     t.text("1234");  // the value row is selected first
     t.key(Key::Enter);
@@ -97,7 +98,8 @@ void test_workflow() {
     CHECK(read_value(ram.data(), 0x0B1234, ValueSize::U16) == 42);
 
     // Cheats tab: save, toggle off (no effect on RAM), reload restores the saved state.
-    t.key(Key::Tab);
+    t.key(Key::Tab);  // Battle
+    t.key(Key::Tab);  // Custom
     t.text("s");
     CHECK(!t.dirty() && fs::exists(file));
     CHECK(platform::read_text_file(file)->find("[Freeze 800B1234 = 9999] on\n800B1234 270F\n") != std::string::npos);
@@ -129,6 +131,7 @@ void test_invalid_cheat_and_rendering() {
     CHECK(log.size() == 2 && log[0].find("2 cheats (0 on)") != std::string::npos);
     CHECK(log[1].find("C1") != std::string::npos);
     t.set_open(true);
+    t.key(Key::Tab);  // Battle -> Custom
     t.key(Key::Down);
     t.text(" ");
     CHECK(t.status().find("cannot enable") != std::string::npos);
@@ -139,7 +142,6 @@ void test_invalid_cheat_and_rendering() {
             for (int rows : {1, 4, 12, 22, 30, 80}) check_fits(t, cols, rows);
         t.key(Key::Tab);
     }
-    t.key(Key::Tab);  // battle tab
     t.key(Key::Tab);  // search tab
     t.text("0");
     t.key(Key::Enter);
@@ -182,8 +184,7 @@ void test_battle_tab() {
     for (const std::string& line : log) reported = reported || line.find("bad battle line") != std::string::npos;
     CHECK(reported);
 
-    t.set_open(true);
-    t.key(Key::Tab);  // Battle tab, P1 HP selected
+    t.set_open(true);  // the Battle tab is first (no presets), P1 HP selected
     CHECK(contains(t.render(kPanelCols, kPanelRows), "[Battle]"));
     t.text(" ");  // P1 HP on
     CHECK(t.battle().list()[0].enabled);
@@ -241,10 +242,12 @@ void test_presets() {
     t.key(Key::Delete);  // presets cannot be removed
     CHECK(t.presets().cheats().size() == 2);
     t.key(Key::Tab);
+    CHECK(contains(t.render(kPanelCols, kPanelRows), "[Battle]"));
+    t.key(Key::Tab);
     CHECK(contains(t.render(kPanelCols, kPanelRows), "[Custom]"));
     t.key(Key::Tab);
-    t.key(Key::Tab);
-    t.key(Key::Tab);  // Search -> back to Presets
+    CHECK(contains(t.render(kPanelCols, kPanelRows), "[Search]"));
+    t.key(Key::Tab);  // back to Presets
     CHECK(contains(t.render(kPanelCols, kPanelRows), "[Presets]"));
     check_fits(t, 20, 12);
     CHECK(t.save());
