@@ -656,6 +656,55 @@ void test_hd_raw() {
     CHECK(hd.maybe_replace(0, 0, 2, 2, other, 2) == nullptr);
 }
 
+// A palette can hold one colour twice. The PNG cannot say which entry the art used, so a pixel
+// whose colour is unchanged keeps its original index (the game recolours palettes in battle,
+// where the other entry shows: Tyrannomon's pink belly). Edited pixels still convert.
+void test_hd_duplicate_colours() {
+    const fs::path dir = scratch_dir();
+    fs::create_directories(dir / "art");
+    // 4-bit palette: entries 1 and 2 are both pure red; 3 is green.
+    uint16_t pal[16] = {0, 0x001F, 0x001F, 0x03E0};
+    std::string pal_hex;
+    for (const uint16_t e : pal) {
+        char h[5];
+        std::snprintf(h, sizeof h, "%04x", e);
+        pal_hex += h;
+    }
+    // Original 8x1 upload uses entry 2 everywhere but pixel 0 (entry 1) and pixel 7 (entry 3).
+    const uint32_t staged[1] = {0x32222221u};
+    // The PNG: pixels 0-6 red (unchanged), pixel 7 edited from green to red.
+    std::vector<uint8_t> rgba(8 * 4, 0);
+    for (int i = 0; i < 8; ++i) {
+        rgba[i * 4] = 255;
+        rgba[i * 4 + 3] = 255;
+    }
+    int png_len = 0;
+    unsigned char* png = stbi_write_png_to_mem(rgba.data(), 8 * 4, 8, 1, 4, &png_len);
+    CHECK(png && png_len > 0);
+    FILE* f = std::fopen((dir / "art" / "d.png").string().c_str(), "wb");
+    CHECK(f);
+    CHECK(std::fwrite(png, 1, static_cast<size_t>(png_len), f) == static_cast<size_t>(png_len));
+    std::fclose(f);
+    STBIW_FREE(png);
+    char manifest[512];
+    std::snprintf(manifest, sizeof manifest,
+                  "{\"version\":1,\"entries\":[{\"img\":\"%s\",\"w\":8,\"h\":1,\"bpp\":4,"
+                  "\"path\":\"d.png\",\"pal\":\"%s\"}]}",
+                  vfs::to_hex16(vfs::fnv1a64(staged, 4)).c_str(), pal_hex.c_str());
+    const std::string man_path = (dir / "m.json").string();
+    f = std::fopen(man_path.c_str(), "wb");
+    CHECK(f);
+    std::fwrite(manifest, 1, std::strlen(manifest), f);
+    std::fclose(f);
+
+    hle::HdTextures hd;
+    CHECK(hd.load(man_path, (dir / "art").string()));
+    const std::vector<uint16_t>* hit = hd.maybe_replace(0, 0, 2, 1, staged, 1);
+    CHECK(hit && hit->size() == 2);
+    // Pixels 0-6 keep 1,2,2,2,2,2,2; pixel 7 (edited to red) converts to the first red, 1.
+    CHECK((*hit)[0] == 0x2221u && (*hit)[1] == 0x1222u);
+}
+
 // --- VAB / BRR ---------------------------------------------------------------
 // Hand-computed vectors for the SPU-ADPCM formula (spu-adpcm, psx-spx "SPU
 // ADPCM Samples"): sample = (nibble<<12 >> shift) + ((old*pos + older*neg + 32) >> 6).
@@ -779,6 +828,7 @@ constexpr Case kCases[] = {
     {"hd_identity_e2e", test_hd_identity_e2e},
     {"hd_slot", test_hd_slot},
     {"hd_raw", test_hd_raw},
+    {"hd_duplicate_colours", test_hd_duplicate_colours},
     {"brr_block", test_brr_block},
     {"vab_parse", test_vab_parse},
     {"vab_decode", test_vab_decode},

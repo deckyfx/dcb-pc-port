@@ -73,6 +73,12 @@ public:
     static LoadLog& instance();
 
     bool enabled() const { return enabled_; }
+    /// Host frame of the last stamp (DCB_LOG_LOADS or DCB_LOG_TEX keep it current).
+    uint64_t frame() const { return frame_; }
+    /// The file the game opened last through the native file layer ("E:\\1000.PAK"), recorded
+    /// even when the log is off, so the texture log can say where an upload came from.
+    const std::string& last_file() const { return last_file_; }
+    void note_file(const std::string& path) { last_file_ = path; }
     void set_enabled(bool on) { enabled_ = on; }
 
     /// Frame/cycle stamps, set by the host loop once per frame.
@@ -109,6 +115,7 @@ private:
     LoadLog() = default;
     bool enabled_ = false;
     uint64_t frame_ = 0, cycles_ = 0;
+    std::string last_file_;
     LoadMap map_;
     DrvEntries drvs_;
 
