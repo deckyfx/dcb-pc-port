@@ -82,11 +82,13 @@ void load_names();
 
 /// The JP deck label format "%sデック" (EXE 800114E0, sprintf'd with the deck name) becomes the
 /// US "%s Deck", so every deck name, English or a JP name the player typed, reads "<name> Deck".
-/// Only when the bytes are the stock ones (8 of the 9 bytes plus padding fit).
+/// Only when the bytes are the stock ones (8 of the 9 bytes plus padding fit); one byte read
+/// when already patched.
 constexpr uint32_t kDeckFormat = 0x800114E0u;
 void patch_deck_format(PsxContext& ctx) {
     static const uint8_t jp[] = {'%', 's', 0x83, 0x66, 0x83, 0x62, 0x83, 0x4E, 0};
     static const char us[] = "%s Deck";  // 7 letters + NUL
+    if (psx_read8(&ctx, kDeckFormat + 2) != jp[2]) return;
     for (uint32_t i = 0; i < sizeof(jp); ++i)
         if (psx_read8(&ctx, kDeckFormat + i) != jp[i]) return;
     for (uint32_t i = 0; i < sizeof(us); ++i) psx_write8(&ctx, kDeckFormat + i, static_cast<uint8_t>(us[i]));
@@ -131,7 +133,6 @@ bool load_font(PsxContext& ctx) {
         units[i] = static_cast<uint16_t>(g_font_rows[i * 2] | (g_font_rows[i * 2 + 1] << 8));
     mmio->gpu().set_private_sheet(std::move(units), kSheetUnits, kFontRows);
     load_names();
-    patch_deck_format(ctx);
     return true;
 }
 
@@ -627,6 +628,7 @@ int run_mixed(PsxContext& ctx, uint32_t jp_addr, bool draw, int x, int y, int cl
 void dispatch(PsxContext* ctx, uint32_t jp_addr, bool draw, int x, int y, int clut, int prop, uint32_t rgb,
               int ot, uint32_t str) {
     if (!load_font(*ctx)) return psx_call_original(ctx, jp_addr);
+    patch_deck_format(*ctx);  // every call: a reset or an older save state brings the JP bytes back
     const Text t = load_text(*ctx, str);
     int w = 0;
     if (is_ascii(t)) {
