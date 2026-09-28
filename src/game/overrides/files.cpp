@@ -244,6 +244,7 @@ void dcb_file_open(PsxContext* ctx) {
         return;  // directories are opened through chdir (80015994), which is native too
     }
     const Source& src = g_sources[id];
+    hle::LoadLog::instance().note_file(path);
     if (hle::LoadLog::instance().enabled())  // who asked for it: the guest call chain
         hle::LoadLog::instance().file(path, src.size, src.loose, psx::backtrace_string(ctx));
     set_field(*ctx, handle, kInUse, mode);

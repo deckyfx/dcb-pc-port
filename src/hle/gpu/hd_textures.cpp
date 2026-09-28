@@ -4,6 +4,7 @@
 #include "gpu/hd_textures.hpp"
 
 #include "vfs/hash.hpp"
+#include "cdrom/load_log.hpp"
 
 #include <psx/backtrace.hpp>
 #include "vfs/image.hpp"
@@ -35,6 +36,8 @@ struct ManifestEntry {
     int w = 0, h = 0, bpp = 0;
     int slot_w = 0, slot_h = 0;  ///< "slot_w"/"slot_h": upload the art at this larger size (0 = w, h)
     std::string path;
+    std::string alt;  ///< "alt": the ripper's name for the image (texture log)
+    std::string us;   ///< "us": where swap_us_images.py took the US data from (texture log)
     std::vector<uint16_t> pal;  ///< the image's own palette ("pal"), if the manifest has it
 };
 
@@ -231,6 +234,8 @@ bool parse_entry(const char*& p, const char* end, ManifestEntry& e) {
             }
         } else if (key == "path") {
             if (!parse_string(p, end, e.path)) return false;
+        } else if (key == "alt" || key == "us") {
+            if (!parse_string(p, end, key == "alt" ? e.alt : e.us)) return false;
         } else if (key == "pal") {
             std::string hex;
             if (!parse_string(p, end, hex) || !parse_palette_hex(hex, e.pal)) return false;
@@ -421,7 +426,8 @@ bool HdTextures::load(const std::string& manifest_path, const std::string& art_p
     }
     for (auto& e : entries) {
         index_[e.img].push_back(
-            {std::move(e.path), e.w, e.h, e.bpp, e.clut, e.has_clut, std::move(e.pal), e.slot_w, e.slot_h});
+            {std::move(e.path), e.w, e.h, e.bpp, e.clut, e.has_clut, std::move(e.pal), e.slot_w, e.slot_h,
+             std::move(e.alt), std::move(e.us)});
         if (e.has_clut) clut_hashes_.insert(e.clut);
         ++entry_total_;
     }
@@ -470,6 +476,58 @@ void HdTextures::note_clut(uint64_t hash, const uint32_t* staged, size_t staged_
 
 const std::vector<uint16_t>* HdTextures::maybe_replace(int x, int y, int w, int h, const uint32_t* staged,
                                                        size_t staged_words, int* out_w, int* out_h) {
+    const std::vector<uint16_t>* out = replace_upload(x, y, w, h, staged, staged_words, out_w, out_h);
+    if (log_tex()) log_upload(x, y, w, h, staged, staged_words, out);
+    return out;
+}
+
+bool HdTextures::log_tex() {
+    static const bool on = [] {
+        const char* e = std::getenv("DCB_LOG_TEX");
+        return e && *e && *e != '0';
+    }();
+    return on;
+}
+
+void HdTextures::log_upload(int x, int y, int w, int h, const uint32_t* staged, size_t staged_words,
+                            const std::vector<uint16_t>* result) {
+    // DCB_LOG_TEX=1: every distinct upload once (same content to the same place is one line), with
+    // the file it came from, what the manifest knows about it and what was committed.
+    const size_t units = static_cast<size_t>(w) * static_cast<size_t>(h);
+    if (!staged || w <= 0 || h <= 0 || staged_words * 2 < units) return;
+    uint64_t hash = vfs::kFnvOffsetBasis;
+    for (size_t i = 0; i < units; ++i) {
+        const uint16_t unit = static_cast<uint16_t>(staged[i / 2] >> ((i & 1) * 16));
+        hash ^= static_cast<uint64_t>(unit & 0xFFu);
+        hash *= vfs::kFnvPrime;
+        hash ^= static_cast<uint64_t>(unit >> 8);
+        hash *= vfs::kFnvPrime;
+    }
+    const uint64_t key = hash ^ (static_cast<uint64_t>(x) << 44) ^ (static_cast<uint64_t>(y) << 34);
+    if (!logged_uploads_.insert(key).second) return;
+
+    const auto it = index_.find(hash);
+    const Candidate* c = it != index_.end() && !it->second.empty() ? &it->second.front() : nullptr;
+    const bool palette = !c && clut_hashes_.count(hash) != 0;
+    const bool us_palette = c && c->us.find("(palette)") != std::string::npos;
+    const char* what = us_palette || palette ? "palette" : c ? "image" : "upload";
+    char shape[64] = "";
+    if (c && c->bpp != 16)
+        std::snprintf(shape, sizeof shape, ", %dx%d %d-bit", c->w, c->h, c->bpp);
+    std::string outcome;
+    if (!result) outcome = c ? "kept original (see DCB_LOG_HD for why)" : "original";
+    else if (c && c->path.size() > 4 && c->path.compare(c->path.size() - 4, 4, ".raw") == 0)
+        outcome = "US raw" + (c->us.empty() ? std::string() : " (" + c->us + ")");
+    else outcome = "replaced " + (c ? c->path : std::string("?"));
+    const std::string& file = LoadLog::instance().last_file();
+    std::printf("[tex] frame %llu %s (%d,%d) %dx%d units%s  from %s  -> %s%s%s\n",
+                static_cast<unsigned long long>(LoadLog::instance().frame()), what, x, y, w, h, shape,
+                file.empty() ? "?" : file.c_str(), outcome.c_str(), c && !c->alt.empty() ? "  [" : "",
+                c && !c->alt.empty() ? (c->alt + "]").c_str() : "");
+}
+
+const std::vector<uint16_t>* HdTextures::replace_upload(int x, int y, int w, int h, const uint32_t* staged,
+                                                        size_t staged_words, int* out_w, int* out_h) {
     if (out_w) *out_w = w;
     if (out_h) *out_h = h;
     if (!enabled() || !staged || w <= 0 || h <= 0 || w > 1024 || h > 512) {

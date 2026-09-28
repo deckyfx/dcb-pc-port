@@ -351,12 +351,12 @@ def main() -> int:
             (raw / f"{key}.raw").write_bytes(c.us)
             m = image_meta[key]
             entries.append({"img": key, "w": m["w"], "h": m["h"], "bpp": m["bpp"],
-                            "path": f"{RAW_DIR}/{key}.raw", "us": c.label})
+                            "path": f"{RAW_DIR}/{key}.raw", "us": c.label, "alt": Path(m["path"]).stem})
         for key, c in palette_plan.items():
             (raw / f"{key}.raw").write_bytes(c.us)
             w, h = palette_rect[key]
             entries.append({"img": key, "w": w, "h": h, "bpp": 16, "path": f"{RAW_DIR}/{key}.raw",
-                            "us": c.label + " (palette)"})
+                            "us": c.label + " (palette)", "alt": Path(image_meta[c.image]["path"]).stem})
         jp_manifest["entries"] = entries
         (jp_dir / "assets_manifest.json").write_text(json.dumps(jp_manifest, separators=(",", ":")))
 

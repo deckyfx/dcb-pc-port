@@ -115,7 +115,16 @@ private:
         bool has_clut = false;
         std::vector<uint16_t> pal;  ///< the image's own palette (manifest "pal"); empty on old manifests
         int slot_w = 0, slot_h = 0;  ///< larger upload size in pixels (manifest "slot_w"/"slot_h"), 0 = w, h
+        std::string alt;             ///< the ripper's name for the image (manifest "alt"; texture log)
+        std::string us;              ///< where the US data came from (manifest "us"; texture log)
     };
+    /// The upload logic behind maybe_replace() (which adds the DCB_LOG_TEX line).
+    const std::vector<uint16_t>* replace_upload(int x, int y, int w, int h, const uint32_t* staged,
+                                                size_t staged_words, int* out_w, int* out_h);
+    static bool log_tex();
+    void log_upload(int x, int y, int w, int h, const uint32_t* staged, size_t staged_words,
+                    const std::vector<uint16_t>* result);
+    std::unordered_set<uint64_t> logged_uploads_;  ///< DCB_LOG_TEX: (content, place) already logged
 
     /// VRAM rect (in 16-bit units) a TIM of these pixel dims occupies when the
     /// game uploads the block verbatim — the only uploads we replace.

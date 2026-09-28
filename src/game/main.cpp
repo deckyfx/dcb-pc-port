@@ -536,7 +536,7 @@ int main(int argc, char** argv) {
             // load log share the host frame counter). One predictable branch
             // when everything is off.
             static const bool tracing =
-                coverage_armed || hle::LoadLog::instance().enabled();
+                coverage_armed || hle::LoadLog::instance().enabled() || std::getenv("DCB_LOG_TEX");
             if (tracing) {
                 psx_coverage_frame = frame;
                 hle::LoadLog::instance().set_frame(frame, machine.ctx().cycles);

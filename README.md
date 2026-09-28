@@ -298,7 +298,10 @@ frames bit-identical to the original. PNG alpha: 0 = transparent, 255 = opaque; 
 bit is taken from the original pixel unless alpha is exactly 254 (forces it on). At exit the game
 prints how many texture uploads were replaced and why others were not; `DCB_LOG_HD=1` (or
 `./dcb.sh -H`) logs each texture as it is replaced (file, size, format); `DCB_TRACE_HD=<n>` logs the
-first *n* uploads that match no manifest entry (movie frames arrive as 24-pixel-wide strips and never match).
+first *n* uploads that match no manifest entry (movie frames arrive as 24-pixel-wide strips and never match). `DCB_LOG_TEX=1`
+(with `DCB_LOG_LOADS=1`: `./dcb.sh -T`) logs every distinct texture and palette upload once: frame,
+VRAM position and size, the file it came from, and what was committed (original, a replacement
+PNG, or US raw data), so a glitch on screen can be traced to its file and manifest entry.
 
 **US images in the JP game.** With both games ripped (`assets/converted/SLPS-03101/` and
 `assets/converted/SLUS-01328/`), `tools/assets/swap_us_images.py` makes the JP game show the US
