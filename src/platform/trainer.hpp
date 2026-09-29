@@ -11,6 +11,7 @@
 #include "trainer_battle.hpp"
 #include "trainer_cheats.hpp"
 #include "trainer_partners.hpp"
+#include "trainer_records.hpp"
 #include "trainer_search.hpp"
 #include "trainer_toggles.hpp"
 
@@ -99,6 +100,9 @@ private:
     void general_char(char c);
     void sync_partner_choices();
     void apply_partner(int slot);
+    void sync_record_choices();
+    void apply_record(int deck);
+    void step_record(int deck, bool wins, int delta);
     void apply_preset_states();
     void battle_key(Key k);
     void battle_char(char c);
@@ -130,8 +134,9 @@ private:
     uint64_t frame_ = 0;
     Tab tab_ = Tab::General;  ///< the first tab
     int cheat_sel_ = 0;
-    int general_sel_ = 0;  ///< a preset, then (past their count) a game toggle, then a partner slot
+    int general_sel_ = 0;  ///< presets, toggles, partner slots, then deck-record rows (wins, losses)
     std::array<int, kPartnerSlots> partner_choice_{};  ///< per slot: kPartners index, -1 = empty
+    std::array<std::array<int, 2>, kRecordDecks> record_choice_{};  ///< per deck: {wins, losses} choices
     int battle_sel_ = 0;
     std::string battle_edit_;  ///< digits typed on the Battle tab, applied with Enter
     int search_sel_ = kRowValue;

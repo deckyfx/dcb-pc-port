@@ -71,8 +71,9 @@ Palmon (98) `C1 -> C2`, card 30 `41 -> 42 -> C2`.
 ## Other writers seen (role not worked out)
 
 `8004835C` (called by `collection_add_card` per copy; the busiest writer while a save loads),
-`80036BEC` (small counters at `+0x36`/`+0x38` and `+0x276E`.. during battle), `80041650` (after
-a battle: `+0x250E` +1, likely a win count), KAWSEG `801EF968` and `801ED064`.
+`80036BEC` (small counters at `+0x36`/`+0x38` and `+0x276E`.. during battle), `80041650`
+(`battle_result`: its record-update block writes the decks' `+0x106`/`+0x108`, see
+[above](#deck-record-0x2408--deck--0x10c--0x1040x1060x108)), KAWSEG `801EF968` and `801ED064`.
 
 ## Progression flags
 
@@ -174,7 +175,20 @@ OPENSEG `801EC450`, `deck_entry_set` `800495D8`; seen in a save)
 | `+0x00` | u8 | 0 = unused, else in use |
 | `+0x01` | 13 bytes | deck name ([name-entry.md](name-entry.md)) |
 | `+0x10` | 8 × 30 | entries: u8 kind (0 Digimon, card < 191; 1 option, card − 191; 2 other, card − 293), u8 index in that kind, u16 card number, u32 RAM pointer to the card's data |
-| `+0x100` | u16 × 6 | counters (`+0x104` +1 and `+0x106`/`+0x108` capped at 9999 by `deck_store`) (L) |
+| `+0x100` | u16 × 6 | deck record counters: `+0x104` / `+0x106` / `+0x108` battles / wins / losses (capped at 999) |
+
+### Deck record (`+0x2408` + deck × `0x10C` + `0x104`/`0x106`/`0x108`)
+
+**H** (code, seen at run time). After a battle the game's record update (`battle_result`
+`80041650`, block `800422B4`-`800422FC`) adds one to the winner's active deck `+0x106`
+and the loser's `+0x108` (each capped: 999 kept), and KAWSEG `battle_counters_add`
+(`801FCF78`) the per-opponent `+0x818` counters. `deck_store` (`8004979C`, RAM
+`800498B8`-`800498DC`) keeps the same three capped. There is **no player-level total**:
+what the VS and result screens show as "yours" is the active deck's record. The VS screen
+(`vs_screen_draw`, KAWSEG `801F35D8`) copies deck `+0x106`/`+0x108` into its display struct
+(KAWSEG `801FF1E4 + 0x760`-`+0x766`: P1 wins/losses, then P2's; `vs_record_draw`, KAWSEG
+`801F03C8`) and draws them as `%4d` (wins + losses, the battle count), `%3d`, `%3d`.
+`game_data_init` (`8002FD64`) zeroes the triple.
 
 The pointers are rebuilt when a save is loaded (`deck_fixup` for each used deck, from
 `decks_fixup_all` `800493C0`): Digimon → `*801DB000 + index·0x134`, or the partner's slot record
@@ -206,6 +220,16 @@ saving in game and loading the save again; the slot records the game rebuilt on 
 trainer's byte for byte. A swap (Patamon to partner 1) showed on the Partner screen too.
 Not tried: a battle with a changed partner (the deck's entry points at the slot record, as
 with a partner received in game).
+
+### Trainer: deck record editor (General tab)
+
+`src/platform/trainer_records.cpp` (`set_record`), written once when Enter is pressed on a
+deck's wins or losses row (the game is paused while the panel is open); saving in game keeps
+it. `Left`/`Right` step the choice by 1, `PgUp`/`PgDn` by 10 (clamped 0-999, the game's
+cap); the row shows the choice and what the game has now (`W-L (battles)`). It writes
+`+0x106`/`+0x108` of that deck only; the battle count (`+0x104`) is not stored separately
+(the screens show wins + losses). Refused, with the reason on the status line: no save
+loaded, or a deck that is not used yet.
 
 ### Fusion Shop flags (`+0x2C`)
 

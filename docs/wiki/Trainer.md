@@ -30,6 +30,12 @@ paused while it is open; `F4` or `Esc` closes it, `Tab` switches between its pag
     before a filled slot, removing a partner still in a deck, or a partner whose card is in a deck
     as a plain card (only possible with the all-cards preset). Change partners on the city map
     rather than during a battle or on the Partner screen.
+  - Deck records 1-3: `Left`/`Right` step a deck's wins or losses by 1, `PgUp`/`PgDn` by 10
+    (0-999, the game's cap), `Enter` writes it; the row shows what the game has now
+    (`W-L (battles)`). It is written once (not kept in the cheat file): save in game to keep
+    it. The wins and losses are what the VS and result screens show (battles = wins + losses);
+    there is no separate player total, only each deck's own record. Refused, with the reason on
+    the status line: no save loaded, or a deck that is not used yet.
   See [docs/re/save-data.md](../re/save-data.md).
 - **Battle:** during a card battle, `F10` (`[hotkeys] battle_p1`) applies the P1 lines that are
   on (HP, circle/triangle/cross attack, DP, each with its value), `F11` (`battle_p2`) the P2
