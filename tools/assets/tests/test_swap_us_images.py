@@ -107,6 +107,30 @@ def tim_bytes(image, pixels, clut=(512, 228, 16, 1), palette=b"\x01\x00" * 16):
             + struct.pack("<IHHHH", 12 + len(pixels), *image) + pixels)
 
 
+def pack4(rows):
+    """4-bit pixel rows (lists of indices) as TIM image bytes."""
+    return b"".join(bytes(r[x] | (r[x + 1] << 4) for x in range(0, len(r), 2)) for r in rows)
+
+
+def unpack4(data, width):
+    return [[(data[r + x // 2] >> 4) if x & 1 else (data[r + x // 2] & 15) for x in range(width)]
+            for r in range(0, len(data), width // 2)]
+
+
+# An 88x80 plate: background index 1, an 11x11 icon of index `a` at (13, 26), one of `b` at (13, 41).
+def plate(a, b):
+    rows = [[1] * 88 for _ in range(80)]
+    for y in range(11):
+        for x in range(11):
+            rows[26 + y][13 + x] = a
+            rows[41 + y][13 + x] = b
+    return pack4(rows)
+
+
+PLATE_PAL_JP = struct.pack("<16H", 0, 0x1484, 0x35DC, 0x6F7B, *range(12))
+PLATE_PAL_US = struct.pack("<16H", 0, 0x1484, 0x2129, 0x4969, 0x37C0, *range(11))
+
+
 class TisTest(unittest.TestCase):
     NAMES, BUTTONS, HELP = (832, 0, 48, 120), (792, 0, 16, 144), (808, 0, 22, 80)
 
@@ -145,13 +169,24 @@ class TisTest(unittest.TestCase):
 
     def test_area_image_chunk_touches_only_the_tis(self):
         write_pak, chunk = swap.dcb_containers.write_pak, swap.dcb_containers.Chunk
-        jp_tis = swap.write_tis([tim_bytes(self.HELP, b"jp-help!"), tim_bytes(self.NAMES, b"jp-names")])
-        us_tis = swap.write_tis([tim_bytes(self.NAMES, b"us-names"), tim_bytes(self.HELP, b"us-help!")])
+        same = tim_bytes((512, 0, 12, 48), b"same")
+        jp_tis = swap.write_tis([same, tim_bytes(self.NAMES, b"jp-names")])
+        us_tis = swap.write_tis([tim_bytes(self.NAMES, b"us-names"), same])
         jp_pak = write_pak([chunk(2, 0xC9, 0, b"MSCD jp script"), chunk(5, 0xFA1, 0, jp_tis)])
         us_pak = write_pak([chunk(2, 0xC9, 0, b"MSCD us script"), chunk(5, 0xFA1, 0, us_tis)])
         out = swap.dcb_containers.read_tis(swap.area_image_chunk(jp_pak, us_pak))
-        # KEEP_JP holds the city HELP MENU plate: its US button names do not match the JP code.
-        self.assertEqual(out, [tim_bytes(self.HELP, b"jp-help!"), tim_bytes(self.NAMES, b"us-names")])
+        self.assertEqual(out, [same, tim_bytes(self.NAMES, b"us-names")])
+
+    def test_graft_recomposes_the_help_plate(self):
+        # The city HELP MENU plate (COMPOSE): the US plate with the icons for the JP controls.
+        jp_px, us_px = plate(2, 3), plate(3, 4)
+        jp = [tim_bytes(self.HELP, jp_px, palette=PLATE_PAL_JP)]
+        us = [tim_bytes(self.HELP, us_px, palette=PLATE_PAL_US)]
+        out = swap.read_tim(swap.dcb_containers.read_tis(
+            swap.graft_tis(swap.write_tis(jp), swap.write_tis(us), drv_name="C.DRV")[0])[0], 0)
+        ut, jt = swap.read_tim(us[0], 0), swap.read_tim(jp[0], 0)
+        self.assertEqual((out.pixels, out.palette), swap.compose_image(ut, jt, swap.COMPOSE[("C.DRV", self.HELP)]))
+        self.assertNotEqual(out.pixels, us_px)
 
     def test_tis_start(self):
         tis = swap.write_tis([tim_bytes(self.NAMES, b"n" * 4)])
@@ -235,6 +270,95 @@ class PrewarpTest(unittest.TestCase):
         self.assertEqual(swap.with_pixels(t, b"abcdefgh"), tim_bytes((792, 0, 2, 2), b"abcdefgh"))
         with self.assertRaises(ValueError):
             swap.with_pixels(t, b"abc")
+
+
+class ComposeTest(unittest.TestCase):
+    HELP = (808, 0, 22, 80)
+
+    def tims(self, jp_px, us_px, jp_pal=PLATE_PAL_JP, us_pal=PLATE_PAL_US):
+        return (swap.Tim(0, 4, self.HELP, (528, 242, 16, 1), us_px, us_pal),
+                swap.Tim(0, 4, self.HELP, (528, 242, 16, 1), jp_px, jp_pal))
+
+    def test_help_plate_gets_the_jp_icons_in_the_us_palette(self):
+        # JP: O (red, index 2) on the Enter row, X (index 3) on the Menu row.
+        # US: X (index 3) on the Enter row, triangle (green, index 4) on the Menu row.
+        us, jp = self.tims(plate(2, 3), plate(3, 4))
+        px, pal = swap.compose_image(us, jp, swap.COMPOSE[("C.DRV", self.HELP)])
+        rows = unpack4(px, 88)
+        colours = struct.unpack("<16H", pal)
+        self.assertEqual(colours[rows[26][13]], 0x35DC)  # the JP O, red, in a slot the US no longer uses
+        self.assertEqual(rows[26][13], 2)               # slot 2 (0x2129): no US pixel uses it
+        self.assertEqual(rows[41][13], 3)               # the US X, moved down a row
+        self.assertEqual(rows[0][0], 1)                 # the rest is the US plate
+        self.assertEqual(colours[3], 0x4969)            # colours still in use are kept
+
+    def test_exact_colours_reuse_the_us_index(self):
+        us, jp = self.tims(plate(2, 3), plate(3, 4), jp_pal=struct.pack("<16H", 0, 0x1484, 0x4969, *range(13)))
+        px, pal = swap.compose_image(us, jp, [("jp", (13, 26, 11, 11), (13, 26))])
+        self.assertEqual(unpack4(px, 88)[26][13], 3)  # 0x4969 is US index 3
+        self.assertEqual(pal, PLATE_PAL_US)
+
+    def test_nearest_colour_when_no_slot_is_free(self):
+        full = pack4([[x % 16 for x in range(88)] for _ in range(80)])  # every index in use
+        us, jp = self.tims(plate(2, 3), full)
+        px, pal = swap.compose_image(us, jp, [("jp", (13, 26, 11, 11), (13, 26))])
+        self.assertEqual(pal, PLATE_PAL_US)
+        nearest = min(range(16), key=lambda k: swap._rgb_distance(0x35DC, struct.unpack("<16H", PLATE_PAL_US)[k]))
+        self.assertEqual(unpack4(px, 88)[26][13], nearest)
+
+    def test_refuses_other_shapes(self):
+        us, jp = self.tims(plate(2, 3), plate(3, 4))
+        with self.assertRaises(ValueError):
+            swap.compose_image(us, swap.Tim(0, 8, self.HELP, None, jp.pixels, b""), [])
+
+    def test_with_palette_replaces_the_clut_payload_only(self):
+        t = tim_bytes((792, 0, 2, 2), b"ABCDEFGH")
+        new = b"\x02\x00" * 16
+        self.assertEqual(swap.with_palette(t, new), tim_bytes((792, 0, 2, 2), b"ABCDEFGH", palette=new))
+        with self.assertRaises(ValueError):
+            swap.with_palette(t, b"\0\0")
+
+
+class MatchArchiveTest(unittest.TestCase):
+    """B:\\MATCH / WIN archives: ARC offset tables, the record strip cut to the JP width."""
+    STRIP_JP, STRIP_US = (464, 184, 34, 18), (464, 184, 48, 18)
+
+    def test_narrow_keeps_the_left_part_and_the_right_edge(self):
+        row = list(range(16)) * 12  # 192 texels
+        out = unpack4(swap.narrow_columns(pack4([row, row]), 4, 192, 136, 10), 136)
+        self.assertEqual(out, [row[:126] + row[-10:]] * 2)
+
+    def test_narrow_refuses_a_wider_result(self):
+        with self.assertRaises(ValueError):
+            swap.narrow_columns(bytes(68), 4, 136, 192, 10)
+
+    def test_us_strip_pairs_with_the_jp_strip(self):
+        blank = [5] * 192
+        us = [(swap.Tim(0, 4, self.STRIP_US, (400, 249, 16, 1), pack4([blank] * 18), b"p"), [])]
+        jp = [(swap.Tim(0, 4, self.STRIP_JP, (400, 249, 16, 1), pack4([[5] * 40 + [9] * 96] * 18), b"p"), [])]
+        cut = swap.narrowed("B.DRV", us)
+        self.assertEqual(cut[0][0].image, self.STRIP_JP)
+        self.assertEqual(cut[0][0].pixels, pack4([[5] * 136] * 18))
+        self.assertEqual(swap.narrowed("C.DRV", us), us)  # only the listed DRV
+        pairs, _ = swap.pair(jp, cut, partial=True)
+        self.assertEqual(len(pairs), 1)
+
+    def test_arc_offsets_drop_the_end_of_file_entry(self):
+        a, b = tim_bytes((384, 112, 2, 2), b"cardcard"), tim_bytes((424, 0, 2, 2), b"turnturn")
+        data = struct.pack("<3I", 12, 12 + len(a), 12 + len(a) + len(b)) + a + b
+        self.assertEqual(swap.arc_offsets(data), [12, 12 + len(a)])
+        self.assertEqual(swap.container_offsets(data, "MATCH/004.ARC"), [12, 12 + len(a)])
+        self.assertIsNone(swap.container_offsets(b"\x03\0\0\0", "WIN/004.ARC"))
+        drv = b"\0" * 8 + data
+        toc = [SimpleNamespace(path="MATCH/004.ARC", offset=8, size=len(data))]
+        out = swap.tis_entry_tims(drv, toc, re.compile(r"(MATCH|WIN)/\d+\.ARC$"))
+        self.assertEqual([t.image for t, _ in out["MATCH/004.ARC"]], [(384, 112, 2, 2), (424, 0, 2, 2)])
+
+    def test_match_archives_swap_partially(self):
+        self.assertTrue(swap.PARTIAL.search("B.DRV:MATCH/004.ARC"))
+        self.assertTrue(swap.PARTIAL.search("B.DRV:WIN/141.ARC"))
+        self.assertTrue(swap.PARTIAL.search("B.DRV:CBTL_SYS.ARC"))
+        self.assertFalse(swap.PARTIAL.search("B.DRV:M_CARD.ARC"))
 
 
 if __name__ == "__main__":

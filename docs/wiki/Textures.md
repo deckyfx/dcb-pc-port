@@ -55,8 +55,8 @@ Higher-resolution art needs a renderer with a higher internal resolution; that i
 With both games ripped (`assets/converted/SLPS-03101/` and `assets/converted/SLUS-01328/`),
 `tools/assets/swap_us_images.py` makes the JP game show the US images wherever the layout is the
 same: attack names, mini cards, battle UI, card art, the opening, partner, friend and trade
-screens, the city menus and city-name plates, the card menu and the fusion screens (about 980
-images and 590 palettes).
+screens, the city menus and city-name plates, the card menu and the fusion screens, the VS and
+result screens (about 1110 images and 715 palettes).
 
 The US data goes in exactly as the US disc has it: each changed image (and its palette, where the
 US build changed it) is written to `assets/converted/SLPS-03101/us/*.raw`, and the manifest entry
@@ -66,8 +66,19 @@ colours and palette animation match the US game; the JP PNGs are not touched.
 Images pair by their layout on the disc, not by file name; the script lists what it leaves alone
 (the title, the MATCH/WIN name plates, attacks with no US version) and, where one JP image stands
 for attacks the US build named differently, which one it picked. `SYSTEM.TIM` is never swapped (the
-JP text engine draws its font from it), and the city HELP MENU plate stays JP (the US one names the
-US buttons).
+JP text engine draws its font from it). The opponent name pictures on the VS screen are left to
+`tools/text/bigfont.py`, which grafts them into the MATCH archives.
+
+Three images need more than a swap:
+
+- **City HELP MENU plate** (also on the world map): the US plate says ✕ Enter / △ Menu, this build
+  keeps the JP controls (○ enters, ✕ opens the menu). The tool builds it from both dumps: the US
+  plate with its ✕ icon moved to the Menu row and the JP ○ icon on the Enter row (the colours the
+  US palette lacks take the slots the dropped △ used).
+- **VS / result screen record strip**: the JP picture has the kanji 戦 勝 敗 in it, the US one is
+  blank and wider. The tool cuts the US strip to the JP width, and the game draws "Btl.", "W" and
+  "L" where the kanji were (only when the strip in video memory is the blank one).
+- **1st / 2nd turn cards, portraits, WIN / LOSS banners** (MATCH and WIN archives): plain swaps.
 
 | Option | Effect |
 |---|---|

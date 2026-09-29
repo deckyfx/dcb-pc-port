@@ -716,6 +716,12 @@
    "source": "re",
    "note": "(player): returns 0 unless the player's HP (battle_data+0x118) is 0; then the opponent scores: battle_state+0x81E = opponent, opponent's points (u8 battle_data+0x178) += 1 (at 801EFD5C). Called from battle_main's battle phase (8003AFA8, 8003B24C, 8003B31C, 8003B344). Conf H"
   },
+  "0x801F03C8": {
+   "name": "vs_record_draw",
+   "overlay": "KAWSEG",
+   "source": "re",
+   "note": "(x, y, wins, losses): one player's battle record on the VS screen (vs_screen_draw) and the result screen (calls near 801F6278 / 801F6524): sprintf %4d (wins + losses) / %3d / %3d (KAWSEG 801E0E14 / 801E0E18) drawn with text_draw_digits_grey (80028C84, CLUT 7, OT 1) at x + 8 / 56 / 97, y + 3, then the strip picture from VRAM (464, 184) 136x18 (the kanji for battles / wins / losses are in it; B:\\MATCH and B:\\WIN archives). US counterpart KAWSEG 801ED968 (US overlay base 801DDF38): blank 192-px strip, the words as text. Overridden by dcb_vs_record_draw. Conf H"
+  },
   "0x801F04FC": {
    "name": "vs_names_load",
    "overlay": "KAWSEG",

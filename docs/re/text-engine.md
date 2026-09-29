@@ -374,7 +374,7 @@ line is ~100 px in the US font, over 160 px in JP letters, in a ~108 px box).
 | Card/deck text | **done** — the converter grafts US names/attack names/effect lines into `CARD2.CDD`, deck/owner names into `DECK2.DEK`; lines too long for the JP slot are listed in the local `en_text_report.txt`. DEK field layout measured from both dumps: deck JP 13 / US 19 B at +60, owner 21 B at JP +73 / US +79, 10-byte tail at JP +94 / US +100. |
 | English inside JP strings | **done** — the game appends `デック` to a deck name (`"%sデック"`, EXE `0x800114E0`; the US has `"%s Deck"`) and drops names into JP messages. Each string is copied to the host and cut into pieces: English runs (two letters in a row outside bare JP codes, or one letter the JP renderer would skip: a capital or a lowercase letter that starts no JP code, e.g. a name typed on the ABC page next to kana) go to the US port, the rest to the JP original on a NUL-terminated copy pushed on the guest stack. The format itself is patched to the US `"%s Deck"` when `en_font.bin` loads (stock bytes only), so JP-named decks read "… Deck" too; three more "%sデック" copies live in overlays (P.DRV), so a string ending in `デック` (no newline) also gets `" Deck"` (`"Deck"` alone on the name-entry screen), leaving the name before it as typed; `デック` right after an ASCII character in other strings also becomes `" Deck"`. |
 | Deck names longer than the 13-byte slot | **done** — 48 US names (e.g. `Mountain CrusherDX`, 18 letters). The slot holds the first 11 letters + a tag byte (1, 2… per shared prefix: `Mountain Crusher` and `Mountain CrusherDX` both start `Mountain Cr`); `en_names.txt` maps the key to the full name, which the renderer draws (and measures) wherever the key appears. Renderers not taken over yet show the 11 letters. |
-| VS-screen big names | **done** — §7.11. |
+| VS-screen big names, record strip | **done** — §7.11. |
 | Tutorial and Fusion Shop scripts | **done** — §7.12. |
 | Battle banner / slot expanders, the five extra renderers, EXE + MSD strings | not started (later milestones). |
 | Verification | headless runs with `DCB_TRACE_TEXT=1` + `DCB_SNAPSHOT`: an ASCII message (poked into the memory-card dialog source at OPENSEG `0x801E27F4`, draw buffer `0x800E5638`) renders through the US port, and a clean run of the same build renders the JP string through the fallback. |
@@ -606,8 +606,21 @@ letter.
   save name ああああああ (original path, width 192, unchanged) and the US "Meramon" picture;
   with a cheat writing the save name, "Decky" (odd length, width 80) and "Tai.Kamiya-20"
   (`.` drawn as a space, cut at 12, width 192). Mode 0 (battle with a friend) not run.
-- Not done: the 戦 勝 敗 record strip on the VS screen (and the WIN archives' copy) is still JP
-  kanji; the US shows a blank strip and draws the words as text (US code not traced).
+- **Record strip** (戦 勝 敗, one picture in all 142 MATCH and 142 WIN archives, VRAM 464,184,
+  136×18): `vs_record_draw` (KAWSEG `801F03C8`, a0 x, a1 y, a2 wins, a3 losses; called by
+  `vs_screen_draw` for both players and twice by the result screen, near `801F6278` / `801F6524`)
+  draws `%4d` (wins + losses), `%3d`, `%3d` with the digit font (`80028C84`, CLUT 7, OT 1) at x + 8
+  / 56 / 97, y + 3, then the strip; the kanji are in the picture at columns 39–50 / 80–92 /
+  120–131. The US counterpart (US KAWSEG `801ED968`; US overlays load at `801DDF38`) draws a blank
+  192-px strip, `*s0%4d        %3d      %3d` in the main font at (x + 8, y + 3) and "BATTLES" /
+  "WINS" / "LOSSES" in its 4×5 capitals (`80027DB8`, CLUT 6) at x + 36 / 102 / 156, y + 9. Port:
+  `swap_us_images.py` cuts the US strip to 136 px (`NARROW`: it equals the JP strip without the
+  kanji) and `dcb_vs_record_draw` (`src/game/overrides/vs_record.cpp`) runs the original, then,
+  when the strip's kanji cells in VRAM are plain background, draws the catalog's English for
+  戦 / 勝 / 敗 (else "Btl." / "W" / "L", the deck select line's words; without English assets the
+  kanji) through `text_draw_grey` at x + 37 / 79 / 119, y + 3, CLUT 4 (the kanji's green). With the
+  JP strip loaded it adds nothing. Verified headless on Meramon's VS screen ("1 Btl. 0 W 1 L",
+  "5 Btl. 5 W 0 L"); the result screen was not run.
 
 ### 7.12 Tutorial and Fusion Shop scripts (B:\BETA.MSD, C:\EVENT\UNIT0n.MSD)
 
@@ -720,6 +733,7 @@ For later import into Ghidra / `config/SLPS-03101/functions.json`. Not applied i
 | `80029010` | `text_draw_bigdigits` | 16×21 digits |
 | `8002a37c` | `sjis_to_mini` | SJIS → mini-font bytes |
 | `80044684` | `bigname_load` | per-character `FONT\%4.4X.tim` loader (task; §7.11, in `ghidra/symbols`) |
+| KAWSEG `801f03c8` | `vs_record_draw` | VS / result screen record strip (§7.11, in `ghidra/symbols`) |
 | `80019ff0` | `dialog_setup` | message/Yes-No dialog |
 | `8001a590` | `dialog_draw_cb` | dialog draw callback (no Ghidra function) |
 | `8001a284` | `dialog_run` | modal loop |
