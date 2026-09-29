@@ -1,0 +1,25 @@
+# English written for this port, SUBSEG (see catalog-subseg.txt). id<TAB>text; \n is a line
+# break. Button hints keep the JP icon codes: the JP controls stay, the US swapped the icons.
+SUBSEG:5e8	Hiragana
+SUBSEG:5f4	Katakana
+SUBSEG:600	ABC/123
+SUBSEG:608	Other
+SUBSEG:610	Kanji 1
+SUBSEG:618	Kanji 2
+SUBSEG:620	Kanji 3
+SUBSEG:628	OK
+SUBSEG:644	*b1 Insert
+SUBSEG:64c	*b0 OK
+SUBSEG:654	*b2 Delete
+SUBSEG:720	Boost Battle Experience by 30%%.
+SUBSEG:734	Boost Battle Experience by 20%%.
+SUBSEG:748	Boost Battle Experience by 10%%.
+SUBSEG:19e8	*b1:Edit Decks
+SUBSEG:1a04	All
+SUBSEG:1a10	Total Cards
+SUBSEG:1a2c	Rare
+SUBSEG:1a34	Darkness
+SUBSEG:1a3c	Nature
+SUBSEG:1a44	Ice
+SUBSEG:1a4c	Fire
+SUBSEG:1d68	Type

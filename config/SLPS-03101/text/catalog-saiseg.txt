@@ -1,0 +1,59 @@
+# Text catalog, SAISEG (P.DRV SAISEG.BIN: player data, card / Digi-Part info, keyword entry).
+# Same format as catalog.txt: offsets only, the text comes from the player's JP and US dumps.
+# `pair <id> -` entries (and entries where the US text needs a fix) take their English from
+# en-saiseg.tsv.
+#
+# Left out: file paths and printf-only strings, strings already in English on the JP disc
+# (MESSAGE, PLAYER'S DATA, RANK, WORD INPUT, HELP, KEY WORD, ABILITY, FULL CARD!, GET CARD!,
+# PARTNER GET), the kana / letter grid of the keyword entry (7e0..a2c: input table, not labels)
+# and the ten secret keywords (a38..ac8: the JP spellings the player has to type).
+
+# Player data help texts (bottom box, one per item): 12 in the same order. The completion one
+# is in en-saiseg.tsv (its bare % is not valid template syntax); a string taken from the tsv
+# does not advance the US side of a run, so the run is split around it.
+run  SAISEG:4     SAISEG:4     8
+pair SAISEG:20c   -
+run  SAISEG:254   SAISEG:250   3
+
+# Player data labels: deck, losses, wins, partners, decks 3/2/1, battle stats, collection
+# rates, titles, name: 15 in the same order
+run  SAISEG:3f4   SAISEG:404   15
+
+pair SAISEG:4f4   -              # button hint: all player stats (US swaps the button icon)
+
+# Deck color / attack / defense / digivolve speed
+pair SAISEG:6e0   SAISEG:700
+run  SAISEG:6f4   SAISEG:70c   3
+
+pair SAISEG:778   SAISEG:778     # anti-piracy system error screen
+
+# Keyword entry
+pair SAISEG:b08   -              # input mode tabs (JP only)
+pair SAISEG:b14   -
+pair SAISEG:b20   -
+pair SAISEG:b28   -              # confirm key
+pair SAISEG:b30   SAISEG:880     # cancel key
+pair SAISEG:b3c   -              # button hints: insert / confirm / delete (US swaps the icons)
+pair SAISEG:b44   -
+pair SAISEG:b4c   -
+pair SAISEG:b74   SAISEG:8cc     # no keyword entered
+
+# Card info panel: support effect, option text, no data
+run  SAISEG:d0c   SAISEG:a68   3
+pair SAISEG:cec   SAISEG:a44     # card number label
+# Prize pack / card received
+run  SAISEG:d50   SAISEG:aac   2
+pair SAISEG:d94   SAISEG:af0     # support effect (partner card panel)
+pair SAISEG:dcc   SAISEG:b2c     # confirm the partner
+
+# Digi-Part effect descriptions: 128 in the same order. The three battle experience ones are
+# in en-saiseg.tsv (bare % in the US text), so the run is split around them.
+run  SAISEG:df0   SAISEG:b40   2
+pair SAISEG:e34   -
+pair SAISEG:e48   -
+pair SAISEG:e5c   -
+run  SAISEG:e70   SAISEG:bf0   123
+
+# Digi-Parts obtained list: title, none
+pair SAISEG:1c70  SAISEG:1af8
+pair SAISEG:1c8c  SAISEG:1b18
