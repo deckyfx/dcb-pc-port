@@ -1,10 +1,12 @@
 """Unit tests for swap_us_images.py (no game data needed)."""
 from __future__ import annotations
 
+import re
 import struct
 import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import swap_us_images as swap  # noqa: E402
@@ -96,6 +98,84 @@ class DataTest(unittest.TestCase):
 
     def test_not_a_tim(self):
         self.assertIsNone(swap.read_tim(b"\0" * 32, 0))
+
+
+def tim_bytes(image, pixels, clut=(512, 228, 16, 1), palette=b"\x01\x00" * 16):
+    """A 4-bit TIM: CLUT block, then image block (both u32 length, u16 x, y, w, h, data)."""
+    return (struct.pack("<II", 0x10, 8)
+            + struct.pack("<IHHHH", 12 + len(palette), *clut) + palette
+            + struct.pack("<IHHHH", 12 + len(pixels), *image) + pixels)
+
+
+class TisTest(unittest.TestCase):
+    NAMES, BUTTONS, HELP = (832, 0, 48, 120), (792, 0, 16, 144), (808, 0, 22, 80)
+
+    def test_write_tis_is_the_inverse_of_read_tis(self):
+        tims = [tim_bytes(self.NAMES, b"a" * 8), tim_bytes(self.BUTTONS, b"b" * 4)]
+        data = swap.write_tis(tims)
+        self.assertEqual(data[:4], b"Tp\x02\x00")
+        self.assertEqual(swap.dcb_containers.read_tis(data), tims)
+        self.assertEqual(swap.tis_offsets(data), [12, 12 + len(tims[0])])
+
+    def test_write_tis_refuses_partial_words(self):
+        with self.assertRaises(ValueError):
+            swap.write_tis([b"abc"])
+
+    def test_graft_keeps_jp_order_and_takes_us_images(self):
+        # The US build stores the TIMs in another order; the JP code may index them.
+        same = tim_bytes((512, 0, 12, 48), b"same")
+        jp = [tim_bytes(self.NAMES, b"jp-names"), same, tim_bytes(self.BUTTONS, b"jpbt")]
+        us = [tim_bytes(self.BUTTONS, b"usbt", palette=b"\x02\x00" * 16), same, tim_bytes(self.NAMES, b"us-names")]
+        data, n = swap.graft_tis(swap.write_tis(jp), swap.write_tis(us))
+        self.assertEqual(n, 2)
+        self.assertEqual(swap.dcb_containers.read_tis(data), [us[2], same, us[0]])
+
+    def test_graft_leaves_kept_rects_jp(self):
+        jp = [tim_bytes(self.HELP, b"jp-help!"), tim_bytes(self.NAMES, b"jp-names")]
+        us = [tim_bytes(self.NAMES, b"us-names"), tim_bytes(self.HELP, b"us-help!")]
+        data, n = swap.graft_tis(swap.write_tis(jp), swap.write_tis(us), frozenset({self.HELP}))
+        self.assertEqual(n, 1)
+        self.assertEqual(swap.dcb_containers.read_tis(data), [jp[0], us[0]])
+
+    def test_graft_refuses_other_shapes(self):
+        jp = swap.write_tis([tim_bytes(self.NAMES, b"jp-names")])
+        us = swap.write_tis([tim_bytes((832, 0, 64, 120), b"us-names")])
+        with self.assertRaises(ValueError):
+            swap.graft_tis(jp, us)
+
+    def test_area_image_chunk_touches_only_the_tis(self):
+        write_pak, chunk = swap.dcb_containers.write_pak, swap.dcb_containers.Chunk
+        jp_tis = swap.write_tis([tim_bytes(self.HELP, b"jp-help!"), tim_bytes(self.NAMES, b"jp-names")])
+        us_tis = swap.write_tis([tim_bytes(self.NAMES, b"us-names"), tim_bytes(self.HELP, b"us-help!")])
+        jp_pak = write_pak([chunk(2, 0xC9, 0, b"MSCD jp script"), chunk(5, 0xFA1, 0, jp_tis)])
+        us_pak = write_pak([chunk(2, 0xC9, 0, b"MSCD us script"), chunk(5, 0xFA1, 0, us_tis)])
+        out = swap.dcb_containers.read_tis(swap.area_image_chunk(jp_pak, us_pak))
+        # KEEP_JP holds the city HELP MENU plate: its US button names do not match the JP code.
+        self.assertEqual(out, [tim_bytes(self.HELP, b"jp-help!"), tim_bytes(self.NAMES, b"us-names")])
+
+    def test_tis_start(self):
+        tis = swap.write_tis([tim_bytes(self.NAMES, b"n" * 4)])
+        pak = swap.dcb_containers.write_pak([swap.dcb_containers.Chunk(2, 0xC8, 0, b"MSCD1234"),
+                                             swap.dcb_containers.Chunk(5, 0xFA0, 0, tis)])
+        self.assertEqual(swap.tis_start(pak, "AREA00.PAK"), 8 + 8 + 8)
+        self.assertEqual(swap.tis_start(tis, "OBJECT/WORLD.TIS"), 0)
+        self.assertIsNone(swap.tis_start(b"\x10\0\0\0", "OBJECT/A_1.TIM"))
+
+    def test_tis_entry_tims_reads_the_disc_not_the_manifest(self):
+        tis = swap.write_tis([tim_bytes(self.NAMES, b"n" * 4), tim_bytes(self.BUTTONS, b"b" * 4)])
+        drv = b"\0" * 16 + tis
+        toc = [SimpleNamespace(path="OBJECT/WORLD.TIS", offset=16, size=len(tis)),
+               SimpleNamespace(path="OBJECT/MAP.TIS", offset=16, size=len(tis))]
+        out = swap.tis_entry_tims(drv, toc, re.compile(r"OBJECT/WORLD\.TIS$"))
+        self.assertEqual(list(out), ["OBJECT/WORLD.TIS"])
+        self.assertEqual([(t.offset, t.image, v) for t, v in out["OBJECT/WORLD.TIS"]],
+                         [(16 + 12, self.NAMES, []), (16 + 12 + 68, self.BUTTONS, [])])  # a TIM is 68 bytes
+
+    def test_tis_entry_is_named_like_the_ripper(self):
+        t = swap.Tim(0x1000 + 0x1268C, 4, (682, 256, 21, 123), (432, 495, 16, 1))
+        e = swap.tis_entry(t, "f2a8df6a3e668b14", "C.DRV", "OBJECT/UNIT.TIS", 0x1000)
+        self.assertEqual((e["w"], e["h"], e["bpp"]), (84, 123, 4))
+        self.assertEqual(e["path"], "C_OBJECT_UNIT_off0001268c_84x123.png")
 
 
 if __name__ == "__main__":
