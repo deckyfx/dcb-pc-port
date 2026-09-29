@@ -515,13 +515,13 @@ as one sprite from VRAM (704, 448) (row 0) / (704, 480) (row 1), CLUT (752, 471 
 
 | Step (`vs_names_load`) | What it does |
 |---|---|
-| names | mode ≠ 0 (a city/arena opponent): row 0 only, the player. Mode 0 (battle with a friend): rows 0 and 1, and match = 999. For each: `task_spawn` of `bigname_load(*g_player_records + row·10040, row, self)`, then `task_sleep(0x7FFFFFFF)` until it wakes the parent. |
+| names | mode ≠ 0 (a city/arena opponent): row 0 only, the player. Mode 0 (battle with a friend): rows 0 and 1, and match = 999. For each: `task_spawn` of `bigname_load(*g_game_data + row·10040, row, self)`, then `task_sleep(0x7FFFFFFF)` until it wakes the parent. |
 | `bigname_load` (`80044684`) | `g_bigname_busy` = 1; for each 2-byte character (max 8): sprintf `B:\FONT\%04X.tim` (EXE `800117C0`), `task_spawn(file_load_task)`, sleep, `tim_upload(tim, 704 + i·8, 448 + row·32, 752, 471 + row)`, `DrawSync(0)`, `mem_free`; `g_bigname_busy` = 0; `task_wake(parent, leftover a1)`. |
 | opponent picture | sprintf `B:\MATCH\%3.3d.ARC` (KAWSEG `801E0E1C`), load it, `tim_upload(entry, -1, -1, -1, -1)` for **every** offset-table entry (the last one is the end of the file: ReadTIM fails and the previous TIM is uploaded again), sleeping `g_wait_frames` after each. The 14 TIMs are the portrait, frames, the 戦 勝 敗 record strip (464, 184/202), and last the opponent's name picture at (704, 480), CLUT (752, 472), JP 32 halfwords (128 px). |
 | widths | `battle_data[0]+0x114` = (strlen(`+0x1CA`)/2)·32; `battle_data[1]+0x114` = `g_tim_image.prect->w`·4 (mode ≠ 0) or the same formula (mode 0). |
 | end | four slide-in records at `g_vs_slide` (801FE788; the picture enters from −width), `task_sleep(10)`, `g_vs_names_busy` (801FF1E8) = 0, `task_wake(parent)`. |
 
-Name sources (run headless, Meramon in the Flame City Battle Café): `*g_player_records` = 800DF1C4
+Name sources (run headless, Meramon in the Flame City Battle Café): `*g_game_data` = 800DF1C4
 (the loaded save's name, +0), `battle_data[0]+0x1CA` = 800E61C2 holds the same name (a battle
 copy); the opponent's `+0x1CA` (800E63A2; presumably its DEK owner name, not checked) is not used here: the VS screen shows the
 MATCH picture instead. **The player name is typed on the JP kana grid, so it is Shift-JIS**; an

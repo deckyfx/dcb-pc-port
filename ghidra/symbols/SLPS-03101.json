@@ -56,6 +56,16 @@
    "source": "re",
    "note": "(tim, x, y, clut_x, clut_y@sp16): OpenTIM/ReadTIM into g_tim_image, LoadImage of the pixels and the CLUT; -1 keeps the TIM's own position (clut_x -2: no CLUT). Conf H"
   },
+  "0x80021078": {
+   "name": "msd_vm_create",
+   "source": "re",
+   "note": "(script) -> MSD VM over an MSCD buffer (docs/re/text-engine.md). Conf H"
+  },
+  "0x80021118": {
+   "name": "msd_regs_alloc",
+   "source": "re",
+   "note": "(bytes) -> zeroed MSD register file. Conf M"
+  },
   "0x80021198": {
    "name": "msd_vm_step",
    "source": "re",
@@ -216,6 +226,16 @@
    "source": "re",
    "note": "(player, card, count): collection byte at game_data + player*10040 + 0x1482 + card; count = low 3 bits, capped at 6 (flag 0x10 full, 0x50/0x56), 0x20 'new' on a first copy; refuses cards 172-190 (returns -3). Write watch: adds battle rewards. Conf H"
   },
+  "0x80048810": {
+   "name": "collection_remove_card",
+   "source": "re",
+   "note": "(player, card, count): lowers the copy count of the collection byte (game_data + 0x1482 + card); refuses cards 172-190 (-3), -2 when none owned. Fusion removes its two cards with it (write watch). Conf H"
+  },
+  "0x80048950": {
+   "name": "collection_count",
+   "source": "re",
+   "note": "(player, card) -> copies owned (low 3 bits of the collection byte). Conf H"
+  },
   "0x80048D68": {
    "name": "battle_rewards_pick",
    "source": "re",
@@ -225,6 +245,31 @@
    "name": "battle_rewards_grant",
    "source": "re",
    "note": "calls collection_add_card for the picked rewards; writes game_data + 0x2732.. Conf M"
+  },
+  "0x8004A0F8": {
+   "name": "partner_add",
+   "source": "re",
+   "note": "(player, partner, given): puts partner card g_partner_cards[partner] in the first free of the 3 partner slots (game_data + 0x80 + slot*0x288: card +0x278, level +0x279 = 1, EXP +0x27A = 0, Digimentals +0x27F..+0x281 = 0, armor +0x282); given: collection byte = 1 | 0xF0 and the starter Digi part. Conf M"
+  },
+  "0x8004A4F0": {
+   "name": "partner_give",
+   "source": "re",
+   "note": "(player, partner): partner_add(player, partner, 1). Called by the starter choice (OPENSEG) and the city partner choice (SAISEG 801F6058). Conf M"
+  },
+  "0x8004A550": {
+   "name": "partner_index",
+   "source": "re",
+   "note": "(player, slot) -> index 0-5 in g_partner_cards of the partner in that slot, -1 when empty. Conf M"
+  },
+  "0x8004A6D8": {
+   "name": "digimental_give",
+   "source": "re",
+   "note": "(player, partner, n): stores Digimental card g_digimental_cards[partner][n] in the partner's slot byte +0x27F+n (game_data + 0x2FF + slot*0x288 + n), collection byte |= 0x50; arms it when none is (8004A8EC). Seen at run time (digimental_sync). Conf H"
+  },
+  "0x8004A8EC": {
+   "name": "partner_armor_select",
+   "source": "re",
+   "note": "arms the partner's first Digimental (+0x282) when none is armed; called by digimental_give. Conf L"
   },
   "0x8004BE48": {
    "name": "digipart_give",
@@ -236,20 +281,35 @@
    "source": "re",
    "note": "(player, part): tests the same bit. Conf H"
   },
+  "0x8006BBB0": {
+   "name": "rand",
+   "source": "re",
+   "note": "libc rand(): the MSD VM's op 7/6 and fusion_roll use it. Conf M"
+  },
   "0x800709BC": {
    "name": "g_file_load_busy",
    "source": "re",
    "note": "1 while a file_load_task reads (the others wait g_wait_frames at a time). Conf H"
   },
   "0x80070C2C": {
-   "name": "g_player_records",
+   "name": "g_game_data",
    "source": "re",
-   "note": "-> the two players' records, 10040 bytes each (+0 name; record 0 is the loaded save's, e.g. 800DF1C4). bigname_load reads the names from here. Conf M"
+   "note": "game_data* (= 800DF1C4, save + 0x200; docs/re/save-data.md). Conf H | -> the two players' records, 10040 bytes each (+0 name; record 0 is the loaded save's, e.g. 800DF1C4). bigname_load reads the names from here. Conf M"
   },
   "0x80070E70": {
    "name": "g_bigname_busy",
    "source": "re",
    "note": "1 while bigname_load runs. Conf H"
+  },
+  "0x800710F4": {
+   "name": "g_partner_cards",
+   "source": "re",
+   "note": "u8[6]: partner cards by partner index: Veemon 175, Hawkmon 182, Armadillomon 190, Gatomon 184, Patamon 183, Wormmon 187. Conf H"
+  },
+  "0x800710FC": {
+   "name": "g_digimental_cards",
+   "source": "re",
+   "note": "u8[6][3]: each partner's Digimental (armor) cards, 0 = none: Veemon 172/185/173, Hawkmon 179/188, Armadillomon 189/176, Gatomon 181/178, Patamon 180/174, Wormmon 186/177. Conf H"
   },
   "0x8007C0D0": {
    "name": "g_wait_frames",
@@ -304,7 +364,25 @@
   "0x801DAF40": {
    "name": "g_battle_players",
    "source": "re",
-   "note": "battle_data* [2] (0 = you, 1 = opponent), 0x1E0 bytes each, e.g. 800E5FF8 / 800E61D8: +0x118 HP, +0x11A..+0x11E attacks, +0x114 s16 VS big-name width (vs_names_load), +0x120 DP, +0x178 points (u8, 3 wins), +0x179 deck (30 B), +0x1CA name (docs/re/battle.md). Conf H"
+   "note": "battle_data* [2] (0 = you, 1 = opponent), 0x1E0 bytes each, e.g. 800E5FF8 / 800E61D8: +0x118 HP, +0x11A..+0x11E attacks, +0x120 DP, +0x178 points (u8, 3 wins), +0x179 deck (30 B), +0x1CA name (docs/re/battle.md). Conf H | battle_data* [2] (0 = you, 1 = opponent), 0x1E0 bytes each, e.g. 800E5FF8 / 800E61D8: +0x118 HP, +0x11A..+0x11E attacks, +0x114 s16 VS big-name width (vs_names_load), +0x120 DP, +0x178 points (u8, 3 wins), +0x179 deck (30 B), +0x1CA name (docs/re/battle.md). Conf H"
+  },
+  "0x801E0ED8": {
+   "name": "g_partner_flags",
+   "overlay": "SAISEG",
+   "source": "re",
+   "note": "s16[6]: city flag register of each partner (by partner index): 294, 298, 301, 307, 304, 310. Conf H"
+  },
+  "0x801E0EE4": {
+   "name": "g_digimental_flags",
+   "overlay": "SAISEG",
+   "source": "re",
+   "note": "s16[13]: city flag registers of the Digimentals: Veemon 295/296/297, then two per partner by index 299/300, 302/303, 308/309, 305/306, 311/312. Conf H"
+  },
+  "0x801E1AFC": {
+   "name": "g_special_fusions",
+   "overlay": "EVOSEG",
+   "source": "re",
+   "note": "u8[20][4] {card A, card B, result, effect}: the special-fusion recipes fusion_roll checks first (either order). Conf M"
   },
   "0x801E28E4": {
    "name": "city_msg_clear",
@@ -336,11 +414,89 @@
    "source": "re",
    "note": "(x, y, ot): reveals / draws the used line slots top to bottom (13 px apart), stopping at the first still revealing; returns 1 while busy. Conf H"
   },
+  "0x801E35BC": {
+   "name": "partner_flag_set",
+   "overlay": "SAISEG",
+   "source": "re",
+   "note": "(partner): sets the partner's city flag register (g_partner_flags) after the partner choice. Conf M"
+  },
+  "0x801E3628": {
+   "name": "city_fusion_flags",
+   "overlay": "SAISEG",
+   "source": "re",
+   "note": "on the way to the Fusion Shop: city flag r266 -> game_data + 0x2C bit 0 (special-fusion data), r267 -> bit 1 (Mutation Detector). Conf H"
+  },
+  "0x801E36A8": {
+   "name": "city_flags_save",
+   "overlay": "SAISEG",
+   "source": "re",
+   "note": "city script registers r12-r362 -> bits of game_data + 0x23CC (12 u32), r363-r371 -> bytes at + 0x23FC. Conf M"
+  },
+  "0x801E37A4": {
+   "name": "city_flags_load",
+   "overlay": "SAISEG",
+   "source": "re",
+   "note": "the reverse: bits of game_data + 0x23CC -> r12-r362, bytes + 0x23FC -> r363-r371 (write watch). Conf H"
+  },
+  "0x801E39C0": {
+   "name": "digimental_sync",
+   "overlay": "SAISEG",
+   "source": "re",
+   "note": "city host 0x0A 7 (city Menu): for each owned partner, digimental_give for each of its Digimental flags that is set. Conf H"
+  },
+  "0x801E6618": {
+   "name": "city_event_host",
+   "overlay": "SAISEG",
+   "source": "re",
+   "note": "serves the city MSD script's host commands (0x0A 4: to the Fusion Shop, 7: Menu + digimental_sync, 10: partner choice, 0x12: game_data + 0x28 |= 0x400; 0x0B 9: pack, 10: offer a partner, 0x12: game_data + 0x14 += n ...). Conf M"
+  },
+  "0x801E9024": {
+   "name": "fusion_card_table_init",
+   "overlay": "EVOSEG",
+   "source": "re",
+   "note": "card record pointers for the fusion list (0x134 / 0xDA / 0x68 strides) and the owned partners' own records. Conf M"
+  },
+  "0x801EACBC": {
+   "name": "fusion_shop_host",
+   "overlay": "EVOSEG",
+   "source": "re",
+   "note": "runs the shop keeper's MSD script (C:\\EVENT\\UNIT0n.MSD) and serves its host commands (0x0A 15: second card picked, 19: fuse, ...). Conf M"
+  },
+  "0x801EB10C": {
+   "name": "fusion_shop_step",
+   "overlay": "EVOSEG",
+   "source": "re",
+   "note": "one host step of fusion_shop_host. Conf M"
+  },
+  "0x801EB8B8": {
+   "name": "fusion_flags_load",
+   "overlay": "EVOSEG",
+   "source": "re",
+   "note": "shop script registers r20-r29 = bits 0-9 of game_data + 0x2C (r20 special-fusion data, r21 Mutation Detector). Conf H"
+  },
+  "0x801EB914": {
+   "name": "fusion_flags_save",
+   "overlay": "EVOSEG",
+   "source": "re",
+   "note": "ORs the shop script registers r20-r29 back into game_data + 0x2C when leaving. Conf M"
+  },
   "0x801ED334": {
    "name": "tutorial_msg_show",
    "overlay": "KAWSEG",
    "source": "re",
    "note": "BETA.MSD message: p expansion into a 144-byte stack buffer + box"
+  },
+  "0x801ED5A0": {
+   "name": "fusion_check_full",
+   "overlay": "EVOSEG",
+   "source": "re",
+   "note": "(result): script r11 = -1 when the result card is already owned 6 times (\"cannot hold more\"), 0 on a mutation. Conf M"
+  },
+  "0x801ED668": {
+   "name": "fusion_card_select",
+   "overlay": "EVOSEG",
+   "source": "re",
+   "note": "card list input: first card, then the second card runs fusion_roll and fusion_check_full. Refuses partner cards and levels above the shop's limit. Conf M"
   },
   "0x801ED8D0": {
    "name": "title_draw_sprite",
@@ -348,11 +504,23 @@
    "source": "re",
    "note": "(x, y, vram_x, vram_y, w, h, clut_x, clut_y, depth, semi, semi_mode, brightness, ot_layer): DR_MODE + SPRT packet into the pool"
   },
+  "0x801EE4B8": {
+   "name": "fusion_execute",
+   "overlay": "EVOSEG",
+   "source": "re",
+   "note": "after 'yes': removes the two cards, adds the result, game_data +0x50 fusions +1, +0x52 cards used +2, +0x54 mutations +1 (write watch). Conf H"
+  },
   "0x801EE850": {
    "name": "title_init",
    "overlay": "OPENSEG",
    "source": "re",
    "note": "loads B:TITLE.ARC and uploads each TIM at its own VRAM position; its loop is the title state machine (state u32 at 801F9EE0: 0-5 light-ball animation, 6-7 Press Start Button, 8+ main menu), Start tested at 801EEAAC / 801EEB68"
+  },
+  "0x801EF738": {
+   "name": "fusion_roll",
+   "overlay": "EVOSEG",
+   "source": "re",
+   "note": "decides the fusion: special recipe, else mutation when rand()%100 <= (value A + value B)/10 (card +0x18): 21% Digi-Jewel 273-284, 40% Fake Sevens (200), 39% a higher card; else normal. Kind at 801F7FD5, card at 801F7FC0, script r13/r14. Never reads the Mutation Detector. Overridden by dcb_fusion_roll (trainer fusion toggles). Conf H"
   },
   "0x801EF968": {
    "name": "battle_ko_check",
@@ -378,17 +546,65 @@
    "source": "re",
    "note": "VS screen drawer; each big name is one 32-px-high sprite from (704, 448/480), width battle_data+0x114. Conf M"
   },
+  "0x801F6058": {
+   "name": "partner_choose_task",
+   "overlay": "SAISEG",
+   "source": "re",
+   "note": "the partner choice screen: partner_give(0, the chosen offer), then partner_flag_set. Conf M"
+  },
   "0x801F7600": {
    "name": "partner_gain_exp",
    "overlay": "KAWSEG",
    "source": "re",
    "note": "adds partner EXP (u16 game_data + 0x2FA) and raises the level (u8 game_data + 0x2F9) after a battle. Conf M"
   },
+  "0x801F7CE0": {
+   "name": "g_partner_offer",
+   "overlay": "SAISEG",
+   "source": "re",
+   "note": "u8[4] + count at 801F7CDF: partners the script offers (host 0x0B 10). Conf M"
+  },
+  "0x801F7CE8": {
+   "name": "g_fusion_vm",
+   "overlay": "EVOSEG",
+   "source": "re",
+   "note": "the shop keeper script object {script, vm, regs}. Conf M"
+  },
+  "0x801F7E80": {
+   "name": "g_city_vm",
+   "overlay": "SAISEG",
+   "source": "re",
+   "note": "the city script object {script, vm, regs}. Conf M"
+  },
   "0x801F7E88": {
    "name": "g_city_msg_lines",
    "overlay": "SAISEG",
    "source": "re",
    "note": "3 x 64-byte message line slots: 60 text, +60 u16 shown, +62 s8 in use (-1 free), +63 s8 length. Conf H"
+  },
+  "0x801F7FBC": {
+   "name": "g_fusion_card_a",
+   "overlay": "EVOSEG",
+   "source": "re",
+   "note": "s16: first card picked. Conf H"
+  },
+  "0x801F7FBE": {
+   "name": "g_fusion_card_b",
+   "overlay": "EVOSEG",
+   "source": "re",
+   "note": "s16: second card picked. Conf H"
+  },
+  "0x801F7FC0": {
+   "name": "g_fusion_result",
+   "overlay": "EVOSEG",
+   "source": "re",
+   "note": "s16: the card fusion_roll picked. Conf H"
+  },
+  "0x801F7FD5": {
+   "name": "g_fusion_kind",
+   "overlay": "EVOSEG",
+   "source": "re",
+   "note": "u8: 0 normal, 1 special fusion, 2 mutation (script r17). Conf H"
   },
   "0x801FCF78": {
    "name": "battle_counters_add",

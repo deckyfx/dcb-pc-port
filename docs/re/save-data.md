@@ -18,12 +18,19 @@ Per-player data repeats every **10040 bytes** (`0x2738`): player 0 is you (the s
 
 | Offset | Size | What | Written by | Conf. |
 |---|---|---|---|---|
+| `+0x14` | u16 | a progress count: city host `0x0B 0x12 n` adds n (the city scripts add 1 per flag at start-up; host `0x0A 0x13` clears it) | `city_event_host` (SAISEG `801E6618`) | L |
 | `+0x24` | u32 | play time (frames) | `playtime_tick` (`80014E24`), every frame | H |
+| `+0x28` | u32 | flag word; bit `0x400` set by city host `0x0A 0x12`, bit 9 cleared by `game_data_init` | `city_event_host` | L |
+| `+0x2C` | u32 | Fusion Shop flags, bits 0-9 = shop script registers r20-r29 ([below](#fusion-shop-flags-0x2c)) | `city_fusion_flags` (SAISEG `801E3628`), `fusion_flags_save` (EVOSEG `801EB914`) | H |
 | `+0x3C` | 16 bytes | Digi parts owned, one bit per part (parts 0-126), RAM `800DF200`-`800DF20F` | `digipart_give` (`8004BE48`); `digipart_has` (`8004C010`) tests | H |
-| `+0x2F9` | u8 | partner level | `partner_gain_exp` (KAWSEG `801F7600`) | M |
-| `+0x2FA` | u16 | partner EXP | `partner_gain_exp` (KAWSEG `801F7600`) | M |
+| `+0x50` / `+0x52` / `+0x54` | u16 ×3 | fusions done, cards used (+2 each), fusion mutations (all capped at 9999; the records screen's "Fusion Info") | `fusion_execute` (EVOSEG `801EE4B8`) | H |
+| `+0x80` | 0x288 × 3 | partner slots ([below](#partners-and-digimentals)); slot 0's card is `+0x2F8` | `partner_add` (`8004A0F8`) | H |
+| `+0x2F9` | u8 | partner level (slot 0) | `partner_gain_exp` (KAWSEG `801F7600`) | M |
+| `+0x2FA` | u16 | partner EXP (slot 0) | `partner_gain_exp` (KAWSEG `801F7600`) | M |
 | `+0x818` | u16 × 32 | battle counters (capped at 999), role unknown (maybe wins per opponent), RAM `800DF9DC` | `battle_counters_add` (KAWSEG `801FCF78`) | M |
 | `+0x1482` | u8 × 301 | card collection, one byte per card number, RAM `800E0646` | `collection_add_card` (`8004850C`) | H |
+| `+0x23CC` | 12 × u32 | city flags: bit n = city script register r(12+n), r12-r362 ([below](#city-flags-0x23cc)) | `city_flags_save` (SAISEG `801E36A8`) | H |
+| `+0x23FC` | u8 × 9 | city script registers r363-r371 (small counters, e.g. r364) | `city_flags_save` | M |
 | `+0x272C` | u16 × 3 | last battle's reward cards (`0xFFFF` = none) | `battle_rewards_pick` (`80048D68`) | H |
 
 ### Card collection byte
@@ -63,6 +70,146 @@ Palmon (98) `C1 -> C2`, card 30 `41 -> 42 -> C2`.
 `8004835C` (called by `collection_add_card` per copy; the busiest writer while a save loads),
 `80036BEC` (small counters at `+0x36`/`+0x38` and `+0x276E`.. during battle), `80041650` (after
 a battle: `+0x250E` +1, likely a win count), KAWSEG `801EF968` and `801ED064`.
+
+## Progression flags
+
+Story progress, event rewards, the partners and their Digimentals are not stored as items: they
+are **MSD script registers** (the VM in [text-engine.md](text-engine.md) §5.1: `rN`, one `int`
+each) that the city and Fusion Shop scripts test and set, saved as bits in `game_data`. The key
+items (the Fusion Shop "data" rewards) are registers too. Disassembled with the walker of
+`tools/text/msd.py`: `C:\EVENT\CITYnn.MSD` (city events, 12 files), `C:\EVENT\UNIT0n.MSD` (the
+three Fusion Shop keepers, Andromon No.1-No.3). Op 9 is "skip the next record if the test holds",
+so `IF rN != 1 / JUMP x` reads "if rN == 1 goto x".
+
+### City flags (`+0x23CC`)
+
+| Offset | What | Who | Conf. |
+|---|---|---|---|
+| `+0x23CC` 12 × u32 | bit n (word n/32, bit n%32; byte `+0x23CC + n/8`, bit n%8) = register **r(12+n)**, r12-r362 | `city_flags_load` (SAISEG `801E37A4`) copies bits → registers when a city script starts (write watch: 18 registers set on arrival in Flame City); `city_flags_save` (SAISEG `801E36A8`) copies them back (clears or sets each bit) before a host command leaves the script | H |
+| `+0x23FC` u8 × 9 | registers r363-r371 as bytes (r364 = 6 in the recorded save) | same two functions | M |
+
+`game_data_init` (`8002FD64`) clears both. The registers are the city script's own names; the
+ones worked out:
+
+| Register | Byte / bit | Meaning | Set by | Read by | Conf. |
+|---|---|---|---|---|---|
+| r156 | `+0x23DE` bit 0 | Izzy (光子郎, CITY05) beaten and his reward given | CITY05 script after the reward | CITY05 script | H |
+| r266 | `+0x23EB` bit 6 | **Special Fusion data** (特別合成データ; Gatomon's reward, CITY08) | CITY08 script | every city script's start-up (+1 to `+0x14`); `city_fusion_flags` → `+0x2C` bit 0 | H |
+| r267 | `+0x23EB` bit 7 (RAM `800E15AF` `0x80`) | **Mutation Detector** = "Fusion Mutation prediction data" (合成事故予知データ; Izzy's reward, CITY05) | CITY05 script (`08584 r267 = 1`) | start-up count; `city_fusion_flags` → `+0x2C` bit 1 | H |
+| r294, r298, r301, r304, r307, r310 | `+0x23EF` bits 2, 6; `+0x23F0` bits 1, 4, 7; `+0x23F1` bit 2 | partner owned: Veemon, Hawkmon, Armadillomon, Patamon, Gatomon, Wormmon (`g_partner_flags`, SAISEG `801E0ED8`, by partner index 0-5: 294, 298, 301, 307, 304, 310) | `partner_flag_set` (SAISEG `801E35BC`) after the partner choice | city scripts (which partners to offer, which Digimental event to run) | H |
+| r295-r297 | `+0x23EF` bits 3-5 | Veemon's Digimentals: Courage → Flamedramon (172), Friendship → Raidramon (185), Miracles → Magnamon (173) | city scripts (e.g. CITY10 `05FF8 r295 = 1`) | `digimental_sync` | H |
+| r299/r300, r302/r303, r305/r306, r308/r309, r311/r312 | `+0x23EF` bit 7; `+0x23F0` bits 0, 2, 3, 5, 6; `+0x23F1` bits 0, 1, 3, 4 | the two Digimentals of Hawkmon (Halsemon 179 / Shurimon 188), Armadillomon (Digmon 189 / Submarimon 176), Patamon (Pegasusmon 180 / Baronmon 174), Gatomon (Nefertimon 181 / Tylomon 178), Wormmon (Shadramon 186 / Quetzalmon 177) | city scripts | `digimental_sync` | H |
+| r317 | `+0x23F2` bit 1 | Ken's (賢, CITY09) partner gift given | CITY09 script | CITY09 script | M |
+
+Unlocking one of these only needs its bit (they are read back when the next city script
+starts), but a script may also use them for its own flow; see the Digimental caveat below.
+
+### Partners and Digimentals
+
+Partner slots: 3 records of `0x288` bytes at `game_data + 0x80 + slot*0x288` (slot 0 at `+0x80`).
+Fields by the record's own offset (`game_data + 0x2F8` = slot 0's card):
+
+| Record offset | Size | What | Conf. |
+|---|---|---|---|
+| `+0x268` / `+0x26C` | u32 × 2 | the card's record in the card database (RAM pointers) | M |
+| `+0x270` / `+0x272` | u16 / u16 × 3 | zeroed by `partner_add`; role not worked out | L |
+| `+0x278` | u8 | partner card (0 = empty slot) | H |
+| `+0x279` | u8 | level (1 on arrival) | H |
+| `+0x27A` | u16 | EXP | M |
+| `+0x27C` | u8 × 3 | set to `0xFF` by `partner_add`; written by the SUBSEG deck screens (role not worked out) | L |
+| `+0x27F` | u8 × 3 | the partner's Digimental cards received (0 = not yet), in `g_digimental_cards` order | H |
+| `+0x282` | u8 | the armed Digimental (set by `partner_armor_select`, `8004A8EC`, on the first one) | M |
+
+- `g_partner_cards` (`800710F4`, u8[6]): Veemon 175, Hawkmon 182, Armadillomon 190, Gatomon 184,
+  Patamon 183, Wormmon 187 (the "partner index" used below). **H**
+- `g_digimental_cards` (`800710FC`, u8[6][3]): Veemon 172/185/173, Hawkmon 179/188,
+  Armadillomon 189/176, Gatomon 181/178, Patamon 180/174, Wormmon 186/177. These 19 cards
+  (172-190) are the ones `collection_add_card` refuses. **H**
+- `partner_add(player, index, given)` (`8004A0F8`) fills the first empty slot (none when all 3
+  are used or the partner is already there); `partner_give` (`8004A4F0`) calls it with
+  `given = 1`: collection byte = 1 copy | `0xF0`, the starter Digi part (`80071AD8`). Callers: the
+  starter choice (OPENSEG `801EC450`) and the city partner choice (`partner_choose_task`,
+  SAISEG `801F6058`), which offers what the script pushed with host `0x0B 10 n` (the list at
+  SAISEG `801F7CE0`) and then sets the partner flag. **M** (code)
+- So a player has **at most three partners** of the six: Ken's gift in CITY09 offers the
+  partners not owned yet (Wormmon always). There is no "unlock all partners" flag: setting a
+  partner's flag without a slot would only make the scripts believe it is owned.
+- `digimental_sync` (SAISEG `801E39C0`), run by city host `0x0A 7` (opening the city **Menu**):
+  for each owned partner, `digimental_give(0, index, n)` (`8004A6D8`) for each of its Digimental
+  flags that is set (`g_digimental_flags`, SAISEG `801E0EE4`): record byte `+0x27F+n` = the card,
+  collection byte `|= 0x50`. It also builds the 13-bit mask at `*80070C30 + 0xFB8` for the
+  Partner screen. Seen at run time with the flags set: Veemon got 172/185/173, armed 172. **H**
+
+### Fusion Shop flags (`+0x2C`)
+
+The shop keeper's script (`C:\EVENT\UNIT0n.MSD`, run by `fusion_shop_host`, EVOSEG `801EACBC`)
+has its own registers; r20-r29 are bits 0-9 of `game_data + 0x2C`: `fusion_flags_load` (EVOSEG
+`801EB8B8`) sets the register when the bit is set, `fusion_flags_save` (EVOSEG `801EB914`) ORs set
+registers back when leaving. `city_fusion_flags` (SAISEG `801E3628`) copies r266 → bit 0 and
+r267 → bit 1 each time the player heads for the Fusion Shop (write watch: `+0x2C` 0 → 2 with r267
+held by a cheat). **H**
+
+| Bit | Register | Meaning | Conf. |
+|---|---|---|---|
+| 0 | r20 | has the Special Fusion data: the keeper announces special fusions (r14) | H |
+| 1 | r21 | has the **Mutation Detector**: the keeper announces mutations (r13) | H |
+| 2 / 3 | r22 / r23 | a keeper already commented on the special / mutation data | H |
+| 4-9 | r24-r29 | keeper introductions done (r24-r26 No.1, r27/r28 No.2, r29 No.3); r27/r29 also pick the shop's level limit (script r12 = 0 / 2 / 3, host `0x0A 4`) | M |
+
+### Fusion Shop: the roll, and what the Mutation Detector does
+
+Card fusion (EVOSEG; `C:\EVO_PAK\n.PAK` holds its images): `fusion_card_select` (EVOSEG `801ED668`)
+takes the first card, then on the second runs **`fusion_roll`** (EVOSEG `801EF738`) and
+`fusion_check_full` (`801ED5A0`, r11 = -1 when the result is already owned 6 times). Partner cards
+and levels above the shop's limit are refused there. `fusion_roll`: **H** (code; runs traced with
+`DCB_TRACE_FUSION`)
+
+1. The special-fusion table `g_special_fusions` (EVOSEG `801E1AFC`, 20 × {A, B, result, effect},
+   either order): a match is a **special fusion** (kind 1, r14 = 1).
+2. Else `r = rand() % 100`; a **mutation** when `r <= (A.value + B.value) / 10` (card byte
+   `+0x18`, the "fusion value": 1-4 % for most pairs). Kind 2, r13 = 1, then `rand() % 100`:
+   - `< 21`: a **Digi-Jewel**, card `273 + rand() % 12` (Digi-Garnet 273 … Digi-Turquoise 284);
+     if six are already owned, Fake Sevens (card 200) instead;
+   - `< 61`: **Fake Sevens** (にせセブンズ, card 200);
+   - else a card whose fusion value is 1-3 above the pair's.
+3. Else the normal result: a card of the pair's fusion value, its type from a 6×6 table at
+   EVOSEG `801F2974` indexed by the two cards' types (M).
+
+Results: card at `g_fusion_result` (EVOSEG `801F7FC0`), kind at `g_fusion_kind` (`801F7FD5`: 0
+normal, 1 special, 2 mutation), script registers r11, r13, r14, r15/r16 (predicted type), r17
+(kind). On "yes" (host `0x0A 19`), `fusion_execute` (EVOSEG `801EE4B8`) removes both cards
+(`collection_remove_card`, `80048810`), adds the result and counts `+0x50`/`+0x52`/`+0x54`.
+
+**The Mutation Detector does not prevent mutations.** Nothing in the fusion code reads it; only
+the keeper's script does (UNIT00 `0219C`, UNIT01 `01E88`, UNIT02 `01AF8`): with r21 set and a
+mutation rolled (r13), the keeper says "this fusion is going to mutate!" (合成事故が起きてしまい
+そうだ) instead of predicting the result's type, then asks the same "fuse these two cards?"; "yes"
+fuses and the mutation happens, "no" goes back to the second card, and picking it again rolls
+again. So the item only lets the player *avoid* a mutation knowingly. The JP text of the reward
+says the data lets you know about fusion accidents in advance (事故を未然に知ることができます); the
+US line "It prevents mutations that might happen during Card Fusion" is a mistranslation.
+Verified at run time (H): with r267 set by a cheat, the keeper greets with the "you got the
+mutation prediction data" lines, warns on a mutation, and "yes" gave Digi-Sapphire (281) from
+cards 300 + 299 (`+0x54` 0 → 1); the same fusion without the toggles gave a normal card (249).
+
+What makes the Digi-Jewels hard is the odds: about 1-4 % per fusion for a mutation, then 21 % for
+a jewel (1 in 12 for a given one). The trainer's fusion toggles below change that.
+
+### Trainer toggles (Battle tab, "Outside battle")
+
+`src/platform/trainer_toggles.hpp` (the list, cheat-file lines `!toggle <id> on|off`) and
+`src/game/overrides/fusion.cpp` (the game side):
+
+| Toggle | What it does | Conf. |
+|---|---|---|
+| `fusion_mutate` "Fusion: every fusion mutates (special kept)" | `dcb_fusion_roll` overrides `fusion_roll` (`config/SLPS-03101/overrides.json`, overlay EVOSEG) and re-runs the original until it rolls a mutation; a special fusion is kept. With the Mutation Detector the keeper warns every time; answer yes. | H (run: mutations after 52-647 rolls) |
+| `fusion_jewel` "Fusion: mutations give a Digi-Jewel" | re-runs the roll until a mutation gives a Digi-Jewel the player does not have six of; alone it only changes fusions that mutated anyway, with `fusion_mutate` every fusion gives a jewel | H |
+| `digimentals` "All Digimentals (given at the city Menu)" | holds the 13 Digimental flag bits set (like a cheat, each frame, ORed into `+0x23EF`-`+0x23F1`); the next city **Menu** gives each owned partner its Digimentals | H (run) |
+
+Digimental caveat (M): scripts also read these flags for their own flow. CITY09's partner gift
+shows "you got the X card" and sets r317 only when the new partner's first Digimental flag is
+clear, so with the toggle on that message is skipped and the gift can be offered again (it still
+adds the partner). The Digimental events themselves are skipped (their flags are already set).
 
 ## Trainer codes
 

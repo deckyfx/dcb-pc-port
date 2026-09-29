@@ -14,6 +14,7 @@
 #include "menu.hpp"
 #include "cheat_presets.hpp"
 #include "overrides/battle.hpp"
+#include "overrides/fusion.hpp"
 #include "overrides/movies.hpp"
 #include "overrides/native_files.hpp"
 #include "platform.hpp"
@@ -588,6 +589,7 @@ int main(int argc, char** argv) {
             if (const std::string notice = dcb::battle_hotkeys(machine.ctx(), commands, cheats->battle());
                 !notice.empty())
                 host->show_message(notice);  // F10-F12 in a card battle (overrides/battle.cpp)
+            dcb::game_toggles_frame(machine.ctx(), cheats->toggles());  // overrides/fusion.cpp
             if (states.handle(commands)) {  // save states: between frames, also while paused
                 read_display();
                 host->present(mmio.gpu().vram(), area);
