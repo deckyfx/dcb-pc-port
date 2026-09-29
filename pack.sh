@@ -51,6 +51,11 @@ if [[ -d "$ASSETS/custom/textures" ]]; then
     cp -r "$ASSETS/custom/textures/." "assets/converted/$SERIAL/textures/"
     echo "   custom images: $(find "$ASSETS/custom/textures" -type f | wc -l) restored over the rip"
 fi
+# sprites.txt (sprite scale rules, e.g. the wider title art) lives in converted/ too.
+if [[ -f "$ASSETS/custom/sprites.txt" ]]; then
+    cp "$ASSETS/custom/sprites.txt" "assets/converted/$SERIAL/sprites.txt"
+    echo "   sprites.txt restored"
+fi
 if [[ -d "extracted/SLUS-01328" ]]; then
     ./build/linux-release/dcb_asset_ripper unpack "extracted/SLUS-01328" >/dev/null
     python3 tools/text/en_text.py --jp "extracted/SLPS-03101" --us extracted/SLUS-01328 \
