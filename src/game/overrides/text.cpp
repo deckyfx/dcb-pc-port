@@ -673,6 +673,24 @@ bool dcb::text_translate(PsxContext& ctx, const std::string& in, std::string& ou
     return load_font(ctx) && g_catalog.translate(in, out);
 }
 
+namespace {
+
+const dcb::TextAlias* g_aliases = nullptr;  // text_set_aliases (name entry tab labels)
+size_t g_alias_count = 0;
+
+uint32_t alias_of(uint32_t str) {
+    for (size_t i = 0; i < g_alias_count; ++i)
+        if (g_aliases[i].from == str) return g_aliases[i].to;
+    return str;
+}
+
+}  // namespace
+
+void dcb::text_set_aliases(const TextAlias* list, size_t count) {
+    g_aliases = count ? list : nullptr;
+    g_alias_count = list ? count : 0;
+}
+
 extern "C" {
 
 namespace {
@@ -739,6 +757,10 @@ void dcb_text_draw(PsxContext* ctx) {
     uint32_t rgb_p = psx_read32(ctx, sp + 16);
     int ot = static_cast<int>(psx_read32(ctx, sp + 20));
     uint32_t str = psx_read32(ctx, sp + 24);
+    if (const uint32_t to = alias_of(str); to != str) {
+        str = to;
+        psx_write32(ctx, sp + 24, str);  // the argument slot, for the JP fallback
+    }
     trace_call(*ctx, "draw", str, x, y);
     dispatch(ctx, kDrawAddr, true, x, y, clut, prop, rgb_p, ot, str);
 }

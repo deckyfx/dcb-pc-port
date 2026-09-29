@@ -41,6 +41,11 @@
    "source": "re",
    "note": "(win, rect*): animates the window to rect; -1 shrinks it to nothing (close). Conf H"
   },
+  "0x800171A8": {
+   "name": "window_scroll_to",
+   "source": "re",
+   "note": "(win, x, y): sets a scrolling window's view offset (+52 x / +54 y); the name entries page their grid with it (y = row * 14). Conf M"
+  },
   "0x8001723C": {
    "name": "window_draw",
    "source": "re",
@@ -433,6 +438,12 @@
    "source": "re",
    "note": "(slots) -> the first free slot (+62 == -1), marked in use, shown count zeroed; 0 when all 3 are used. Conf H"
   },
+  "0x801E2960": {
+   "name": "name_entry_input",
+   "overlay": "SUBSEG",
+   "source": "re",
+   "note": "deck name entry pad input (as OPENSEG 801EA910; tab slots 0-8: seven pages, OK, cancel). Tab cursor box widths from the jump table at 801E10EC. Conf M"
+  },
   "0x801E2978": {
    "name": "city_msg_build",
    "overlay": "SAISEG",
@@ -475,11 +486,23 @@
    "source": "re",
    "note": "the reverse: bits of game_data + 0x23CC -> r12-r362, bytes + 0x23FC -> r363-r371 (write watch). Conf H"
   },
+  "0x801E37B4": {
+   "name": "name_entry_frame",
+   "overlay": "SUBSEG",
+   "source": "re",
+   "note": "deck name entry, per-frame window callback (as OPENSEG 801EB5BC; 63 rows, labels hiragana, katakana, letters, other, kanji 1-3, OK, cancel). Overridden: src/game/overrides/name_entry.cpp. Conf H"
+  },
   "0x801E39C0": {
    "name": "digimental_sync",
    "overlay": "SAISEG",
    "source": "re",
    "note": "city host 0x0A 7 (city Menu): for each owned partner, digimental_give for each of its Digimental flags that is set. Conf H"
+  },
+  "0x801E4450": {
+   "name": "name_entry",
+   "overlay": "SUBSEG",
+   "source": "re",
+   "note": "(task) deck name entry (mode, name buffer, pad): resets g_name_entry (row 0, column 0 = the first grid page), opens the windows, registers the per-frame callback, sleeps until +26 is set, copies the name back on OK. Conf M"
   },
   "0x801E6618": {
    "name": "city_event_host",
@@ -492,6 +515,12 @@
    "overlay": "EVOSEG",
    "source": "re",
    "note": "card record pointers for the fusion list (0x134 / 0xDA / 0x68 strides) and the owned partners' own records. Conf M"
+  },
+  "0x801EA910": {
+   "name": "name_entry_input",
+   "overlay": "OPENSEG",
+   "source": "re",
+   "note": "player name entry pad input: grid cursor (Up/Down within the 9-row page, Left/Right over the 10 characters, off either end into the tab list), pad bits 0x1/0x2 page by 9 rows, tab list Up/Down (slots 0-2 and 7). Tab cursor box widths from the jump table at 801E1BAC. Conf M"
   },
   "0x801EACBC": {
    "name": "fusion_shop_host",
@@ -510,6 +539,12 @@
    "overlay": "EVOSEG",
    "source": "re",
    "note": "(n): loads C:\\EVENT\\unit0%d.MSD and makes its VM. Conf H"
+  },
+  "0x801EB5BC": {
+   "name": "name_entry_frame",
+   "overlay": "OPENSEG",
+   "source": "re",
+   "note": "player name entry, per-frame window callback (a0 = grid window): draws the visible grid rows (g_name_grid 801F5118, 27 rows), the tab labels (hiragana, katakana, letters, OK; highlight = scroll y / page height), runs name_entry_input (801EA910) and the tab / character confirm. Overridden: src/game/overrides/name_entry.cpp. Conf H"
   },
   "0x801EB6D0": {
    "name": "unit_msg_page_wait",
@@ -565,6 +600,12 @@
    "source": "re",
    "note": "(x, y, ot): reveals / draws the used lines 12 px apart, stopping at the first still revealing; 1 while busy. Conf H"
   },
+  "0x801ECF7C": {
+   "name": "name_entry_input",
+   "overlay": "SAISEG",
+   "source": "re",
+   "note": "WORD INPUT (keyword) pad input (as OPENSEG 801EA910). Tab cursor box widths from the jump table at 801E160C. Conf M"
+  },
   "0x801ED178": {
    "name": "tutorial_msd_load",
    "overlay": "KAWSEG",
@@ -607,11 +648,23 @@
    "source": "re",
    "note": "(x, y, vram_x, vram_y, w, h, clut_x, clut_y, depth, semi, semi_mode, brightness, ot_layer): DR_MODE + SPRT packet into the pool"
   },
+  "0x801EDC40": {
+   "name": "name_entry_frame",
+   "overlay": "SAISEG",
+   "source": "re",
+   "note": "WORD INPUT keyword entry, per-frame window callback (as OPENSEG 801EB5BC; row count at state +23 = 27; labels hiragana, katakana, letters, OK, cancel). Overridden: src/game/overrides/name_entry.cpp. Conf H"
+  },
   "0x801EE4B8": {
    "name": "fusion_execute",
    "overlay": "EVOSEG",
    "source": "re",
    "note": "after 'yes': removes the two cards, adds the result, game_data +0x50 fusions +1, +0x52 cards used +2, +0x54 mutations +1 (write watch). Conf H"
+  },
+  "0x801EE704": {
+   "name": "keyword_entry",
+   "overlay": "SAISEG",
+   "source": "re",
+   "note": "(task) WORD INPUT keyword entry, spawned by city_event_host (801E6B54): state reset, 27-row grid window. Conf M"
   },
   "0x801EE850": {
    "name": "title_init",
@@ -649,11 +702,35 @@
    "source": "re",
    "note": "VS screen drawer; each big name is one 32-px-high sprite from (704, 448/480), width battle_data+0x114. Conf M"
   },
+  "0x801F5118": {
+   "name": "g_name_grid",
+   "overlay": "OPENSEG",
+   "source": "re",
+   "note": "name entry row table: 27 x {left 5, right 5 chars} Shift-JIS string pointers; rows 0-8 hiragana, 9-17 katakana, 18-26 letters / digits (name_entry.cpp rotates it to letters first). Conf H"
+  },
+  "0x801F541C": {
+   "name": "g_name_grid",
+   "overlay": "SUBSEG",
+   "source": "re",
+   "note": "deck name row table: 63 x {left, right} string pointers, 7 pages of 9 rows (hiragana, katakana, letters / digits, other, kanji 1-3). Conf H"
+  },
   "0x801F6058": {
    "name": "partner_choose_task",
    "overlay": "SAISEG",
    "source": "re",
    "note": "the partner choice screen: partner_give(0, the chosen offer), then partner_flag_set. Conf M"
+  },
+  "0x801F6168": {
+   "name": "g_name_entry",
+   "overlay": "SUBSEG",
+   "source": "re",
+   "note": "deck name entry state (layout as OPENSEG 801F9E18; +27 pad index). Conf M"
+  },
+  "0x801F6C4C": {
+   "name": "g_name_grid",
+   "overlay": "SAISEG",
+   "source": "re",
+   "note": "keyword entry row table: 27 x {left, right} string pointers (hiragana, katakana, letters / digits), followed by the secret keywords. Conf H"
   },
   "0x801F7418": {
    "name": "unit_card_ptrs",
@@ -666,6 +743,12 @@
    "overlay": "KAWSEG",
    "source": "re",
    "note": "adds partner EXP (u16 game_data + 0x2FA) and raises the level (u8 game_data + 0x2F9) after a battle. Conf M"
+  },
+  "0x801F7BB0": {
+   "name": "g_name_entry",
+   "overlay": "SAISEG",
+   "source": "re",
+   "note": "keyword entry state (as OPENSEG 801F9E18, shifted: +10 text, +23 row count, +24 length, +25 focus, +26 tab cursor). Conf M"
   },
   "0x801F7CE0": {
    "name": "g_partner_offer",
@@ -726,6 +809,12 @@
    "overlay": "EVOSEG",
    "source": "re",
    "note": "u8: 0 normal, 1 special fusion, 2 mutation (script r17). Conf H"
+  },
+  "0x801F9E18": {
+   "name": "g_name_entry",
+   "overlay": "OPENSEG",
+   "source": "re",
+   "note": "name entry state: +0 s16 character column 0-9, +4 s16 row, +9 name (SJIS), +22 u8 length, +23 u8 focus (0 grid, 1 tab list), +24 s8 tab cursor (0-6 pages, 7 OK, 8 cancel), +26 s8 result (7 OK). Conf M"
   },
   "0x801FCF78": {
    "name": "battle_counters_add",

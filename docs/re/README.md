@@ -24,3 +24,5 @@ documented in [../RE_WORKFLOW.md](../RE_WORKFLOW.md).
   US GameShark codes), and the battle hotkeys.
 - [Text engine](text-engine.md) — SJIS/ASCII encoding, the JP/US renderers, fonts and glyph
   cache, string sources, override plan and the state of the English-text port.
+- [Name entry](name-entry.md) — the player / deck name and keyword entry screens (character
+  grid, tab list) and the override that opens them on the letters page.
