@@ -71,6 +71,9 @@ Settings (window size, keys, gamepad, volume) are written to settings.ini on fir
 EOF
 cp "$ASSETS/$SERIAL.pak" "$STAGE/linux/"
 cp "$ASSETS/$SERIAL.pak" "$STAGE/windows/"
+cp "$STAGE/README.txt" "$STAGE/linux/"
+cp "$STAGE/README.txt" "$STAGE/windows/"
+cp build/linux-release/dcb "$STAGE/linux/"
 cp build/windows-cross/dcb.exe "$STAGE/windows/"
 
 LINUX_ZIP="$OUTDIR/dcb-pc-v$VERSION-linux.zip"
