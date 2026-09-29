@@ -271,7 +271,7 @@ void Trainer::presets_char(char c) {
 void Trainer::battle_step(int delta) {
     const size_t i = static_cast<size_t>(battle_sel_);
     const BattleAction& a = battle_.list()[i];
-    if (a.is_toggle()) return;  // no value
+    if (!a.has_value()) return;
     const int v = battle_.set_value(i, a.value + delta);
     battle_edit_.clear();
     dirty_ = true;
@@ -313,7 +313,7 @@ void Trainer::battle_key(Key k) {
 void Trainer::battle_char(char c) {
     const size_t i = static_cast<size_t>(battle_sel_);
     if (c >= '0' && c <= '9') {
-        if (!battle_.list()[i].is_toggle() && battle_edit_.size() < 4) battle_edit_ += c;
+        if (battle_.list()[i].has_value() && battle_edit_.size() < 4) battle_edit_ += c;
     } else if (c == ' ') {
         const BattleAction& a = battle_.list()[i];
         battle_.set_enabled(i, !a.enabled);
@@ -556,11 +556,14 @@ std::vector<Line> Trainer::render(int cols, int rows) const {
             if (a.is_toggle())
                 std::snprintf(buf, sizeof buf, "%s%s      %s", sel ? "> " : "  ", a.enabled ? "[x]" : "[ ]",
                               a.label().c_str());
+            else if (!a.has_value())
+                std::snprintf(buf, sizeof buf, "%s%s %s  %s", sel ? "> " : "  ", a.enabled ? "[x]" : "[ ]",
+                              a.player == 0 ? "F10" : "F11", a.label().c_str());
             else
                 std::snprintf(buf, sizeof buf, "%s%s %s  %-17s %5s", sel ? "> " : "  ", a.enabled ? "[x]" : "[ ]",
                               a.player == 0 ? "F10" : "F11", a.label().c_str(), value.c_str());
             lines.push_back({buf, sel ? Style::Selected : a.enabled ? Style::Good : Style::Normal});
-            if (i == 4 || i == 9) lines.push_back({});
+            if (i == 4 || i == 9 || i == 11) lines.push_back({});
         }
         lines.push_back({"      F12  reset P1 and P2 (always)", Style::Dim});
     } else {

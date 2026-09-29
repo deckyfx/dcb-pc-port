@@ -7,15 +7,20 @@ The players' stats during a card battle, found by translating the US version's G
 
 ## Where it is
 
-Each player's battle data is reached through a pointer table at **`801DAF40`** (one word per
-player: 0 = you, 1 = the opponent); the US table is at `801D8348`. The same struct holds the
-player name at `+0x1CA` ([text-engine.md](text-engine.md)).
+Each player's battle data is reached through a pointer table at **`801DAF40`**
+(`g_battle_players`, one word per player: 0 = you, 1 = the opponent); the US table is at
+`801D8348`. The two structs are 0x1E0 bytes each, back to back (one traced battle: P1 `800E5FF8`,
+P2 `800E61D8`). The same struct holds the player name at `+0x1CA`
+([text-engine.md](text-engine.md)). A battle state struct is reached through `801DAF38`
+(`g_battle_state`).
 
 | Field | JP offset | US offset | US code address (P1) |
 |---|---|---|---|
 | HP | `+0x118` | `+0x11C` | `800B3E84` |
 | Circle / triangle / cross attack | `+0x11A` / `+0x11C` / `+0x11E` | `+0x11E` / `+0x120` / `+0x122` | `800B3E86` / `88` / `8A` |
 | DP | `+0x120` | `+0x124` | `800B3E8C` |
+| Points (u8, knockouts scored; 3 wins) | `+0x178` | | |
+| Deck (30 card bytes, drawn = `FF`) | `+0x179` | | |
 | Circle / triangle / cross attack, current battle | `+0x158` / `+0x15A` / `+0x15C` | `+0x15C` / `+0x15E` / `+0x160` | `800B3EC4` / `C6` / `C8` |
 
 The US codes use fixed addresses (P1 struct at `800B3D68`, P2 `0x1BB10` later); the JP build
@@ -68,3 +73,24 @@ The trainer's Battle tab has "deck in order (no shuffle)" for P1 and P2: while o
 `dcb_deck_shuffle` only clears the pending count, so that player draws in deck order (the order
 of the deck as built). Boss A's "move the partner to the bottom, no shuffle" is presumably the
 game doing the same for its own deck; its code was not traced.
+
+## Points and the win
+
+A knockout scores a point; 3 points win the battle.
+
+- `battle_ko_check(player)` (KAWSEG **`801EF968`**): returns 0 unless the player's HP (`+0x118`) is
+  0; then the opponent scores: `battle_state+0x81E` = the scorer, the scorer's points (u8
+  **`+0x178`**) += 1 (`801EFD5C`). Several places test `points == 2` first ("this knockout wins").
+- `battle_main` (**`80036BEC`**, the battle loop) calls it in the battle phase and then, at
+  `8003B5C4`, tests the scorer's `points == 3`: the battle ends and the result screen shows both
+  scores (`+0x178` of each) and names (`+0x1CA`).
+
+Found with `DCB_WATCH_BATTLE=1` (RE aid in `overrides/battle.cpp`): when a battle starts it points
+the write watch at both battle structs and the battle state (4 KB each), so a played round logs
+which fields change and which function writes them. It slows the battle down (every logged write
+walks the call chain).
+
+The trainer's Battle tab has "P1 wins at the next battle phase" (F10) and "P2 wins at the next
+battle phase (you lose)" (F11): the winner's points become 2 and the opponent's HP 0, so the next
+battle phase runs the game's own knockout and win (result screen, rewards and records are the
+game's). F12 puts the points and HP back.

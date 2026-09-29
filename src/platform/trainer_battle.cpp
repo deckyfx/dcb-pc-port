@@ -22,25 +22,31 @@ constexpr StatInfo kStats[] = {
     {BattleStat::Cross, "cross", "cross attack"},
     {BattleStat::Dp, "dp", "DP"},
     {BattleStat::NoShuffle, "noshuffle", "deck in order (no shuffle)"},
+    {BattleStat::Win, "win", "wins at the next battle phase"},
 };
+
+/// Rows come in groups (values, no-shuffle toggles, wins), P1 then P2 in each.
+int group_of(BattleStat stat) { return stat == BattleStat::NoShuffle ? 1 : stat == BattleStat::Win ? 2 : 0; }
 
 }  // namespace
 
 std::string BattleAction::label() const {
     for (const StatInfo& s : kStats)
-        if (s.stat == stat) return std::string(player == 0 ? "P1 " : "P2 ") + s.name;
+        if (s.stat == stat)
+            return std::string(player == 0 ? "P1 " : "P2 ") + s.name +
+                   (stat == BattleStat::Win && player == 1 ? " (you lose)" : "");
     return "?";
 }
 
 int snap_battle_value(int value, int max) { return std::clamp(value, 0, max) / 10 * 10; }
 
 BattleActions::BattleActions() {
-    // The value actions per player, then the no-shuffle toggles (kept last so the value rows keep
-    // their places).
-    for (int toggles = 0; toggles < 2; ++toggles) {
+    // The value actions per player, then the no-shuffle toggles, then the wins (later groups go
+    // last so earlier rows keep their places).
+    for (int group = 0; group < 3; ++group) {
       for (int player = 0; player < 2; ++player) {
         for (const StatInfo& s : kStats) {
-            if ((s.stat == BattleStat::NoShuffle) != (toggles == 1)) continue;
+            if (group_of(s.stat) != group) continue;
             BattleAction a;
             a.id = std::string(player == 0 ? "p1_" : "p2_") + s.id;
             a.player = player;

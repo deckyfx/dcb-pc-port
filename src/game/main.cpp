@@ -550,7 +550,7 @@ int main(int argc, char** argv) {
             // when everything is off.
             static const bool tracing =
                 coverage_armed || hle::LoadLog::instance().enabled() || std::getenv("DCB_LOG_TEX") ||
-                std::getenv("DCB_WATCH");
+                std::getenv("DCB_WATCH") || std::getenv("DCB_WATCH_BATTLE");
             if (tracing) {
                 psx_coverage_frame = frame;
                 psx_watch_frame = frame;

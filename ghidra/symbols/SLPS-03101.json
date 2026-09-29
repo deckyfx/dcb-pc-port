@@ -116,6 +116,11 @@
    "source": "re",
    "note": "clears/initialises the game data block at boot and new game. Conf M"
   },
+  "0x80036BEC": {
+   "name": "battle_main",
+   "source": "re",
+   "note": "the card battle's main loop (a game task): phases, then after a knockout the win check at 8003B5C4 (the scorer, battle_state+0x81E, has points == 3 -> result screen). Found with the write watch (DCB_WATCH_BATTLE). Conf M"
+  },
   "0x8003C0B0": {
    "name": "battle_card_panel_draw",
    "source": "re",
@@ -226,6 +231,16 @@
    "source": "re",
    "note": "next free text primitive (u32), 28-byte packets"
   },
+  "0x801DAF38": {
+   "name": "g_battle_state",
+   "source": "re",
+   "note": "battle state struct* (e.g. 800EFAA4): +0x81E u8 the player who scored last (set by battle_ko_check, read by the win check). Conf M"
+  },
+  "0x801DAF40": {
+   "name": "g_battle_players",
+   "source": "re",
+   "note": "battle_data* [2] (0 = you, 1 = opponent), 0x1E0 bytes each, e.g. 800E5FF8 / 800E61D8: +0x118 HP, +0x11A..+0x11E attacks, +0x120 DP, +0x178 points (u8, 3 wins), +0x179 deck (30 B), +0x1CA name (docs/re/battle.md). Conf H"
+  },
   "0x801ED334": {
    "name": "tutorial_msg_show",
    "overlay": "KAWSEG",
@@ -243,6 +258,12 @@
    "overlay": "OPENSEG",
    "source": "re",
    "note": "loads B:TITLE.ARC and uploads each TIM at its own VRAM position; its loop is the title state machine (state u32 at 801F9EE0: 0-5 light-ball animation, 6-7 Press Start Button, 8+ main menu), Start tested at 801EEAAC / 801EEB68"
+  },
+  "0x801EF968": {
+   "name": "battle_ko_check",
+   "overlay": "KAWSEG",
+   "source": "re",
+   "note": "(player): returns 0 unless the player's HP (battle_data+0x118) is 0; then the opponent scores: battle_state+0x81E = opponent, opponent's points (u8 battle_data+0x178) += 1 (at 801EFD5C). Called from battle_main's battle phase (8003AFA8, 8003B24C, 8003B31C, 8003B344). Conf H"
   },
   "0x801F7600": {
    "name": "partner_gain_exp",
