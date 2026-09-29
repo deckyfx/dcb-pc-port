@@ -22,6 +22,7 @@
     { "addr": "0x8002B638", "symbol": "dcb_text_measure", "why": "text measure: same ASCII/SJIS dispatch as draw" },
     { "addr": "0x8002BD3C", "symbol": "dcb_text_draw_condensed", "why": "condensed draw: ASCII takes the normal US port, SJIS the JP condensed original" },
     { "addr": "0x8002C574", "symbol": "dcb_text_measure_condensed", "why": "condensed measure: same dispatch as condensed draw" },
+    { "addr": "0x80019FF0", "symbol": "dcb_dialog_setup", "why": "dialog_setup: a choice box with no text and the OPENSEG labels miru/minai (the new-game 'see the explanation?' choices) gets the default labels hai/iie, drawn Yes/No; the catalog's one translation of miru/minai is the battle option's On/Off (src/game/overrides/dialog_labels.cpp)" },
     { "addr": "0x80029F70", "symbol": "dcb_text_icon", "why": "text icon: level badges 16-19 (JP III, A, IV, kan) drawn as the US R/A/C/U badges from the private sheet when the English assets are loaded (src/game/overrides/level_badges.cpp)" },
     { "addr": "0x800288C8", "symbol": "dcb_text_draw_mini", "why": "mini font draw (8x7; the grey wrapper 80028898 calls it): catalog translation, English drawn with proportional ink widths, JP to the original (src/game/overrides/mini_text.cpp)" },
     { "addr": "0x8002A37C", "symbol": "dcb_sjis_to_mini", "why": "sjis_to_mini: ASCII card names copied through (the original drops every ASCII letter), SJIS to the original" },

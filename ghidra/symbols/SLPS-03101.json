@@ -64,7 +64,7 @@
   "0x80019FF0": {
    "name": "dialog_setup",
    "source": "re",
-   "note": "message/Yes-No dialog: sizes the window from text_measure, centred on 320x240"
+   "note": "(win, text, style): message/Yes-No dialog: sizes the window from text_measure, centred on 320x240. Choice labels at win+0x98 / win+0x9C: style 2 keeps the caller's, otherwise the defaults hai/iie (80010028 / 80010030). Overridden (src/game/overrides/dialog_labels.cpp). Conf H"
   },
   "0x8001ABF4": {
    "name": "pad_update",
@@ -434,6 +434,18 @@
    "source": "re",
    "note": "s16[13]: city flag registers of the Digimentals: Veemon 295/296/297, then two per partner by index 299/300, 302/303, 308/309, 305/306, 311/312. Conf H"
   },
+  "0x801E1888": {
+   "name": "s_choice_watch",
+   "overlay": "OPENSEG",
+   "source": "re",
+   "note": "\"miru\" (watch), with s_choice_dont_watch 801E1890 \"minai\": the choice labels of both the Polygon Battle setting and the new-game 'see the explanation?' prompts (OPENSEG:d58/d60). Conf H"
+  },
+  "0x801E1890": {
+   "name": "s_choice_dont_watch",
+   "overlay": "OPENSEG",
+   "source": "re",
+   "note": "\"minai\" (don't watch), see s_choice_watch. Conf H"
+  },
   "0x801E1AFC": {
    "name": "g_special_fusions",
    "overlay": "EVOSEG",
@@ -541,6 +553,12 @@
    "overlay": "EVOSEG",
    "source": "re",
    "note": "card record pointers for the fusion list (0x134 / 0xDA / 0x68 strides) and the owned partners' own records. Conf M"
+  },
+  "0x801EA100": {
+   "name": "reception_choice_step",
+   "overlay": "OPENSEG",
+   "source": "re",
+   "note": "new-game reception, choice steps (jump table 801E193C, states 4-9): the 'see the explanation?' box with no text and the watch/don't-watch labels (801EA220), the old-save conversion result (801EA4F4 writes the recovered card count over the '??' of *801F4DBC as ' n' / 'nn'), the Polygon Battle box (801EA718). Conf M"
   },
   "0x801EA910": {
    "name": "name_entry_input",
@@ -739,6 +757,12 @@
    "overlay": "KAWSEG",
    "source": "re",
    "note": "VS screen drawer; each big name is one 32-px-high sprite from (704, 448/480), width battle_data+0x114. Conf M"
+  },
+  "0x801F4DBC": {
+   "name": "g_conv_count_msg",
+   "overlay": "OPENSEG",
+   "source": "re",
+   "note": "char* to OPENSEG:494 '??mai no card data no shuufuku ni seikou...' (the conversion's recovered-count message); part of an {u32, char*} message table from 801F4D90. Conf M"
   },
   "0x801F5118": {
    "name": "g_name_grid",

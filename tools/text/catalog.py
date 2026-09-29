@@ -10,7 +10,8 @@ Other languages are more <lang>.tsv files with the same ids (DCB_LANG=<lang> pic
 
 Template syntax, shared by every file: printf placeholders (%d, %3d, %c, %s, %%) the game fills
 in; the memory-card slot digit the game writes over "S"/"E" after スロット (US: "*S"/"*E")
-becomes %c. Escapes: \\n line break, \\t tab, \\\\ backslash.
+becomes %c, and the card count it writes over "??" before 枚 (two characters, space-padded)
+%2d. Escapes: \\n line break, \\t tab, \\\\ backslash.
 """
 from __future__ import annotations
 
@@ -21,6 +22,9 @@ from typing import Callable
 
 _SLOT_JP = re.compile(rb"(\x83\x67)([SE])")  # ト then the slot letter
 _SLOT_US = re.compile(rb"\*([SE])")
+# "??枚": OPENSEG 801EA4F4 writes a card count (1-99) over the two "?" as " n" / "nn" (the old-save
+# conversion's "??枚のカードデータの修復に成功しました。"), so the string drawn is "%2d枚...".
+_COUNT_JP = re.compile(rb"\?\?(?=\x96\x87)")
 
 
 @dataclass
@@ -61,7 +65,7 @@ def read_string(blob: bytes, off: int) -> tuple[bytes, int]:
 
 
 def jp_template(raw: bytes) -> bytes:
-    return _SLOT_JP.sub(rb"\1%c", raw)
+    return _COUNT_JP.sub(rb"%2d", _SLOT_JP.sub(rb"\1%c", raw))
 
 
 def us_template(raw: bytes) -> bytes:

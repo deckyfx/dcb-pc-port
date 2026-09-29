@@ -85,6 +85,10 @@ s w handled, the rest fall back to "draw the letter").
 | `wN` / `w-N` | `*wN` | letter spacing ±N px added after every glyph | 0 | `case 0x77` | H |
 | `z` (1 byte) | – | toggle space width 6 ↔ 12 | 0 | `case 0x7a` | H |
 
+The port adds one code of its own to the English renderer (neither disc has it; the US table stops
+at `w`): `*yN` / `*y-N` draws the rest of the string N px lower / higher without moving the line
+(measure and `g_text_h` unchanged); `src/platform/text_codes.hpp`, used for the unit labels of §7.9.
+
 Codes that are **not** handled by the renderer but are expanded by the caller before drawing:
 
 | Code (JP) | Code (US) | Expanded by | Replaced with | Conf. |
@@ -395,7 +399,19 @@ entry whole, draws the translation instead.
   (the JP templates) and `en.tsv`.
 - **Templates:** printf placeholders the game fills (`%d`/`%3d` match padded numbers, `%s` any
   run, `%%` a literal %); the slot digit the game writes over `S`/`E` after `スロット` (US: over
-  `*S`/`*E`) is `%c`. Captured values go into the translation's placeholders in order.
+  `*S`/`*E`) is `%c`, and the card count OPENSEG `801EA4F4` writes over `??枚` (" n" / "nn", the
+  old-save conversion's "??枚のカードデータの修復に成功しました。", OPENSEG:494,
+  `catalog-reception.txt`) is `%2d`. Captured values go into the translation's placeholders in order.
+- **One JP string, two meanings:** the catalog has one translation per JP text (the lowest id's).
+  OPENSEG draws its choice labels みる / みない (801E1888 / 801E1890) for the Polygon Battle
+  setting and for the new-game "see the explanation?" prompts ("User Registration is complete.
+  Would you like to know more about this world?", "Do you want to learn about the game?"); the US
+  split them (a7c "Yes"/"No", ab4 "On"/"Off"), but here みる/みない took KAWSEG:1a48/1a50 "On"/"Off"
+  (the battle option) everywhere, so the registration prompts offered On / Off. `dcb_dialog_setup`
+  (override of `dialog_setup` 80019FF0, `src/game/overrides/dialog_labels.cpp`) gives a choice box
+  with no text and those labels the default labels はい / いいえ (80010028 / 80010030, "Yes" /
+  "No"); the Polygon Battle box has a title and keeps On / Off. Only with the English assets.
+  (H: headless new game, `DCB_TRACE_TEXT=hex`: the prompt box draws 80010028/80010030 → Yes/No.)
 - **Other languages:** a `<lang>.tsv` with the same ids next to `en.tsv`, picked with
   `DCB_LANG=<lang>`. The US font has ASCII only, so accented letters need glyphs first.
 - **Runtime:** `text::Catalog` (`src/platform/text_catalog.*`, unit-tested), used by
@@ -459,6 +475,14 @@ Not covered yet: the other MSD scripts (E/F/C PAK scripts; the tutorial and the 
 (the tiny font; the mini font is §7.10, the VS big names §7.11). `DCB_TRACE_TEXT=hex` logs each drawn string's bytes and
 whether the catalog translates it (decode with cp932) — the way to find what is still Japanese.
 
+Japanese that is not text (no text-engine call; found with `DCB_TRACE_PRIMS=1` + `DCB_LOG_TEX=1`):
+the battle phase banner's 準備 / 進化 / 戦闘 (B:\CBTL_SYS.ARC TIM #17 @0x11240, 44×72 4 bpp at
+VRAM (948, 304), CLUT (816, 497); the US TIM reads Prep / Digi-volve / Battle, but the HD pack's
+`B_CBTL_SYS_off00011240_44x72_pal0.png` replaces it with the JP art), and the world map's HELP MENU
+plate (移動 / 入る / メニュー: a TIM of the C:\area01.pak image chunk, HD key
+`C_OBJECT_WORLD_off0000b51c`, 88×80 4 bpp at (808, 0), CLUT (528, 242), replaced by
+`C_OBJECT_WORLD_off0000b51c_88x80.png`).
+
 ### 7.9 Counts and units on the deck / card screens (SUBSEG)
 
 The JP screens draw a count with the 6×11 digit font (`80028C84`, `sprintf "%2d"/"%3d"/"%4d"`)
@@ -487,6 +511,19 @@ the deck select columns leave 13–15 px), 戦 → `Btl.`, ＯＰ → `Opt.`, �
 `Total`, 攻撃力 → `Atk. Power`, 最新入手 → `Newest`, 所持枚数 → `Cards Owned`; the sort
 menu's levels are spelled `Level R` / `C` / `U` / `A`. A JP string with several catalog entries
 takes the entry with the lowest id (`std::map` order of the ids), so a change goes on that id.
+
+**Baseline.** Every one of these labels sits on the line of a count in the 6×11 digit font, and
+both are drawn at the same y: the digit font draws at y + 1 and its digits fill 10 rows (y+1 ..
+y+10); the JP kanji filled y .. y+10 around them, but the US capitals fill the top 10 rows of their
+cell (y .. y+9), so every English unit sat one row too high ("W"/"L" most visibly). All the unit
+labels of `en-layout.tsv` (Cds, Btl., Opt., Tot., Total) and 勝/敗 (`en-kawseg.tsv`: KAWSEG:360/364,
+the lowest id of that text, so every screen's win/loss unit) start with the port code `*y1`
+(§2.2), which puts the letters on the digits' rows. (H: pixel rows of the card-info W/L and the
+card list's Tot./Total/Cds in headless snapshots, before 63–72 vs digits 64–73, after 64–73.)
+**Spacing.** A count ends 2 px before its unit's x (`%3d` +156 → 勝 +176 on the deck line, the same
+20-px step in KAWSEG / OPENSEG / SAISEG / the card info): the kanji's ink kept a gap there, "W" did
+not ("5W"), so W / L get a leading space ("5 W"). The card info's " 計" (25 px before a `%4d`)
+became "Tot." without the space: " Tot." was 24 px and touched a 4-digit total.
 
 **Level badges.** Icons 16–19 (mode 0) are the level badges: JP Ⅲ, A, Ⅳ, 完; the US grid (v base
 0x7F) has R, A, C, U there. Those US rows are inside the private sheet (TIM rows 48–223), so

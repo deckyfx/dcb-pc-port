@@ -28,3 +28,7 @@ add_test(NAME platform.memcard COMMAND test_platform_memcard)
 add_executable(test_platform_text_catalog ${CMAKE_CURRENT_LIST_DIR}/test_text_catalog.cpp)
 target_link_libraries(test_platform_text_catalog PRIVATE dcb_platform dcb::warnings)
 add_test(NAME platform.text_catalog COMMAND test_platform_text_catalog)
+
+add_executable(test_platform_text_codes ${CMAKE_CURRENT_LIST_DIR}/test_text_codes.cpp)
+target_link_libraries(test_platform_text_codes PRIVATE dcb_platform dcb::warnings)
+add_test(NAME platform.text_codes COMMAND test_platform_text_codes)

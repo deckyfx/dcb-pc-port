@@ -6,8 +6,7 @@
 # The port runs the JP controls, so strings with a confirm/insert/delete icon get own English
 # (en-openseg.tsv) that keeps the JP icon.
 #
-# Not mapped: the name-entry kana tables (JP input), the card-repair count message (the game
-# writes digits over "??", so it can never match whole), strings the other catalogs already
+# Not mapped: the name-entry kana tables (JP input), strings the other catalogs already
 # have with the same JP text (name, card collection, cards, 2P battle record).
 
 # Trade

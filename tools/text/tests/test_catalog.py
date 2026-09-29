@@ -47,6 +47,12 @@ class TestCatalog(unittest.TestCase):
         self.assertEqual(en, [])
         self.assertEqual(len(problems), 1)
 
+    def test_card_count_over_question_marks(self) -> None:
+        # The game writes " 5" / "12" over "??" before 枚; other "?" stay literal.
+        raw = "??枚の修復に成功\nご覧になりますか？".encode("cp932")
+        self.assertEqual(catalog.jp_template(raw), "%2d枚の修復に成功\nご覧になりますか？".encode("cp932"))
+        self.assertEqual(catalog.jp_template(b"??"), b"??")
+
     def test_escape(self) -> None:
         self.assertEqual(catalog.escape(b"a\nb\\c\td"), b"a\\nb\\\\c\\td")
 
