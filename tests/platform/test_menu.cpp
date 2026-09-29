@@ -34,7 +34,7 @@ void test_main_nav() {
     CHECK(m.is_open() && m.page() == Page::Main && m.selection() == 0);
     CHECK(m.key(Key::Down) == Action::None && m.selection() == 1);
     CHECK(m.key(Key::Up) == Action::None && m.selection() == 0);
-    CHECK(m.key(Key::Up) == Action::None && m.selection() == 8);  // wraps
+    CHECK(m.key(Key::Up) == Action::None && m.selection() == 9);  // wraps
     CHECK(m.key(Key::Down) == Action::None && m.selection() == 0);
     CHECK(m.key(Key::Close) == Action::Resume);
     m.set_open(true);
@@ -46,14 +46,28 @@ void test_main_nav() {
     m.key(Key::Down);
     CHECK(m.key(Key::Enter) == Action::OpenStates && m.page() == Page::States);
     m.set_open(true);
-    for (int i = 0; i < 8; ++i) m.key(Key::Down);
+    for (int i = 0; i < 9; ++i) m.key(Key::Down);
     CHECK(m.key(Key::Enter) == Action::None && m.page() == Page::ConfirmQuit);
     CHECK(m.key(Key::Enter) == Action::Resume);  // default selection is No
     m.set_open(true);
-    for (int i = 0; i < 8; ++i) m.key(Key::Down);
+    for (int i = 0; i < 9; ++i) m.key(Key::Down);
     CHECK(m.key(Key::Enter) == Action::None && m.page() == Page::ConfirmQuit);
     m.key(Key::Up);  // Yes
     CHECK(m.key(Key::Enter) == Action::Quit);
+    // Reset game: confirmed like Quit (default No; Esc backs out).
+    m.set_open(true);
+    for (int i = 0; i < 8; ++i) m.key(Key::Down);
+    CHECK(m.key(Key::Enter) == Action::None && m.page() == Page::ConfirmReset);
+    CHECK(m.key(Key::Enter) == Action::Resume);
+    m.set_open(true);
+    for (int i = 0; i < 8; ++i) m.key(Key::Down);
+    m.key(Key::Enter);
+    CHECK(m.key(Key::Back) == Action::Resume);
+    m.set_open(true);
+    for (int i = 0; i < 8; ++i) m.key(Key::Down);
+    m.key(Key::Enter);
+    m.key(Key::Up);  // Yes
+    CHECK(m.key(Key::Enter) == Action::Reset);
     // Gamepad mirrors keyboard.
     m.set_open(true);
     CHECK(m.pad(Pad::Down) == Action::None && m.selection() == 1);
@@ -217,6 +231,7 @@ void test_render_bounds() {
     }
     CHECK(contains(m.render(56, 28), "PAUSE MENU"));
     CHECK(contains(m.render(56, 28), "Quit to desktop"));
+    CHECK(contains(m.render(56, 28), "Reset game"));
     // Trainer asks the host to open the trainer; Hotkeys is a read-only page.
     {
         Menu h;

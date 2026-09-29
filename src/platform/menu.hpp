@@ -48,6 +48,7 @@ enum class Action : uint8_t {
     OpenTrainer,       ///< close the menu and open the trainer panel
     OpenHotkeys,       ///< submenu: every hotkey and what it does (read-only)
     Quit,              ///< quit (backend asks for confirmation first)
+    Reset,             ///< reset the game to power-on (confirmed first; save data on the card stays)
     SaveSlot,          ///< save into the selected slot (with thumbnail)
     LoadSlot,          ///< load from the selected slot
     PrevSlot,          ///< select the previous slot (wraps)
@@ -63,7 +64,7 @@ enum class Action : uint8_t {
 };
 
 /// Which page is shown.
-enum class Page : uint8_t { Main, States, Settings, Controls, Cards, About, Hotkeys, ConfirmQuit };
+enum class Page : uint8_t { Main, States, Settings, Controls, Cards, About, Hotkeys, ConfirmQuit, ConfirmReset };
 
 class Menu {
 public:
