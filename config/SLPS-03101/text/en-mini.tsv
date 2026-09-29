@@ -1,0 +1,9 @@
+# English written for this port, mini font (8x7, src/game/overrides/mini_text.cpp). id<TAB>text.
+# The support-effect labels (half-width set, EXE 2320..2398, paired with the US in
+# catalog-exe.txt) sit in a ~48 px slot: the card panels put the specialty icon 49 px after the
+# label start and the deck edit card info starts the effect text 52 px after it. The US drew
+# them in its 4x5 micro font; in the (proportional) mini font two US labels are too wide
+# (1stAttack 56 px, Eat-up HP 57 px), so they get shorter words. The full-width set
+# (EXE 239c..2458, main font, wider slot) keeps the US text.
+EXE:2390	1st Atk
+EXE:2350	Eat HP

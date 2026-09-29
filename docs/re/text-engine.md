@@ -301,7 +301,7 @@ SJIS → original JP code, ASCII → the US-style path. An untranslated JP strin
 | `FUN_KAWSEG__801ed334` tutorial | `dcb_tutorial_msg` | expand `*p`, use a larger buffer, size the box with the ASCII measure | JP: original |
 | OPENSEG slot expander (not yet located) | – | `*S` / `*E` | – |
 | `80044684` big name | `dcb_big_name` | ASCII name → US `FONT.ARC` glyphs (16×32, max 12) | SJIS → original |
-| `8002a37c` SJIS→mini | `dcb_to_mini` | keep ASCII letters (the JP version drops them), so English names show in the mini font | SJIS → original |
+| `8002a37c` SJIS→mini | `dcb_sjis_to_mini` (done, §7.10) | keep ASCII letters (the JP version drops them), so English names show in the mini font | SJIS → original |
 
 The US data use `*` for every code. JP strings keep bare codes. The dispatcher must therefore never
 look for bare-letter codes in ASCII strings. (H)
@@ -432,7 +432,7 @@ slot, so save states keep their place). JP lines take the originals.
 
 Not covered yet: the other MSD scripts (tutorial `B:\BETA.MSD`, `C:\EVENT\UNIT0x.MSD`, E/F/C PAK
 scripts); the other renderers
-(mini / tiny fonts, the VS big names). `DCB_TRACE_TEXT=hex` logs each drawn string's bytes and
+(the tiny font, the VS big names; the mini font is §7.10). `DCB_TRACE_TEXT=hex` logs each drawn string's bytes and
 whether the catalog translates it (decode with cp932) — the way to find what is still Japanese.
 
 ### 7.9 Counts and units on the deck / card screens (SUBSEG)
@@ -470,6 +470,39 @@ takes the entry with the lowest id (`std::map` order of the ids), so a change go
 emit the icon and points the packet at the sheet (texpage word → sheet marker, v → US row). Every
 game draw of a level badge goes through `80029F70`; the `*e` codes inside English strings do
 not (text.cpp calls `f_80029F70` directly), so they keep the JP art.
+
+### 7.10 Mini font (8×7) in English
+
+`src/game/overrides/mini_text.cpp` overrides `sjis_to_mini` (`8002A37C`) and `text_draw_mini`
+(`800288C8`; the grey wrapper `80028898` reaches it through its rewritten `jal`). (H: run)
+
+- **`sjis_to_mini`** is only called on card names (card+3): battle card panel `8003C200` (dst: a
+  40-byte stack buffer) and SUBSEG `801E6AC4` / `801E78A4` (sp+32, ≥ 64 bytes). Its result is
+  unused. An ASCII name is copied through, bounded to the 20 letters of the name slot; bytes below
+  0x20 (long-name tag) and `~` (kana bank toggle) are dropped; US `*a`–`*e` + digit (item names
+  such as "Defense Disk *b0") become the mini icon code `01 N` with the original's mapping
+  (`b0` → `01 08`). Shift-JIS takes the original.
+- **`text_draw_mini`**: the string is translated whole by the catalog (a bracketed label "(%s)",
+  the partner screen's support label, is translated inside the brackets). Japanese left (a byte
+  ≥ 0x80 or `~`) → the original. A string with lowercase letters → **proportional**: one call of
+  the original per glyph on a 2-byte guest-stack string, each glyph trimmed to its ink columns
+  (measured from the SYSTEM.TIM mini cells in VRAM), 1 px gap, space 3 px, no space after an
+  icon; `01 N` icons through `dcb_text_icon`. Capitals only (the JP disc's "RANK UP!",
+  "L1      ", translated "FULL SET!") keep the fixed 8 px cells, since callers pad with spaces.
+- Why not the micro font: the US drew these in a 4×5 capital font (US `80027DE8`; JP has the same
+  cells at `80027EF4`, no lowercase). The mini font already has full ASCII with lowercase; with
+  ink widths English fits the JP slots, and 7-px letters read better than 4×5 capitals.
+- Mini ink widths: capitals and digits 7, most lowercase 5, `i` 1, `l` 2. Slots: support label
+  ≈ 48 px (the specialty icon 49 px after it in the battle panel; deck edit's effect text at
+  +52). In that budget the US "1stAttack" (56) and "Eat-up HP" (57) do not fit: `en-mini.tsv`
+  shortens them ("1st Atk", "Eat HP"); "\x01\x08 Counter" is 51 with the icon. Battle card
+  names have ≈ 87 px before the DP box; 17 of the 293 US card/item names are wider
+  (HerculesKabuterimon 111, MasterTyrannomon 101, the "Mega Def. Disk" items ≈ 100) and run
+  into it. (H: measured)
+- Strings seen through the mini path (headless runs): the Deck Select HELP legend (SUBSEG
+  1ac8.., catalog-subseg), the deck edit sort hint (SUBSEG 1c88), the support labels (EXE
+  2320.., catalog-exe) in deck edit / card selection / partner / battle, battle card names.
+  `DCB_TRACE_TEXT=1|hex` logs them as `[text] mini jp|prop w=N|fixed`.
 
 ## 8. Proposed names
 
