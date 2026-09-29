@@ -175,7 +175,7 @@ OPENSEG `801EC450`, `deck_entry_set` `800495D8`; seen in a save)
 | `+0x00` | u8 | 0 = unused, else in use |
 | `+0x01` | 13 bytes | deck name ([name-entry.md](name-entry.md)) |
 | `+0x10` | 8 × 30 | entries: u8 kind (0 Digimon, card < 191; 1 option, card − 191; 2 other, card − 293), u8 index in that kind, u16 card number, u32 RAM pointer to the card's data |
-| `+0x100` | u16 × 6 | deck record counters: `+0x104` / `+0x106` / `+0x108` battles / wins / losses (capped at 999) |
+| `+0x100` | u16 × 6 | deck record: `+0x106` / `+0x108` wins / losses (capped at 999); `+0x104` is capped with them by `deck_store` but not written by `battle_result` (meaning unknown, L) |
 
 ### Deck record (`+0x2408` + deck × `0x10C` + `0x104`/`0x106`/`0x108`)
 
@@ -227,8 +227,8 @@ with a partner received in game).
 deck's wins or losses row (the game is paused while the panel is open); saving in game keeps
 it. `Left`/`Right` step the choice by 1, `PgUp`/`PgDn` by 10 (clamped 0-999, the game's
 cap); the row shows the choice and what the game has now (`W-L (battles)`). It writes
-`+0x106`/`+0x108` of that deck only; the battle count (`+0x104`) is not stored separately
-(the screens show wins + losses). Refused, with the reason on the status line: no save
+`+0x106`/`+0x108` of that deck only; the screens show battles as wins + losses; `+0x104` (capped with them by
+`deck_store`, not written after a battle) is left alone. Refused, with the reason on the status line: no save
 loaded, or a deck that is not used yet.
 
 ### Fusion Shop flags (`+0x2C`)
