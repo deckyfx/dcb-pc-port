@@ -16,7 +16,7 @@ is resizable and the picture fits it; `F8` switches between fit and integer scal
 `DCB_FILTER=linear|nearest` and `DCB_SCALE=fit|integer` override the file's filter and scale mode
 for one run.
 
-Input: keyboard and gamepad map to the PS1 digital pad (timed SIO0 model); any key skips movies.
+Input: keyboard and gamepad map to the PS1 digital pad (timed SIO0 model); any key or gamepad button skips movies, except the window hotkeys.
 
 ## Memory-card saves
 
@@ -78,7 +78,8 @@ Limits:
   `card1.mcd` since. Avoid loading a state taken in the middle of a memory-card save.
 - Supported by the Linux build (glibc, x86-64 / ARM64) and the Windows build made with MinGW (the
   release `.exe`). An MSVC build or macOS shows "save states are not supported on this platform".
-- Save states are refused while a [native movie](Movies.md) plays.
+- Saving or loading a state from the menu or the hotkeys is refused while a [native movie](Movies.md)
+  plays; the scripted `DCB_STATE_*` triggers are not blocked and don't capture the movie.
 
 Scripted save-state checks (`DCB_STATE_SAVE_AT`, `DCB_STATE_STRESS`, ...) are described in
 [Debugging and RE](Debugging-and-RE.md#scripted-save-state-checks).

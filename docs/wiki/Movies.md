@@ -27,7 +27,10 @@ and `assets/converted/<serial>/movie/movie<N>.mpg` (MPEG-1 + MP2, 30 fps; 15 fps
 frame twice). The input defaults to a disc override in `assets/<serial>/disc/` (e.g. the US movie,
 see [Game Data](Game-Data.md#disc-file-overrides)), or else `extracted/<serial>/fs/`.
 
-Save states are refused while a native movie plays. `DCB_TRACE_MOVIE=1` prints, once a second, the host
+Saving or loading a state from the menu or the hotkeys is refused while a native movie plays (its
+playback lives outside the game's memory). The scripted triggers `DCB_STATE_SAVE_AT`,
+`DCB_STATE_LOAD_AT` and `DCB_STATE_STRESS` are not blocked, and they neither save nor restore the
+movie's playback. `DCB_TRACE_MOVIE=1` prints, once a second, the host
 frames and movie audio samples of that second (~60 / ~44100) and the video frames decoded so far
 (cumulative: it should grow by about the movie's fps each second).
 

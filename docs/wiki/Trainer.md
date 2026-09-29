@@ -44,8 +44,9 @@ Supported code types:
 
 `C1`, `C2`, `D4`–`D6`, `1F` and any other type are rejected with a message and the cheat is never
 half-applied. Enabled cheats are written once per frame at the frame boundary.
-`DCB_TRACE_CHEATS=1` logs each frame's writes and how many of the written bytes held a different
-value in RAM before the write (e.g. a value the game had changed since the last frame).
+`DCB_TRACE_CHEATS=1` logs every frame that has at least one write: the writes, and how many of the
+written bytes held a different value in RAM before the write (e.g. a value the game had changed
+since the last frame).
 
 ## Pages
 
