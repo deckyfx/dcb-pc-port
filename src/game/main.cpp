@@ -392,20 +392,33 @@ int main(int argc, char** argv) {
         hle::HdTextures* hd_textures = nullptr;  // for the exit summary
         // Texture replacement (dcb_asset_ripper output). First found wins:
         //   DCB_HD_PACK=<.pak|folder> (+ DCB_HD_MANIFEST=<file> if the manifest lives elsewhere),
-        //   assets/<id>.pak (self-contained: manifest inside), assets/converted/<id>/ (loose files).
+        //   <exe-dir>/assets/<id>.pak, assets/<id>.pak (self-contained: manifest inside),
+        //   <exe-dir>/assets/converted/<id>/, assets/converted/<id>/ (loose files).
+        // The exe-dir entries make the shipped zips portable: the game finds its PAK next
+        // to the binary whatever the working directory is (e.g. launched from Explorer).
         // Without any, the game runs exactly as before (every upload commits verbatim).
         {
             const char* env_manifest = std::getenv("DCB_HD_MANIFEST");
             const char* env_pack = std::getenv("DCB_HD_PACK");
-            const std::filesystem::path pak = std::filesystem::path("assets") / (std::string(DCB_GAME_ID) + ".pak");
-            const std::filesystem::path loose = std::filesystem::path("assets") / "converted" / DCB_GAME_ID;
+            const std::filesystem::path exe_assets =
+                platform::current_settings_locations().exe_dir / "assets";
+            const auto cand = [&](const std::filesystem::path& base) {
+                return std::make_pair(base / (std::string(DCB_GAME_ID) + ".pak"), base / "converted" / DCB_GAME_ID);
+            };
+            const auto [exe_pak, exe_loose] = cand(exe_assets);
+            const auto [cwd_pak, cwd_loose] = cand("assets");
             std::error_code hd_ec;
             std::string art;
             if (env_pack) art = env_pack;
-            else if (std::filesystem::is_regular_file(pak, hd_ec)) art = pak.string();
-            else if (std::filesystem::is_regular_file(loose / hle::HdTextures::kManifestName, hd_ec)) art = loose.string();
+            else if (std::filesystem::is_regular_file(exe_pak, hd_ec)) art = exe_pak.string();
+            else if (std::filesystem::is_regular_file(cwd_pak, hd_ec)) art = cwd_pak.string();
+            else if (std::filesystem::is_regular_file(exe_loose / hle::HdTextures::kManifestName, hd_ec))
+                art = exe_loose.string();
+            else if (std::filesystem::is_regular_file(cwd_loose / hle::HdTextures::kManifestName, hd_ec))
+                art = cwd_loose.string();
             // Native movies (movie/movie<N>.mpg) come from the same places; a loose folder shadows the pack.
-            dcb::attach_movies({pak.string(), loose.string(), env_pack ? std::string(env_pack) : std::string()});
+            dcb::attach_movies({exe_pak.string(), cwd_pak.string(), exe_loose.string(), cwd_loose.string(),
+                                env_pack ? std::string(env_pack) : std::string()});
             if (!art.empty()) {
                 hle::HdTextures* hd = mmio.gpu().install_hd();
                 if (hd->load(env_manifest ? env_manifest : "", art)) {
