@@ -88,12 +88,13 @@ def build(catalog_text: str, jp_file: Callable[[str], bytes], us_file: Callable[
             jp_raw, next_off = read_string(jp_blob, off)
             sid = f"{file}:{off:x}"
             source.append((sid, jp_template(jp_raw)))
+            us_raw = None
+            if us_ident is not None:  # a run's US side advances even past an own-English entry
+                us_raw, us_off = read_string(us_blob, us_off)
             if sid in own_en:
                 en.append((sid, own_en[sid]))
-            elif us_ident is not None:
-                us_raw, us_next = read_string(us_blob, us_off)
+            elif us_raw is not None:
                 en.append((sid, us_template(us_raw)))
-                us_off = us_next
             else:
                 problems.append(f"{sid}: no US pair and no entry in the port's en.tsv")
             off = next_off

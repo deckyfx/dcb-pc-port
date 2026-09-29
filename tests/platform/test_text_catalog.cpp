@@ -44,11 +44,13 @@ void test_literal_and_placeholders() {
     CHECK(c.size() == 6);
 }
 
-void test_bad_templates() {
+void test_lone_percent_is_literal() {
     text::Catalog c;
-    CHECK(!c.add("a", "100%", "x"));
-    CHECK(!c.add("b", "%q", "x"));
-    CHECK(c.size() == 0);
+    CHECK(c.add("a", "EXP 30%%.", "EXP boost 30%."));  // the US leaves % unescaped
+    CHECK(c.add("b", "100%", "%q"));
+    std::string out;
+    CHECK(c.translate("EXP 30%.", out) && out == "EXP boost 30%.");
+    CHECK(c.translate("100%", out) && out == "%q");
 }
 
 void test_escapes_and_load() {
@@ -74,7 +76,7 @@ void test_escapes_and_load() {
 
 int main() {
     test_literal_and_placeholders();
-    test_bad_templates();
+    test_lone_percent_is_literal();
     test_escapes_and_load();
     std::printf("text_catalog: ok\n");
     return 0;

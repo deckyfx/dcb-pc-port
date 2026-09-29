@@ -61,8 +61,7 @@ bool Catalog::parse(std::string_view tmpl, std::vector<Token>& out) {
         }
         size_t j = i + 1;  // flags, width, precision: %3d, %02d, %2.2d, %-4s
         while (j < tmpl.size() && (tmpl[j] == '-' || tmpl[j] == '0' || tmpl[j] == '.' || is_digit(tmpl[j]))) ++j;
-        if (j >= tmpl.size()) return false;
-        const char conv = tmpl[j];
+        const char conv = j < tmpl.size() ? tmpl[j] : '\0';
         if (conv == '%' && j == i + 1) {
             literal += '%';
             i = j;
@@ -72,7 +71,10 @@ bool Catalog::parse(std::string_view tmpl, std::vector<Token>& out) {
         if (conv == 'd') kind = Token::Kind::Int;
         else if (conv == 'c') kind = Token::Kind::Char;
         else if (conv == 's') kind = Token::Kind::Str;
-        else return false;
+        else {  // not a conversion (the US writes "30%." unescaped): a literal %
+            literal += '%';
+            continue;
+        }
         flush();
         out.push_back({kind, std::string(tmpl.substr(i, j - i + 1))});
         i = j;

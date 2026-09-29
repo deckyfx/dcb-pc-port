@@ -36,6 +36,12 @@ class TestCatalog(unittest.TestCase):
         self.assertEqual(en[1], ("SEG:c", b"Yes"))
         self.assertEqual(en[2], ("SEG:14", b"%3dh"))
 
+    def test_own_entry_inside_a_run_keeps_the_us_side_in_step(self) -> None:
+        jp = blob(b"a", b"b", b"c")
+        us = blob(b"A", b"B", b"C")
+        _, en, _ = catalog.build("run SEG:0 SEG:0 3\n", lambda n: jp, lambda n: us, {"SEG:4": b"own"})
+        self.assertEqual(en, [("SEG:0", b"A"), ("SEG:4", b"own"), ("SEG:8", b"C")])
+
     def test_missing_english_is_reported(self) -> None:
         _, en, problems = catalog.build("pair SEG:0 -\n", lambda n: blob(b"x"), lambda n: b"", {})
         self.assertEqual(en, [])
