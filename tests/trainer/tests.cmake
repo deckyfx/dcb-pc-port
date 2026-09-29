@@ -17,3 +17,7 @@ add_test(NAME trainer.panel COMMAND test_trainer_panel)
 add_executable(test_trainer_partners ${CMAKE_CURRENT_LIST_DIR}/test_partners.cpp)
 target_link_libraries(test_trainer_partners PRIVATE dcb_platform dcb::warnings)
 add_test(NAME trainer.partners COMMAND test_trainer_partners)
+
+add_executable(test_trainer_records ${CMAKE_CURRENT_LIST_DIR}/test_records.cpp)
+target_link_libraries(test_trainer_records PRIVATE dcb_platform dcb::warnings)
+add_test(NAME trainer.records COMMAND test_trainer_records)

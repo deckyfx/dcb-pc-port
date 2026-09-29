@@ -155,7 +155,10 @@ ApplyStats Trainer::apply_frame() {
 }
 
 void Trainer::set_open(bool open) {
-    if (open && !open_) sync_partner_choices();  // the selectors start at what the game has
+    if (open && !open_) {
+        sync_partner_choices();  // the selectors start at what the game has
+        sync_record_choices();
+    }
     open_ = open;
 }
 
@@ -248,20 +251,26 @@ void Trainer::cheats_char(char c) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// General tab: the presets, the game toggles, the partner slots
+// General tab: the presets, the game toggles, the partner slots, the deck records
 // ---------------------------------------------------------------------------------------------
 
 void Trainer::general_key(Key k) {
     const int presets = static_cast<int>(presets_.cheats().size());
     const int first_partner = presets + static_cast<int>(toggles_.list().size());
-    const int count = first_partner + kPartnerSlots;
+    const int first_record = first_partner + kPartnerSlots;
+    const int count = first_record + 2 * kRecordDecks;
     const int slot = general_sel_ - first_partner;
+    const int record_row = general_sel_ - first_record;
     if (k == Key::Enter) {
         general_char(' ');
-    } else if ((k == Key::Left || k == Key::Right) && slot >= 0) {
+    } else if ((k == Key::Left || k == Key::Right) && slot >= 0 && slot < kPartnerSlots) {
         // -1 (empty), then the six partners, wrapping.
         int& choice = partner_choice_[static_cast<size_t>(slot)];
         choice = (choice + 1 + (k == Key::Left ? kPartnerKinds : 1)) % (kPartnerKinds + 1) - 1;
+    } else if ((k == Key::Left || k == Key::Right) && record_row >= 0 && record_row < 2 * kRecordDecks) {
+        step_record(record_row / 2, record_row % 2 == 0, k == Key::Right ? 1 : -1);
+    } else if ((k == Key::PageUp || k == Key::PageDown) && record_row >= 0 && record_row < 2 * kRecordDecks) {
+        step_record(record_row / 2, record_row % 2 == 0, k == Key::PageUp ? 10 : -10);
     } else {
         move(general_sel_, count, k);
     }
@@ -286,8 +295,10 @@ void Trainer::general_char(char c) {
         dirty_ = true;
         const std::string what = !t.enabled ? t.label + " off" : t.on_status.empty() ? t.label + " on" : t.on_status;
         set_status(what + " (S saves)");
-    } else {
+    } else if (i < presets + toggles + kPartnerSlots) {
         apply_partner(static_cast<int>(i - presets - toggles));
+    } else {
+        apply_record(static_cast<int>((i - presets - toggles - kPartnerSlots) / 2));
     }
 }
 
@@ -301,6 +312,29 @@ void Trainer::apply_partner(int slot) {
     const PartnerChange r = set_partner(ram_, slot, partner_choice_[static_cast<size_t>(slot)]);
     if (r.ok) sync_partner_choices();  // a swap changes the other slot too
     set_status(r.message, !r.ok);
+}
+
+void Trainer::sync_record_choices() {
+    const RecordState st = read_records(ram_);
+    for (int d = 0; d < kRecordDecks; ++d) {
+        record_choice_[static_cast<size_t>(d)][0] = st.ok ? st.decks[static_cast<size_t>(d)].wins : 0;
+        record_choice_[static_cast<size_t>(d)][1] = st.ok ? st.decks[static_cast<size_t>(d)].losses : 0;
+    }
+}
+
+void Trainer::step_record(int deck, bool wins, int delta) {
+    if (deck < 0 || deck >= kRecordDecks) return;
+    auto& choice = record_choice_[static_cast<size_t>(deck)];
+    int& v = wins ? choice[0] : choice[1];
+    v = std::clamp(v + delta, 0, kRecordMax);
+}
+
+void Trainer::apply_record(int deck) {
+    if (deck < 0 || deck >= kRecordDecks) return;
+    const auto& choice = record_choice_[static_cast<size_t>(deck)];
+    const RecordChange r = set_record(ram_, deck, choice[0], choice[1]);
+    if (r.ok) sync_record_choices();  // the write clamps, like the game caps
+    set_status(r.message + " (save in game to keep)", !r.ok);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -570,6 +604,29 @@ std::vector<Line> Trainer::render(int cols, int rows) const {
             std::snprintf(buf, sizeof buf, "%sPartner %d  < %-12s >  now %s", sel ? "> " : "  ", s + 1,
                           name(choice).c_str(), have.c_str());
             lines.push_back({buf, sel ? Style::Selected : st.ok && choice != now.partner ? Style::Good : Style::Normal});
+        }
+        const RecordState rec = read_records(ram_);
+        lines.push_back({rec.ok ? "Deck records (Left/Right: -/+1, PgUp/PgDn: -/+10, Enter: apply now):"
+                                : "Deck records: " + rec.error,
+                         Style::Dim});
+        for (int d = 0; d < kRecordDecks; ++d) {
+            const DeckRecord& now = rec.decks[static_cast<size_t>(d)];
+            const auto& choice = record_choice_[static_cast<size_t>(d)];
+            const char* kinds[2] = {"wins", "losses"};
+            for (int w = 0; w < 2; ++w) {
+                const bool sel = row++ == general_sel_;
+                char buf[96];
+                std::snprintf(buf, sizeof buf, "%sDeck %d %-6s  < %-3d >  now %s", sel ? "> " : "  ", d + 1,
+                              kinds[w], choice[static_cast<size_t>(w)],
+                              !rec.ok          ? "?"
+                              : !now.used      ? "(unused)"
+                              : ("W" + std::to_string(now.wins) + "-L" + std::to_string(now.losses) + " (" +
+                                 std::to_string(now.wins + now.losses) + " battles)")
+                                    .c_str());
+                const bool changed = rec.ok && now.used &&
+                                     choice[static_cast<size_t>(w)] != (w == 0 ? now.wins : now.losses);
+                lines.push_back({buf, sel ? Style::Selected : changed ? Style::Good : Style::Normal});
+            }
         }
     } else if (tab_ == Tab::Cheats) {
         const std::vector<Cheat>& list = cheats_.cheats();

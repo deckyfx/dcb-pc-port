@@ -226,6 +226,11 @@
    "source": "re",
    "note": "per player: six stat helpers, then DP = battle_dp_calc(player) into battle_data+0x120. Matches US 8003E4F0 (the US GameShark DP codes no-op its store at 8003E56C). Conf H"
   },
+  "0x80041650": {
+   "name": "battle_result",
+   "source": "re",
+   "note": "battle post-game (task): rewards, partner EXP (KAWSEG 801F7600, incl. battle_counters_add for the +0x818 per-opponent counters), then the deck record update at 800422B4-800422FC: the winner's active deck +0x106 and the loser's +0x108 += 1 (capped, 999 kept; the VS/result screens show wins + losses as the battle count). There is no player-level total. Conf M"
+  },
   "0x80042C24": {
    "name": "deck_cards_left",
    "source": "re",

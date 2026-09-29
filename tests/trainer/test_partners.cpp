@@ -186,8 +186,7 @@ void test_panel_rows() {
     for (const Line& l : t.render(kPanelCols, kPanelRows)) screen += l.text + "\n";
     CHECK(contains(screen, "[General]") && contains(screen, "Partner 1  < Veemon       >  now Veemon Lv 7"));
     CHECK(contains(screen, "Partner 3  < (empty)      >  now (empty)"));
-    t.key(Key::End);  // partner 3
-    t.key(Key::Up);   // partner 2
+    for (int i = 0; i < 4; ++i) t.key(Key::Down);  // 3 toggles, then partner 2
     t.key(Key::Right);  // Veemon: a swap that would empty partner 1
     CHECK(t.partner_choices()[1] == kVeemon);
     t.key(Key::Enter);
@@ -217,7 +216,7 @@ void test_panel_rows() {
     screen.clear();
     for (const Line& l : none.render(kPanelCols, kPanelRows)) screen += l.text + "\n";
     CHECK(contains(screen, "Partners: partner tables not found"));
-    none.key(Key::End);
+    for (int i = 0; i < 3; ++i) none.key(Key::Down);  // 3 toggles, then partner 1
     none.key(Key::Enter);
     CHECK(contains(none.status(), "not found"));
     fs::remove_all(dir);
