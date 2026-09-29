@@ -29,8 +29,10 @@ straight from the disc instead, since the ripper lists only some copies of their
 same ones for both games; the US build stores them in another order, so they pair by shape too.
 Every AREAnn.PAK carries the same copy of the city menu art (menu buttons, city-name plates, area
 signs), so one manifest entry per image covers all twelve cities. KEEP_JP lists images left JP on
-purpose (the city HELP MENU plate: the US one names the US buttons). area_image_chunk() builds the
-same result as a new kind-5 chunk for a tool that rewrites C:\\AREAnn.PAK anyway.
+purpose (the city HELP MENU plate: the US one names the US buttons). JP_DRAW_SCALE lists images the
+JP code draws at another scale than the US code (the city sub-menu labels: 68 texels on 64 pixels
+in JP, 1:1 in US); their US pixels are moved to the texels the JP draw shows. area_image_chunk()
+builds the same result as a new kind-5 chunk for a tool that rewrites C:\\AREAnn.PAK anyway.
 
     tools/assets/swap_us_images.py --root DIR  # use DIR/assets and DIR/extracted (a scratch copy)
 
@@ -87,6 +89,16 @@ TIS_ENTRIES = [
 KEEP_JP = {
     ("C.DRV", (808, 0, 22, 80)): "the city HELP MENU plate (the US one says X enters, this build enters with Circle)",
 }
+# Images the JP code draws at another scale than the US code: (DRV, VRAM image rect) -> (texels
+# the JP code reads per cell row, screen pixels it draws them on). The city sub-menu labels (Cards,
+# Partner, Save, ...; SAISEG builds the cell rect {792, n*16, w, 16}): JP w = 68, US w = 64, both
+# drawn 64 pixels wide, so JP skips texel columns 16, 33 and 50 of every label. The JP art has
+# 3-4 pixel wide strokes and loses nothing; the US strokes are 1-2 pixels with a one-pixel bright
+# core, and where the core falls on a skipped column the letter shows only its dark edge (most
+# visible on the highlighted label). The US columns are moved to the texels the JP code shows.
+JP_DRAW_SCALE = {
+    ("C.DRV", (792, 0, 16, 144)): (68, 64),
+}
 NEVER = re.compile(r"(^|/)SYSTEM\.TIM$")
 # Entries where a few images changed shape: swap the images whose shape still matches, keep the
 # rest JP. CBTL_SYS: one palette is uploaded as 32x1 in the US build instead of 16x2.
@@ -127,6 +139,50 @@ def read_tim(drv: bytes, off: int) -> Tim | None:
         p += ln
     ln, x, y, w, h = struct.unpack_from("<IHHHH", drv, p)
     return Tim(off, {0: 4, 1: 8, 2: 16, 3: 24}[flags & 3], (x, y, w, h), clut, drv[p + 12:p + ln], palette)
+
+
+def prewarp_columns(pixels: bytes, bpp: int, width: int, read: int, shown: int) -> bytes:
+    """4-bit image rows laid out for a draw that reads `read` texels onto `shown` pixels, so screen
+    column i shows source column i. The GPU steps u by read/shown per pixel, so column i samples
+    texel floor(i * read / shown); source column i goes there. Texels no column samples repeat
+    their left neighbour (a finer sampler sees a wider column, not a hole). Only texels inside
+    `width` exist: the source columns that would land past it are dropped (with read > shown,
+    the rightmost width - ceil(width * shown / read) ones)."""
+    if bpp != 4 or width % 2 or len(pixels) % (width // 2):
+        raise ValueError("prewarp_columns takes 4-bit rows of an even width")
+    src_of = [-1] * width
+    for i in range(width):
+        t = i * read // shown
+        if t >= width:
+            break
+        src_of[t] = i
+    for t in range(1, width):
+        if src_of[t] < 0:
+            src_of[t] = src_of[t - 1]
+    stride, out = width // 2, bytearray()
+    for r in range(0, len(pixels), stride):
+        row = pixels[r:r + stride]
+        idx = [(row[x // 2] >> 4) if x & 1 else (row[x // 2] & 15) for x in range(width)]
+        new = [idx[s] for s in src_of]
+        out += bytes(new[x] | (new[x + 1] << 4) for x in range(0, width, 2))
+    return bytes(out)
+
+
+def with_pixels(tim: bytes, pixels: bytes) -> bytes:
+    """A TIM with its image block payload replaced by `pixels` (the same size)."""
+    t = read_tim(tim, 0)
+    if t is None or len(pixels) != len(t.pixels):
+        raise ValueError("not a TIM, or the new pixels are another size")
+    start = 8 + (struct.unpack_from("<I", tim, 8)[0] if t.clut else 0) + 12
+    return tim[:start] + pixels + tim[start + len(pixels):]
+
+
+def pixels_for_jp(drv_name: str, us: Tim) -> bytes:
+    """The US pixel data as the JP game should upload it (JP_DRAW_SCALE images pre-warped)."""
+    scale = JP_DRAW_SCALE.get((drv_name, us.image))
+    if scale is None:
+        return us.pixels
+    return prewarp_columns(us.pixels, us.bpp, us.image[2] * 16 // us.bpp, *scale)
 
 
 def load_side(serial: str, manifest: dict | None = None,
@@ -220,10 +276,11 @@ def tis_entry(t: Tim, key: str, drv_name: str, path: str, entry_offset: int) -> 
             "path": f"{stem}_off{t.offset - entry_offset:08x}_{w}x{t.image[3]}.png"}
 
 
-def graft_tis(jp: bytes, us: bytes, keep: frozenset = frozenset()) -> tuple[bytes, int]:
+def graft_tis(jp: bytes, us: bytes, keep: frozenset = frozenset(), drv_name: str = "") -> tuple[bytes, int]:
     """The JP TIS, in the JP order, with each TIM the US build redrew replaced by the US TIM at the
-    same place (depth, image rect, CLUT rect); image rects in `keep` stay JP. Pairs like pair().
-    Returns (TIS bytes, TIMs replaced); raises ValueError when the two hold different shapes."""
+    same place (depth, image rect, CLUT rect); image rects in `keep` stay JP, and the pixels of
+    `drv_name`'s JP_DRAW_SCALE images are pre-warped. Pairs like pair(). Returns (TIS bytes, TIMs
+    replaced); raises ValueError when the two hold different shapes."""
     ja, ua = dcb_containers.read_tis(jp), dcb_containers.read_tis(us)
 
     def side(blobs: list[bytes]) -> list[tuple[Tim, list[dict]]]:
@@ -241,7 +298,7 @@ def graft_tis(jp: bytes, us: bytes, keep: frozenset = frozenset()) -> tuple[byte
     out, n = list(ja), 0
     for (jt, _), (ut, _) in paired[0]:
         if jt.image not in keep and ua[ut.offset] != ja[jt.offset]:
-            out[jt.offset] = ua[ut.offset]
+            out[jt.offset] = with_pixels(ua[ut.offset], pixels_for_jp(drv_name, ut))
             n += 1
     return write_tis(out), n
 
@@ -256,7 +313,7 @@ def area_image_chunk(jp_pak: bytes, us_pak: bytes) -> bytes:
             raise ValueError(f"expected one TIS chunk, found {len(chunks)}")
         return chunks[0].data
     keep = frozenset(rect for (drv, rect) in KEEP_JP if drv == "C.DRV")
-    return graft_tis(tis(jp_pak), tis(us_pak), keep)[0]
+    return graft_tis(tis(jp_pak), tis(us_pak), keep, "C.DRV")[0]
 
 
 def shape_of(tim: Tim, var: list[dict]) -> tuple:
@@ -429,7 +486,7 @@ def main() -> int:
                 if key != jv[0]["img"]:  # the ripper hashed another upload shape: leave it
                     hash_mismatch += 1
                     continue
-                images[key].append(Candidate(ut.pixels, jt.pixels, label))
+                images[key].append(Candidate(pixels_for_jp(drv_name, ut), jt.pixels, label))
                 image_meta[key] = jv[0]
                 if jt.palette:
                     pkey = fnv1a64(jt.palette)
