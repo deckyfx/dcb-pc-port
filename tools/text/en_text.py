@@ -9,6 +9,8 @@ gitignored assets/SLPS-03101/ (never into git):
   files/B/CARD2.CDD   JP file with US names, attack names, effect text
                  (effect lines re-slotted 21 -> 19 bytes; overlong lines
                  listed in en_text_report.txt for hand-shortening)
+  files/P/<SEG>.BIN   SLPS overlays with the data changes of community fixes
+                 (assets/SLPS-03101/fixes/*.xdelta, see tools/text/fixes.py)
   files/C/AREAnn.PAK  the 12 city PAKs with the US city script (MSD chunk);
                  the image chunk stays JP
   files/B/DECK2.DEK   same graft for deck/owner names; a deck name too long
@@ -39,6 +41,7 @@ import drv_unpack as _drv  # noqa: E402
 
 import catalog as _catalog  # noqa: E402  (tools/text/catalog.py)
 import msd as _msd  # noqa: E402  (tools/text/msd.py)
+import fixes as _fixes  # noqa: E402  (tools/text/fixes.py)
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "assets"))
 import dcb_containers as _containers  # noqa: E402  (PAK reader/writer)
@@ -94,6 +97,16 @@ def build_font(us_tim: bytes, us_exe_text: bytes, us_t_addr: int) -> bytes:
 
 # --- card / deck graft (HYBRID section 6) ---
 
+def us_line(text: bytes) -> bytes:
+    """A US text line up to its first non-ASCII byte: US text is ASCII, so a byte >= 0x80 is
+    leftover data after a missing NUL (e.g. a patched line shorter than the old one); drawn,
+    it would read as a Shift-JIS character."""
+    for i, c in enumerate(text):
+        if c >= 0x80:
+            return text[:i]
+    return text
+
+
 def graft_cdd(jp: bytes, us: bytes, report: list[str]) -> tuple[bytes, dict]:
     assert jp[:4] == b"ADCD" and us[:4] == b"0ACD"
     n_dig, n_item, n_opt = struct.unpack_from("<HBB", jp, 4)
@@ -113,6 +126,7 @@ def graft_cdd(jp: bytes, us: bytes, report: list[str]) -> tuple[bytes, dict]:
         # effect text: 4 lines US 21B -> JP 19B slots at +E7 (incl. NUL)
         for li in range(4):
             src = us[uo + 0xE7 + li * 21:uo + 0xE7 + li * 21 + 21].split(b"\0", 1)[0]
+            src = us_line(src)
             if len(src) + 1 > 19:
                 stats["effects_long"].append((f"digimon {i} line {li}", src))
                 report.append(f"digimon {i} line {li} ({len(src)} chars): {src!r}")
@@ -127,6 +141,7 @@ def graft_cdd(jp: bytes, us: bytes, report: list[str]) -> tuple[bytes, dict]:
         stats["names"] += 1
         for li in range(4):
             src = us[uo + 0x8D + li * 21:uo + 0x8D + li * 21 + 21].split(b"\0", 1)[0]
+            src = us_line(src)
             if len(src) + 1 > 19:
                 stats["effects_long"].append((f"item {i} line {li}", src))
                 report.append(f"item {i} line {li} ({len(src)} chars): {src!r}")
@@ -141,6 +156,7 @@ def graft_cdd(jp: bytes, us: bytes, report: list[str]) -> tuple[bytes, dict]:
         stats["names"] += 1
         for li in range(4):
             src = us[uo + 0x1B + li * 21:uo + 0x1B + li * 21 + 21].split(b"\0", 1)[0]
+            src = us_line(src)
             if len(src) + 1 > 19:
                 stats["effects_long"].append((f"option {i} line {li}", src))
                 report.append(f"option {i} line {li} ({len(src)} chars): {src!r}")
@@ -234,6 +250,36 @@ def graft_city_script(jp_pak: bytes, us_pak: bytes) -> tuple[bytes | None, str]:
     return _containers.write_pak(out), ""
 
 
+def port_overlay_fixes(jp_fs: Path, us_fs: Path, fixed: "_fixes.Fixed", out: Path) -> None:
+    """Overlay bytes a fix changes (tables, not text) applied to the SLPS overlays as loose files.
+
+    Stale ones from an earlier run (a fix since removed) are deleted.
+    """
+    p_dir = out / "files" / "P"
+    written: set[str] = set()
+    if "P.DRV" in fixed.files:
+        jp_p = (jp_fs / "P.DRV").read_bytes()
+        us_before = (us_fs / "P.DRV").read_bytes()
+        us_after = fixed.files["P.DRV"]
+        files, _ = _drv.read_toc(jp_p)
+        for e in files:
+            before, after = drv_file(us_before, e.path), drv_file(us_after, e.path)
+            if before == after:
+                continue
+            ported, notes = _fixes.port(before, after, drv_file(jp_p, e.path))
+            for line in notes:
+                print(f"fix: {e.path} {line}")
+            if ported != drv_file(jp_p, e.path):
+                p_dir.mkdir(parents=True, exist_ok=True)
+                (p_dir / e.path).write_bytes(ported)
+                written.add(e.path)
+    for stale in p_dir.glob("*.BIN") if p_dir.exists() else []:
+        if stale.name not in written:
+            stale.unlink()
+    if written:
+        print(f"fix: {len(written)} SLPS overlay(s) -> files/P/")
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     ap.add_argument("--jp", required=True, help="extracted/SLPS-03101")
@@ -246,12 +292,26 @@ def main(argv=None) -> int:
     out = Path(args.out)
     (out / "files" / "B").mkdir(parents=True, exist_ok=True)
 
+    # 0. community fixes (assets/SLPS-03101/fixes/*.xdelta): the reference files they correct
+    patches = sorted((out / "fixes").glob("*.xdelta"))
+    fixed = _fixes.apply(Path(args.us), REPO, patches)
+    for name in fixed.applied:
+        print(f"fix: {name}")
+    for line in fixed.problems:
+        print(f"fix: {line}")
+    if fixed.files:
+        print(f"fix: reference files corrected: {', '.join(sorted(fixed.files))}")
+
+    def us_read(name: str) -> bytes:
+        """A reference file, with the community fixes applied."""
+        return fixed.files.get(name) or (us_fs / name).read_bytes()
+
     jp_b = (jp_fs / "B.DRV").read_bytes()
-    us_b = (us_fs / "B.DRV").read_bytes()
+    us_b = us_read("B.DRV")
 
     # 1. font rows + width table
     us_tim = drv_file(us_b, "SYSTEM.TIM")
-    us_exe = (Path(args.us) / "exe" / "boot.exe").read_bytes()
+    us_exe = fixed.files.get("SLUS_013.28") or (Path(args.us) / "exe" / "boot.exe").read_bytes()
     us_text = us_exe[0x800:]
     font_blob = build_font(us_tim, us_text, 0x80010000)
     (out / "en_font.bin").write_bytes(font_blob)
@@ -289,9 +349,12 @@ def main(argv=None) -> int:
         "Balance bytes kept JP:\n" + "".join(f"  {line}\n" for line in diffs) + "\n")
     print(f"report: {len(report)} overlong strings -> en_text_report.txt")
 
+    # 2b. data fixes in the overlays, carried into the SLPS overlays (files/P/<NAME>.BIN)
+    port_overlay_fixes(jp_fs, us_fs, fixed, out)
+
     # 3. city scripts: C:\AREAnn.PAK with the US script chunk (dialogue, city messages)
     jp_c = (jp_fs / "C.DRV").read_bytes()
-    us_c = (us_fs / "C.DRV").read_bytes()
+    us_c = us_read("C.DRV")
     (out / "files" / "C").mkdir(parents=True, exist_ok=True)
     grafted_cities = 0
     for n in range(12):
@@ -306,7 +369,7 @@ def main(argv=None) -> int:
 
     # 4. text catalog (config/SLPS-03101/text/catalog.txt): source.tsv + en.tsv
     jp_p = (jp_fs / "P.DRV").read_bytes()
-    us_p = (us_fs / "P.DRV").read_bytes()
+    us_p = us_read("P.DRV")
     jp_exe = (Path(args.jp) / "exe" / "boot.exe").read_bytes()
 
     def loader(exe: bytes, p_drv: bytes):
