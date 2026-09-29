@@ -37,7 +37,7 @@ pair OPENSEG:1ea0  OPENSEG:1810   # game completion
 pair OPENSEG:1ec0  OPENSEG:1830   # card collection
 pair OPENSEG:1ed0  OPENSEG:1840   # current position
 pair OPENSEG:1edc  OPENSEG:1854   # arena
-pair OPENSEG:1ee7  OPENSEG:185c   # save up to this point?
+pair OPENSEG:1ee8  OPENSEG:185c   # save up to this point?
 pair OPENSEG:1fbc  OPENSEG:1914   # format slot 1?
 pair OPENSEG:1ff0  OPENSEG:1938   # overwrite file %d?
 pair OPENSEG:2030  OPENSEG:1964   # not enough free blocks

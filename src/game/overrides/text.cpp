@@ -31,6 +31,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -680,8 +681,22 @@ void trace_call(PsxContext& ctx, const char* fn, uint32_t str, int x, int y) {
         buf[n] = static_cast<char>(c >= 0x20 && c < 0x7F ? c : '.');
     }
     buf[n] = 0;
-    std::fprintf(stderr, "[text] %s %s \"%s\" at (%d,%d) str=%08X%s\n", fn, ascii ? "ascii" : "sjis",
-                 buf, x, y, str, psx::backtrace_string(&ctx).c_str());
+    // DCB_TRACE_TEXT=hex: also the raw bytes and whether the catalog translates the string, for
+    // finding what is still Japanese (decode with cp932).
+    std::string extra;
+    if (std::strcmp(std::getenv("DCB_TRACE_TEXT"), "hex") == 0) {
+        std::string raw;
+        for (uint32_t i = 0; i < 4096 && rd8(ctx, str + i); ++i) raw.push_back(static_cast<char>(rd8(ctx, str + i)));
+        std::string translated;
+        extra = g_catalog.translate(raw, translated) ? " catalog=yes hex=" : " catalog=no hex=";
+        static const char* kHex = "0123456789abcdef";
+        for (const char c : raw) {
+            extra += kHex[static_cast<uint8_t>(c) >> 4];
+            extra += kHex[static_cast<uint8_t>(c) & 15];
+        }
+    }
+    std::fprintf(stderr, "[text] %s %s \"%s\" at (%d,%d) str=%08X%s%s\n", fn, ascii ? "ascii" : "sjis",
+                 buf, x, y, str, extra.c_str(), psx::backtrace_string(&ctx).c_str());
 }
 
 }  // namespace

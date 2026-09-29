@@ -397,8 +397,26 @@ entry whole, draws the translation instead.
 - **Runtime:** `text::Catalog` (`src/platform/text_catalog.*`, unit-tested), used by
   `load_text` in `src/game/overrides/text.cpp` before the deck-name rules.
 
-First entries: Yes/No (EXE `828`/`830`), and the title overlay's save/load flow (messages,
-file panels, location names): 82 strings.
+Coverage (1271 strings): Yes/No and the save/load flow (`catalog.txt`), the EXE (battle
+dialogs, banner, help lines, support effects, packs, rank titles: `catalog-exe.txt`), KAWSEG
+(battle overlay: deck select, option effects, experience / Digi-Parts screens, pause menu,
+result bonuses), SAISEG + SUBSEG (player data, Digi-Parts, card list, deck edit, auto deck),
+OPENSEG (registration, partner / starter select, trade, battle with a friend), EVOSEG (fusion)
+and ENDSEG (records, titles). SUGSEG has no Japanese text.
+
+Rules the mappers followed, worth keeping:
+- **Confirm button:** this build confirms with ○; the US moved the confirm/cancel icon codes
+  (`b0`/`b1`/`b2`) in menu hints. Hints with those icons use port-written English with the JP
+  codes (`en-*.tsv`); attack icons (the same on both discs) keep the US text.
+- **Not translated:** input grids (kana tables), secret keywords the game compares with what
+  the player types, strings the game overwrites in place beyond the slot digit ("??").
+- A `%s` the game fills keeps its (JP) value inside the English line; a title or deck name
+  there stays JP until its own source is translated.
+
+Not covered yet: the script / dialogue text in C.DRV (e.g. the city menu prompt), which is also
+revealed a character at a time (a partial string matches no template); the other renderers
+(mini / tiny fonts, the VS big names). `DCB_TRACE_TEXT=hex` logs each drawn string's bytes and
+whether the catalog translates it (decode with cp932) — the way to find what is still Japanese.
 
 ## 8. Proposed names
 
