@@ -51,6 +51,16 @@
    "source": "re",
    "note": "(win, draw_cb, ot) -> nonzero once the resize animation has ended: frame, title, then draw_cb(win, ot entry). Conf H"
   },
+  "0x800193CC": {
+   "name": "cursor_set_target",
+   "source": "re",
+   "note": "(cursor, rect*): the cursor box slides from its current rect to rect (6 steps; +48 from, +56 to). Conf M"
+  },
+  "0x80019448": {
+   "name": "cursor_draw",
+   "source": "re",
+   "note": "(cursor, ot): steps the slide and draws the cursor box. Conf M"
+  },
   "0x80019FF0": {
    "name": "dialog_setup",
    "source": "re",
@@ -180,6 +190,11 @@
    "name": "sound_se_play",
    "source": "re",
    "note": "(id): SsUtKeyOnV on the sound-effect voices (tutorial box: 0xA3 open, 0xA4 close). Conf H"
+  },
+  "0x8002E398": {
+   "name": "menu_sound",
+   "source": "re",
+   "note": "(id): menu sound effect (name entry: 1 type / confirm, 2 cursor move, 3 open, 4 close). Conf M"
   },
   "0x8002FD64": {
    "name": "game_data_init",
@@ -316,6 +331,11 @@
    "source": "re",
    "note": "1 while a file_load_task reads (the others wait g_wait_frames at a time). Conf H"
   },
+  "0x80070A64": {
+   "name": "g_text_grey",
+   "source": "re",
+   "note": "the grey colour text_draw_grey (8002ADC8) passes to text_draw. Conf H"
+  },
   "0x80070C2C": {
    "name": "g_game_data",
    "source": "re",
@@ -442,7 +462,7 @@
    "name": "name_entry_input",
    "overlay": "SUBSEG",
    "source": "re",
-   "note": "deck name entry pad input (as OPENSEG 801EA910; tab slots 0-8: seven pages, OK, cancel). Tab cursor box widths from the jump table at 801E10EC. Conf M"
+   "note": "deck name entry pad input (as OPENSEG 801EA910; tab slots 0-8: seven pages, OK, cancel). Tab cursor box widths from the jump table at 801E10EC. Conf M Overridden: src/game/overrides/name_entry.cpp runs it, then does circle/triangle/cross on bytes (the ABC page types ASCII)."
   },
   "0x801E2978": {
    "name": "city_msg_build",
@@ -498,6 +518,12 @@
    "source": "re",
    "note": "city host 0x0A 7 (city Menu): for each owned partner, digimental_give for each of its Digimental flags that is set. Conf H"
   },
+  "0x801E417C": {
+   "name": "name_box_draw",
+   "overlay": "SUBSEG",
+   "source": "re",
+   "note": "deck name box, window callback: as OPENSEG 801EBE18, plus the \u30c7\u30c3\u30af label (801E116C) at x + 76; cursor 801F60C8. Overridden: src/game/overrides/name_entry.cpp. Conf H"
+  },
   "0x801E4450": {
    "name": "name_entry",
    "overlay": "SUBSEG",
@@ -520,7 +546,7 @@
    "name": "name_entry_input",
    "overlay": "OPENSEG",
    "source": "re",
-   "note": "player name entry pad input: grid cursor (Up/Down within the 9-row page, Left/Right over the 10 characters, off either end into the tab list), pad bits 0x1/0x2 page by 9 rows, tab list Up/Down (slots 0-2 and 7). Tab cursor box widths from the jump table at 801E1BAC. Conf M"
+   "note": "player name entry pad input: grid cursor (Up/Down within the 9-row page, Left/Right over the 10 characters, off either end into the tab list), pad bits 0x1/0x2 page by 9 rows, tab list Up/Down (slots 0-2 and 7). Tab cursor box widths from the jump table at 801E1BAC. Conf M Overridden: src/game/overrides/name_entry.cpp runs it, then does circle/triangle/cross on bytes (the ABC page types ASCII)."
   },
   "0x801EACBC": {
    "name": "fusion_shop_host",
@@ -569,6 +595,12 @@
    "overlay": "EVOSEG",
    "source": "re",
    "note": "Fusion Shop entry: loads the unit script (unit_msd_load), runs the message state and the shop menus each frame. Conf M"
+  },
+  "0x801EBE18": {
+   "name": "name_box_draw",
+   "overlay": "OPENSEG",
+   "source": "re",
+   "note": "player name box, window callback (a0 = window): draws the name (text_draw_grey clut 7, fixed cells), L1/R1 move the cursor (g_name_entry +22), underline at x + index*12 via cursor_set_target(801F9D78). Overridden: src/game/overrides/name_entry.cpp (1-/2-byte characters). Conf H"
   },
   "0x801EBEA0": {
    "name": "unit_msg_clear",
@@ -720,11 +752,17 @@
    "source": "re",
    "note": "the partner choice screen: partner_give(0, the chosen offer), then partner_flag_set. Conf M"
   },
+  "0x801F60C8": {
+   "name": "g_name_box_cursor",
+   "overlay": "SUBSEG",
+   "source": "re",
+   "note": "the deck name box's underline cursor. Conf M"
+  },
   "0x801F6168": {
    "name": "g_name_entry",
    "overlay": "SUBSEG",
    "source": "re",
-   "note": "deck name entry state (layout as OPENSEG 801F9E18; +27 pad index). Conf M"
+   "note": "deck name entry state (layout as OPENSEG 801F9E18; +27 pad index, +28 the first-edit flag). Conf M"
   },
   "0x801F6C4C": {
    "name": "g_name_grid",
@@ -810,11 +848,17 @@
    "source": "re",
    "note": "u8: 0 normal, 1 special fusion, 2 mutation (script r17). Conf H"
   },
+  "0x801F9D78": {
+   "name": "g_name_box_cursor",
+   "overlay": "OPENSEG",
+   "source": "re",
+   "note": "the player name box's underline cursor (cursor_set_target / cursor_draw). Conf M"
+  },
   "0x801F9E18": {
    "name": "g_name_entry",
    "overlay": "OPENSEG",
    "source": "re",
-   "note": "name entry state: +0 s16 character column 0-9, +4 s16 row, +9 name (SJIS), +22 u8 length, +23 u8 focus (0 grid, 1 tab list), +24 s8 tab cursor (0-6 pages, 7 OK, 8 cancel), +26 s8 result (7 OK). Conf M"
+   "note": "name entry state: +0 s16 character column 0-9, +4 s16 row, +9 name (13 bytes), +22 u8 cursor (JP: character index 0-5; with name_entry.cpp a byte offset 0-11), +23 u8 focus (0 grid, 1 tab list), +24 s8 tab cursor (0-6 pages, 7 OK, 8 cancel), +26 s8 result (7 OK), +27 u8 1 until the first edit (circle at 0 then clears the rest of the name). Conf M"
   },
   "0x801FCF78": {
    "name": "battle_counters_add",

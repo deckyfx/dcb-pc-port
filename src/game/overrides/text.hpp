@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace dcb {
 
@@ -24,5 +25,12 @@ struct TextAlias {
 /// immediates (the name entry's tab list, name_entry.cpp): set just around the game call that
 /// draws them, so they never touch another screen that reuses the overlay window.
 void text_set_aliases(const TextAlias* list, size_t count);
+
+/// Draws `s` exactly as typed, one character at a time: no catalog, long names or deck label,
+/// and letters are letters (never JP codes). ASCII takes the US font, Shift-JIS the JP original
+/// (draw arguments as 8002AE00: rgb is a guest pointer). `x_of` (optional) receives each
+/// character's x, then the end x. For a name being typed (name_entry.cpp).
+void text_draw_verbatim(PsxContext& ctx, int x, int y, int clut, int prop, uint32_t rgb, int ot,
+                        const std::string& s, std::vector<int>* x_of);
 
 }  // namespace dcb

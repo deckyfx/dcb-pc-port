@@ -526,8 +526,18 @@ struct Piece {
 bool sjis_lead(uint8_t c) { return (c >= 0x81 && c <= 0x9F) || (c >= 0xE0 && c <= 0xFC); }
 bool ascii_letter(uint8_t c) { return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'); }
 
+/// A letter the JP renderer would skip, i.e. one that starts no JP code (a b c d e g h s w, the
+/// one-byte z): a capital or another lowercase letter. Only English puts one there - a name
+/// typed on the ABC page with one letter next to kana ("タケルX").
+bool lone_letter(uint8_t c) {
+    if (c >= 'A' && c <= 'Z') return true;
+    if (c < 'a' || c > 'z') return false;
+    return std::strchr("abcdeghswz", c) == nullptr;
+}
+
 /// Cuts a mixed string into pieces. An ASCII run counts as English when it has two letters in a
-/// row outside the JP codes; otherwise (codes, digits, spaces) it stays with the JP text.
+/// row outside the JP codes, or a letter that is no JP code; otherwise (codes, digits, spaces) it
+/// stays with the JP text.
 std::vector<Piece> split_mixed(const Text& t) {
     std::vector<Piece> out;
     const auto add = [&](size_t a, size_t b, PieceKind k) {
@@ -559,12 +569,14 @@ std::vector<Piece> split_mixed(const Text& t) {
                 ++e;
             }
             bool english = false;
-            for (size_t p = s; p + 1 < e && !english;) {
+            for (size_t p = s; p < e && !english;) {
                 if (jp_code_at(t, p)) {
                     p += t.at(p + 1) == '-' ? 3 : 2;
                     continue;
                 }
-                english = ascii_letter(t.at(p)) && ascii_letter(t.at(p + 1)) && !jp_code_at(t, p + 1);
+                const uint8_t l = t.at(p);
+                english = (p + 1 < e && ascii_letter(l) && ascii_letter(t.at(p + 1)) && !jp_code_at(t, p + 1)) ||
+                          lone_letter(l);
                 ++p;
             }
             add(s, e, english ? PieceKind::English : PieceKind::Japanese);
@@ -671,6 +683,30 @@ void dispatch(PsxContext* ctx, uint32_t jp_addr, bool draw, int x, int y, int cl
 
 bool dcb::text_translate(PsxContext& ctx, const std::string& in, std::string& out) {
     return load_font(ctx) && g_catalog.translate(in, out);
+}
+
+void dcb::text_draw_verbatim(PsxContext& ctx, int x, int y, int clut, int prop, uint32_t rgb, int ot,
+                             const std::string& s, std::vector<int>* x_of) {
+    const bool font = load_font(ctx);
+    Text t;
+    t.b.assign(s.begin(), s.end());
+    t.b.push_back(0);
+    if (x_of) x_of->clear();
+    int pen = x;
+    for (size_t i = 0; i < t.size();) {
+        const uint8_t c = t.at(i);
+        const size_t n = sjis_lead(c) && t.at(i + 1) != 0 ? 2 : 1;
+        if (x_of) x_of->push_back(pen);
+        if (n == 1 && c < 0x80 && font) {
+            Text one;
+            one.b = {c, 0};
+            pen += run_string(ctx, pen, y, clut, prop, rgb, ot, one, true);  // one glyph: its advance
+        } else {
+            pen += jp_piece(ctx, kDrawAddr, true, pen, y, clut, prop, rgb, ot, t, Piece{i, i + n, PieceKind::Japanese});
+        }
+        i += n;
+    }
+    if (x_of) x_of->push_back(pen);
 }
 
 namespace {
