@@ -1,0 +1,71 @@
+# Text catalog, boot executable (exe/boot.exe): strings the EXE itself holds (battle dialogs,
+# battle banners and help lines, titles, packs, support effects, system messages).
+# Same format as catalog.txt (offsets only, no game text). Yes / No (EXE 828 / 830) are in
+# catalog.txt.
+
+# Default player name
+pair EXE:13e8  EXE:ff0
+
+# Player titles: 8 tamer ranks, 8 collector ranks, 8 battle ranks, best first. The US renamed
+# the top five battle ranks (other names, other order); those get English that follows the JP
+# names (en-exe.tsv).
+run  EXE:11e4  EXE:dfc    16
+pair EXE:1304  -
+pair EXE:1310  -
+pair EXE:1320  -
+pair EXE:132c  -
+pair EXE:1340  -
+run  EXE:1350  EXE:f60    3
+
+# Battle dialogs: deck out, redraw, discard all, phase ends, digivolve / devolve questions
+pair EXE:18c0  EXE:14a0   # lose: no cards left (%s)
+run  EXE:18e4  EXE:14c8   10
+# (the US adds a confirm prompt after the digivolve-phase question; the JP has none)
+run  EXE:1ac0  EXE:16d8   4     # no battle phase (%s), no support possible, support confirm x2
+# (the US adds another confirm prompt here)
+run  EXE:1b88  EXE:17b8   2     # win by record (%d %d %s), win by knock-out (%s %s)
+
+# Deck name and the all-or-nothing gamble messages
+run  EXE:1ce0  EXE:1910   4
+
+# Battle banner (top line): 18 phase / step names in the same order
+run  EXE:2008  EXE:1c40   18
+
+# Battle help line (bottom). The US swapped the confirm / cancel / back button icons to match
+# its controls; the JP game keeps its own, so these get English written with the JP icons
+# (en-exe.tsv). Only the line whose icons are the same on both sides uses the US text.
+pair EXE:215c  -
+pair EXE:216c  -
+pair EXE:2188  -
+pair EXE:21ac  -
+pair EXE:21c4  -
+pair EXE:21d4  EXE:1ef0
+pair EXE:21ec  -
+
+# CPU opponent thinking
+pair EXE:222c  EXE:1f4c
+
+# Booster pack names: 6 small packs then 10 big ones
+run  EXE:223c  EXE:1f5c   16
+
+# Support effect short names, half-width variant (16 in the same order on both sides)
+run  EXE:2320  EXE:202c   16
+
+# Support effect short names, full-width variant. The US linker merged the strings equal to the
+# half-width set, so only the specialty and button entries have their own copy.
+run  EXE:239c  EXE:20d4   5     # x3 against a specialty
+pair EXE:23d8  EXE:2068         # jamming
+pair EXE:23e4  EXE:2070         # eat-up HP
+pair EXE:23f0  EXE:207c         # crash
+run  EXE:23f8  EXE:2110   6     # counter x3, attack to 0 x3
+pair EXE:244c  EXE:20c0         # first attack
+pair EXE:2458  EXE:20cc         # none
+
+# Support effect descriptions: 81 in the same order on both sides
+run  EXE:250c  EXE:2208   81
+
+# System error screen, partner card moved, the boss taunt
+run  EXE:3690  EXE:3568   3
+
+# Return-to-title warning (the text starts after a 4-byte header)
+pair EXE:3860  EXE:3730
