@@ -192,6 +192,27 @@ def graft_dek(jp: bytes, us: bytes, report: list[str]) -> tuple[bytes, dict]:
     return bytes(out), stats
 
 
+# Button icons the US scripts name differently: this build keeps the JP controls. In the city
+# scripts `*b1` is only ever the map button ("Push *b1 to go to map"), which the JP scripts draw
+# with icon b2 (the button the JP game uses). Attack icons (*b0 *b1 *b2 before "attack") mean
+# the same on both discs; the city scripts never use *b1 for one.
+CITY_BUTTONS = {b"*b1": b"*b2"}
+
+
+def remap_buttons(script: bytes) -> bytes:
+    """The script with CITY_BUTTONS applied inside its text records (same length: in place)."""
+    out = bytearray(script)
+    for rec in _msd.walk(script):
+        if rec.op != _msd.TEXT or rec.text is None:
+            continue
+        text = rec.text
+        for us, jp in CITY_BUTTONS.items():
+            text = text.replace(us, jp)
+        start = rec.offset + 6
+        out[start:start + len(text)] = text
+    return bytes(out)
+
+
 def graft_city_script(jp_pak: bytes, us_pak: bytes) -> tuple[bytes | None, str]:
     """The JP city PAK with the US city script (chunk kind 2) in place of the JP one.
 
@@ -208,7 +229,7 @@ def graft_city_script(jp_pak: bytes, us_pak: bytes) -> tuple[bytes | None, str]:
             ok, why = _msd.same_program(c.data, us_scripts[c.id])
             if not ok:
                 return None, why
-            c = _containers.Chunk(c.kind, c.id, c.offset, us_scripts[c.id])
+            c = _containers.Chunk(c.kind, c.id, c.offset, remap_buttons(us_scripts[c.id]))
         out.append(c)
     return _containers.write_pak(out), ""
 

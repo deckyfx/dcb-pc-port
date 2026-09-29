@@ -44,5 +44,15 @@ class TestMsd(unittest.TestCase):
         self.assertIn("0xc", why)
 
 
+class TestCityButtons(unittest.TestCase):
+    def test_map_button_takes_the_jp_icon(self) -> None:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        import en_text  # noqa: E402
+        src = script(text(4, b"*c5Push *c7*b1*c5 to go to map."), cmd(0x0A, 4))
+        out = en_text.remap_buttons(src)
+        self.assertEqual(len(out), len(src))
+        self.assertEqual(msd.walk(out)[0].text, b"*c5Push *c7*b2*c5 to go to map.\0")
+
+
 if __name__ == "__main__":
     unittest.main()
