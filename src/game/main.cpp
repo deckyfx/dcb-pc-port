@@ -13,6 +13,7 @@
 #include "memcard.hpp"
 #include "menu.hpp"
 #include "cheat_presets.hpp"
+#include "version.hpp"
 #include "overrides/battle.hpp"
 #include "overrides/fusion.hpp"
 #include "overrides/movies.hpp"
@@ -45,7 +46,14 @@
 
 namespace dcb {
 void register_code_names();  // code_names.cpp
-}
+
+/// The release version (CMake project VERSION, DCB_APP_VERSION); the window title uses it.
+std::string_view app_version() { return DCB_APP_VERSION; }
+
+/// "Digimon Digital Card Battle PC vx.y.z".
+std::string window_title() { return std::string("Digimon Digital Card Battle PC v") + std::string(app_version()); }
+
+}  // namespace dcb
 
 namespace {
 
@@ -139,7 +147,7 @@ std::vector<std::string> controls_lines(platform::Platform& host) {
 /// describe); third-party licences ship in the binary via their headers.
 std::vector<std::string> about_lines() {
     std::vector<std::string> lines;
-    lines.push_back(std::string("dcb pc-port ") + DCB_VERSION_STRING);
+    lines.push_back(dcb::window_title() + " (" + DCB_VERSION_STRING + ")");
     lines.push_back(std::string("build ") + DCB_BUILD_TYPE + " " + DCB_PLATFORM_NAME);
     lines.push_back(std::string("game ") + DCB_GAME_ID);
     lines.push_back("");
@@ -423,7 +431,10 @@ int main(int argc, char** argv) {
         // Window, input and audio. DCB_HEADLESS=1 (or a build without SDL3) runs without a window.
         std::unique_ptr<platform::Platform> host;
 #ifdef DCB_HAS_SDL3
-        if (!std::getenv("DCB_HEADLESS")) host = platform::make_sdl3("Digimon World: Digital Card Arena (PC Port)");
+        if (!std::getenv("DCB_HEADLESS")) {
+            const std::string title = dcb::window_title();
+            host = platform::make_sdl3(title.c_str());
+        }
 #endif
         if (!host) host = platform::make_headless();
         // DCB_RECORD / DCB_REPLAY: input record and replay (static: std::exit must close the log).
