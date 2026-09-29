@@ -37,7 +37,7 @@
 #include <vector>
 
 extern "C" {
-void f_80029F70(PsxContext* ctx);  // JP icon (not overridden; callable directly)
+void dcb_text_icon(PsxContext* ctx);  // JP icon 80029F70 through its override (US level badges)
 }
 
 namespace {
@@ -290,7 +290,7 @@ void emit_icon(PsxContext& ctx, int x, int y, int mode, int idx, uint32_t rgb, i
     ctx.r[kA1] = static_cast<uint32_t>(y + 1);
     ctx.r[kA2] = static_cast<uint32_t>(mode);
     ctx.r[kA3] = static_cast<uint32_t>(idx);
-    f_80029F70(&ctx);  // direct call: 80029F70 is not overridden (no original-table entry)
+    dcb_text_icon(&ctx);  // the icon override (level_badges.cpp): R/A/C/U badges in English
     ctx.r[kA0] = save[0];
     ctx.r[kA1] = save[1];
     ctx.r[kA2] = save[2];
