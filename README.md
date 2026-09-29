@@ -308,6 +308,20 @@ Without `en_font.bin` the game draws everything with the JP renderer; deleting `
 the Japanese card and deck text back. The font lives in a private texture sheet in the GPU, not
 in the game's VRAM. Notes: [docs/re/text-engine.md](docs/re/text-engine.md).
 
+**Community fixes.** Fixes published for this game on romhacking.net (made for the US disc image)
+are applied to SLPS-03101 too. Download them yourself (they are their authors' work, never in this
+repo) and put the `.xdelta` files in `assets/SLPS-03101/fixes/`; the English converter above then
+applies them to the US reference data it takes English from (card text, strings, scripts), and
+carries data changes in the overlays into the SLPS overlays (`files/P/`). Supported and tested:
+
+| Fix | What it does here |
+|---|---|
+| [Digi-Parts Fix](https://www.romhacking.net/hacks/8474/) (hack 8474) | Digi-Part 037 (Eat-up HP) no longer missable with the Veemon, Gatomon or Wormmon partner: the SLPS overlays have the same table and the same bug |
+| [Effect Text Fix v2](https://www.romhacking.net/hacks/9360/) (hack 9360) | effect text of Aquilamon, Dolphmon, AeroVeedramon, Sylphymon, Veedramon, Ankylomon and Special Digivolve matches what the cards do; Tentomon's attack reads Super Shocker |
+
+The converter prints each fix it applied and every byte it carried over (`fix: ...`); remove a
+file from `fixes/` and re-run it to drop that fix. Notes: [tools/text/fixes.py](tools/text/fixes.py).
+
 **Game assets (textures).** `dcb_asset_ripper` (built with the tools) rips the images and sound
 banks from the game data into `assets/` (gitignored), and packs them into one file:
 
@@ -391,3 +405,10 @@ enable **GhidraMCP** under *File → Configure → Configure All Plugins* (once)
 |---|---|---|---|
 | SLPS-03101 | Digimon World: Digital Card Arena (JP) | SLPS_031.01 (+ PSX2.EXE) | 0x80058CFC |
 | SLUS-01328 | Digimon Digital Card Battle (US) | SLUS_013.28 | 0x80056270 |
+
+## Credits
+
+- **Digi-Parts Fix** ([romhacking.net hack 8474](https://www.romhacking.net/hacks/8474/)) by
+  AUTHOR_8474: the missable Digi-Part 037 table fix, applied here to the SLPS overlays.
+- **Effect Text Fix** ([romhacking.net hack 9360](https://www.romhacking.net/hacks/9360/)) by
+  AUTHOR_9360: corrected card effect text, used as the English for those cards.
