@@ -706,9 +706,9 @@ void trace_call(PsxContext& ctx, const char* fn, uint32_t str, int x, int y) {
             extra = " catalog=prefix -> \"" + translated + "\"";
         }
         static const char* kHex = "0123456789abcdef";
-        const auto hex = [&](const auto& bytes, size_t n) {
+        const auto hex = [&](const auto& bytes, size_t count) {
             extra += '=';
-            for (size_t i = 0; i < n; ++i) {
+            for (size_t i = 0; i < count; ++i) {
                 extra += kHex[static_cast<uint8_t>(bytes[i]) >> 4];
                 extra += kHex[static_cast<uint8_t>(bytes[i]) & 15];
             }
