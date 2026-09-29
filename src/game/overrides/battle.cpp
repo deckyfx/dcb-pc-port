@@ -12,6 +12,10 @@
 // 80040F70), which would undo a written value; the US codes no-op that store with a code patch.
 // Here the DP calculation is overridden (config/SLPS-03101/overrides.json) and returns the value
 // set by the hotkey while it is locked.
+//
+// The win actions ("P1 wins" on F10, "P2 wins" on F11) set the winner's points (+0x178) to 2 and
+// the opponent's HP to 0: the next battle phase runs the game's own knockout (battle_ko_check)
+// and win (battle_main's points == 3), see apply_win.
 
 #include "battle.hpp"
 
@@ -28,12 +32,14 @@
 
 namespace {
 
-constexpr uint32_t kPlayerTable = 0x801DAF40u;  // player battle data pointers, player 0 = you
+constexpr uint32_t kPlayerTable = 0x801DAF40u;  // g_battle_players: battle data pointers, 0 = you
 constexpr uint32_t kDpCalc = 0x80043B00u;       // DP of player a0
 constexpr uint32_t kDeckShuffle = 0x80043E24u;  // shuffle player a0's undrawn cards
 constexpr uint32_t kShufflesPending = 0x116;    // u16: how many shuffle passes deck_shuffle runs
 constexpr int kA0 = 4, kV0 = 2;
 constexpr uint32_t kDp = 0x120;
+constexpr uint32_t kHp = 0x118;
+constexpr uint32_t kPoints = 0x178;  // u8: knockouts scored; 3 wins (docs/re/battle.md)
 /// A DP lock ends when the DP calculation has not run for this many frames (the battle is over).
 constexpr uint64_t kLockIdleFrames = 600;
 
@@ -46,6 +52,7 @@ std::vector<uint32_t> fields(trainer::BattleStat stat) {
     case trainer::BattleStat::Cross: return {0x11E, 0x15C};
     case trainer::BattleStat::Dp: return {kDp};
     case trainer::BattleStat::NoShuffle: return {};  // a toggle, see dcb_deck_shuffle
+    case trainer::BattleStat::Win: return {};        // see apply_win
     }
     return {};
 }
@@ -65,6 +72,7 @@ const trainer::BattleActions* g_actions = nullptr;  // the trainer's Battle tab 
 struct Originals {
     uint32_t data = 0;
     std::map<uint32_t, uint16_t> values;
+    std::map<uint32_t, uint8_t> bytes;  // byte fields (the score)
 };
 std::array<Originals, 2> g_originals;
 
@@ -75,7 +83,7 @@ uint32_t player_data(PsxContext& ctx, int player) {
 }
 
 /// DCB_WATCH_BATTLE=1 (RE aid): when a battle starts, point the RAM write watch (DCB_WATCH) at
-/// both players' battle data and the battle state struct (pointer at 801DAF38), 4 KB each, so
+/// both players' battle data and the battle state struct (g_battle_state, 801DAF38), 4 KB each, so
 /// a played round logs which fields change and who writes them.
 void watch_battle(PsxContext& ctx) {
     static const bool on = std::getenv("DCB_WATCH_BATTLE") != nullptr;
@@ -93,15 +101,44 @@ void watch_battle(PsxContext& ctx) {
     std::fprintf(stderr, "[watch] battle: P1 %08X, P2 %08X, state %08X -> %s\n", now[0], now[1], now[2], spec);
 }
 
+/// The originals for `player` in the battle `data` belongs to (older ones are stale).
+Originals& originals(int player, uint32_t data) {
+    Originals& orig = g_originals[static_cast<size_t>(player)];
+    if (orig.data != data) orig = {data, {}, {}};
+    return orig;
+}
+
+/// "Player wins at the next battle phase": score 2 of 3, the opponent's HP 0. The battle phase
+/// then runs the game's own knockout (battle_ko_check, KAWSEG 801EF968: HP 0 gives the other
+/// player a point) and win check (points == 3 in battle_main, 8003B5C4), so the result screen,
+/// rewards and records are the game's. False when the opponent is not in the battle.
+bool apply_win(PsxContext& ctx, int player, uint32_t data) {
+    const int loser = player ^ 1;
+    const uint32_t loser_data = player_data(ctx, loser);
+    if (!in_ram(loser_data)) return false;
+    Originals& mine = originals(player, data);
+    mine.bytes.emplace(kPoints, psx_read8(&ctx, data + kPoints));
+    if (psx_read8(&ctx, data + kPoints) < 2) psx_write8(&ctx, data + kPoints, 2);
+    Originals& theirs = originals(loser, loser_data);
+    theirs.values.emplace(kHp, psx_read16(&ctx, loser_data + kHp));
+    psx_write16(&ctx, loser_data + kHp, 0);
+    return true;
+}
+
 std::string apply(PsxContext& ctx, int player, const trainer::BattleActions& actions) {
     const std::string who = player == 0 ? "P1" : "P2";
     const uint32_t data = player_data(ctx, player);
     if (!in_ram(data)) return who + ": not in a battle";
-    Originals& orig = g_originals[static_cast<size_t>(player)];
-    if (orig.data != data) orig = {data, {}};  // another battle: older originals are stale
     int applied = 0;
+    bool win = false;
     for (const trainer::BattleAction& a : actions.list()) {
         if (a.player != player || !a.enabled || a.is_toggle()) continue;
+        if (a.stat == trainer::BattleStat::Win) {
+            win = apply_win(ctx, player, data);
+            applied += win ? 1 : 0;
+            continue;
+        }
+        Originals& orig = originals(player, data);
         const auto value = static_cast<uint16_t>(a.value);
         for (const uint32_t off : fields(a.stat)) {
             orig.values.emplace(off, psx_read16(&ctx, data + off));  // keeps the first original
@@ -111,6 +148,7 @@ std::string apply(PsxContext& ctx, int player, const trainer::BattleActions& act
         ++applied;
     }
     if (applied == 0) return who + ": nothing is on in the trainer's Battle tab (F4)";
+    if (win) return who + " wins at the next battle phase";
     return who + ": " + std::to_string(applied) + (applied == 1 ? " stat set" : " stats set");
 }
 
@@ -121,6 +159,10 @@ std::string reset(PsxContext& ctx) {
         if (orig.data != 0 && player_data(ctx, player) == orig.data) {
             for (const auto& [off, value] : orig.values) {
                 psx_write16(&ctx, orig.data + off, value);
+                ++restored;
+            }
+            for (const auto& [off, value] : orig.bytes) {
+                psx_write8(&ctx, orig.data + off, value);
                 ++restored;
             }
         }

@@ -161,7 +161,11 @@ void test_battle_tab() {
     CHECK(snap_battle_value(95, 90) == 90);
     CHECK(snap_battle_value(-20, 90) == 0);
     BattleActions actions;
-    CHECK(actions.list().size() == 12);
+    CHECK(actions.list().size() == 14);
+    CHECK(actions.list()[12].id == "p1_win" && !actions.list()[12].has_value() && !actions.list()[12].is_toggle());
+    CHECK(actions.list()[13].id == "p2_win" && actions.list()[13].player == 1 &&
+          actions.list()[13].label() == "P2 wins at the next battle phase (you lose)");
+    CHECK(actions.parse_line("!battle p1_win on 0") && actions.list()[12].enabled && actions.list()[12].value == 0);
     CHECK(actions.list()[10].id == "p1_noshuffle" && actions.list()[10].is_toggle() && actions.list()[10].max() == 0);
     CHECK(actions.list()[11].id == "p2_noshuffle" && !actions.no_shuffle(0) && !actions.no_shuffle(1));
     CHECK(actions.parse_line("!battle p2_noshuffle on 0") && actions.no_shuffle(1) && !actions.no_shuffle(0));
