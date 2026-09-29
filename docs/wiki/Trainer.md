@@ -5,8 +5,24 @@
 `F4` (`[hotkeys] trainer`), or Trainer in the `F1` menu, opens a panel over the game, which stays
 paused while it is open; `F4` or `Esc` closes it, `Tab` switches between its pages:
 
-- **Presets:** cheats built into the port for this game (all cards ×4, all 127 Digi parts). They
-  cannot be edited; their on/off state is saved in the cheat file as `!preset <name> on|off`.
+- **General:** things outside a card battle.
+  - Presets: cheats built into the port for this game (all cards ×4, all 127 Digi parts). They
+    cannot be edited; their on/off state is saved in the cheat file as `!preset <name> on|off`.
+  - "Outside battle" toggles (saved as `!toggle` lines, as before when they were on the Battle
+    page): every Fusion Shop fusion mutates, mutations give a Digi-Jewel, and all Digimentals
+    (their flags, handed out at the next city Menu to the partners you have). Izzy's Mutation
+    Detector does not block mutations: the keeper only warns, and "yes" still fuses.
+  - Partners 1-3: `Left`/`Right` pick a Digimon (Veemon, Hawkmon, Armadillomon, Gatomon,
+    Patamon, Wormmon, or empty) for that slot, `Enter`/`Space` writes it; the row shows what the
+    game has now. It is written once (not kept in the cheat file): save in game to keep it. A new
+    partner starts at level 1 with no Digi parts or Digimentals, like one the game gives you (the
+    next city Menu hands out its Digimentals whose story flags are set); it takes the place of the
+    old one in your decks. Picking a partner that is already in another slot swaps the two.
+    Refused, with the reason on the status line: no save loaded, an empty partner 1 or a gap
+    before a filled slot, removing a partner still in a deck, or a partner whose card is in a deck
+    as a plain card (only possible with the all-cards preset). Change partners on the city map
+    rather than during a battle or on the Partner screen.
+  See [docs/re/save-data.md](../re/save-data.md).
 - **Battle:** during a card battle, `F10` (`[hotkeys] battle_p1`) applies the P1 lines that are
   on (HP, circle/triangle/cross attack, DP, each with its value), `F11` (`battle_p2`) the P2
   lines, and `F12` (`battle_reset`) puts every stat they changed back. Values are multiples of 10
@@ -14,10 +30,6 @@ paused while it is open; `F4` or `Esc` closes it, `Tab` switches between its pag
   number and press Enter. Two more lines, "P1 / P2 deck in order (no shuffle)", work on their own
   while ticked: that player's deck is never shuffled, so cards are drawn in deck order. Saved in
   the cheat file as `!battle` lines. See [docs/re/battle.md](../re/battle.md).
-  Under them, "Outside battle" toggles (saved as `!toggle` lines): every Fusion Shop fusion
-  mutates, mutations give a Digi-Jewel, and all Digimentals (their flags, handed out at the next
-  city Menu to the partners you have). Izzy's Mutation Detector does not block mutations: the
-  keeper only warns, and "yes" still fuses. See [docs/re/save-data.md](../re/save-data.md).
 - **Custom:** your own codes from the cheat file below, and what you freeze on the Search page.
 - **Search:** memory search, below.
 

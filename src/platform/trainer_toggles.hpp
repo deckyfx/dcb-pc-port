@@ -1,6 +1,6 @@
 #pragma once
-// Game toggles: the trainer's on/off switches outside a card battle (shown on the Battle tab under
-// the battle actions). Fusion Shop rolls and progression flags; the game side lives in
+// Game toggles: the trainer's on/off switches outside a card battle (shown on the General tab under
+// the presets). Fusion Shop rolls and progression flags; the game side lives in
 // src/game/overrides/fusion.cpp, the flags in docs/re/save-data.md ("Progression flags").
 // No SDL, no guest runtime: unit-tested on its own (tests/trainer).
 //

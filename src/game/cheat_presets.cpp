@@ -1,4 +1,4 @@
-// The port's built-in cheats for SLPS-03101, shown on the trainer's Presets tab. Same GameShark
+// The port's built-in cheats for SLPS-03101, shown on the trainer's General tab. Same GameShark
 // syntax as the cheat file; how each address was found: docs/re/save-data.md.
 
 #include "cheat_presets.hpp"
@@ -14,7 +14,7 @@ std::string_view cheat_presets() {
     // partner card and any you already own are left alone.
     //
     // Digi parts: one bit per part at 800DF200-800DF20F, parts 0-126.
-    return R"(# Built-in presets (the trainer's Presets tab).
+    return R"(# Built-in presets (the trainer's General tab).
 [All cards x4 (save in game, then turn off)] off
 5000AC01 0000
 300E0646 00C4

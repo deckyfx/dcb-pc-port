@@ -45,7 +45,7 @@ bool GameToggles::parse_line(std::string_view line) {
 }
 
 std::string GameToggles::text() const {
-    std::string out = "#!toggle Battle tab, game toggles (Fusion Shop, progression flags):\n";
+    std::string out = "#!toggle General tab, game toggles (Fusion Shop, progression flags):\n";
     for (const ToggleItem& t : list_) out += "!toggle " + t.id + (t.enabled ? " on\n" : " off\n");
     return out;
 }

@@ -1,5 +1,5 @@
 #pragma once
-// The port's built-in cheats (the trainer's Presets tab), as GameShark text.
+// The port's built-in cheats (the trainer's General tab), as GameShark text.
 
 #include <string_view>
 

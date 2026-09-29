@@ -60,8 +60,8 @@ std::vector<std::string> Trainer::load() {
         cheats_ = CheatSet::parse("");
         log.push_back("no cheat file at " + where);
     } else if (const std::optional<std::string> text = platform::read_text_file(path_)) {
-        // The Battle tab's lines ("!battle ...", "!toggle ...") are its own; the cheat parser gets
-        // the rest.
+        // The Battle and General tabs' lines ("!battle", "!toggle", "!preset") are their own; the
+        // cheat parser gets the rest.
         battle_ = BattleActions();
         toggles_ = GameToggles();
         preset_states_.clear();
@@ -117,7 +117,6 @@ std::vector<std::string> Trainer::load() {
 void Trainer::set_presets(std::string_view text) {
     presets_ = CheatSet::parse(text);
     apply_preset_states();
-    tab_ = presets_.cheats().empty() ? Tab::Battle : Tab::Presets;
 }
 
 void Trainer::apply_preset_states() {
@@ -155,7 +154,10 @@ ApplyStats Trainer::apply_frame() {
     return stats;
 }
 
-void Trainer::set_open(bool open) { open_ = open; }
+void Trainer::set_open(bool open) {
+    if (open && !open_) sync_partner_choices();  // the selectors start at what the game has
+    open_ = open;
+}
 
 void Trainer::set_status(std::string text, bool error) {
     status_ = std::move(text);
@@ -180,16 +182,14 @@ void Trainer::key(Key k) {
         open_ = false;
         return;
     }
-    if (k == Key::Tab) {  // Presets (when the game has any) -> Battle -> Custom -> Search
-        const bool presets = !presets_.cheats().empty();
-        tab_ = tab_ == Tab::Presets  ? Tab::Battle
+    if (k == Key::Tab) {  // General -> Battle -> Custom -> Search
+        tab_ = tab_ == Tab::General  ? Tab::Battle
                : tab_ == Tab::Battle ? Tab::Cheats
                : tab_ == Tab::Cheats ? Tab::Search
-               : presets             ? Tab::Presets
-                                     : Tab::Battle;
+                                     : Tab::General;
         return;
     }
-    if (tab_ == Tab::Presets) presets_key(k);
+    if (tab_ == Tab::General) general_key(k);
     else if (tab_ == Tab::Cheats) cheats_key(k);
     else if (tab_ == Tab::Battle) battle_key(k);
     else search_key(k);
@@ -198,7 +198,7 @@ void Trainer::key(Key k) {
 void Trainer::text(std::string_view chars) {
     for (const char c : chars) {
         if (static_cast<unsigned char>(c) >= 0x80) continue;  // ASCII only
-        if (tab_ == Tab::Presets) presets_char(c);
+        if (tab_ == Tab::General) general_char(c);
         else if (tab_ == Tab::Cheats) cheats_char(c);
         else if (tab_ == Tab::Battle) battle_char(c);
         else search_char(c);
@@ -248,25 +248,58 @@ void Trainer::cheats_char(char c) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Presets tab
+// General tab: the presets, the game toggles, the partner slots
 // ---------------------------------------------------------------------------------------------
 
-void Trainer::presets_key(Key k) {
-    if (k == Key::Enter) presets_char(' ');
-    else move(preset_sel_, static_cast<int>(presets_.cheats().size()), k);
+void Trainer::general_key(Key k) {
+    const int presets = static_cast<int>(presets_.cheats().size());
+    const int first_partner = presets + static_cast<int>(toggles_.list().size());
+    const int count = first_partner + kPartnerSlots;
+    const int slot = general_sel_ - first_partner;
+    if (k == Key::Enter) {
+        general_char(' ');
+    } else if ((k == Key::Left || k == Key::Right) && slot >= 0) {
+        // -1 (empty), then the six partners, wrapping.
+        int& choice = partner_choice_[static_cast<size_t>(slot)];
+        choice = (choice + 1 + (k == Key::Left ? kPartnerKinds : 1)) % (kPartnerKinds + 1) - 1;
+    } else {
+        move(general_sel_, count, k);
+    }
 }
 
-void Trainer::presets_char(char c) {
-    const size_t count = presets_.cheats().size();
-    if (c == ' ' && count > 0) {
-        const size_t i = static_cast<size_t>(preset_sel_);
+void Trainer::general_char(char c) {
+    const size_t presets = presets_.cheats().size();
+    const size_t toggles = toggles_.list().size();
+    const size_t i = static_cast<size_t>(general_sel_);
+    if (c == 's' || c == 'S') {
+        save();
+    } else if (c != ' ') {
+        return;
+    } else if (i < presets) {
         const bool on = !presets_.cheats()[i].enabled;
         presets_.set_enabled(i, on);
         dirty_ = true;
         set_status("'" + presets_.cheats()[i].name + "' " + (on ? "on" : "off") + " (S saves)");
-    } else if (c == 's' || c == 'S') {
-        save();
+    } else if (i < presets + toggles) {
+        const ToggleItem& t = toggles_.list()[i - presets];
+        toggles_.set_enabled(i - presets, !t.enabled);
+        dirty_ = true;
+        set_status(t.label + (t.enabled ? " on" : " off") + " (S saves)");
+    } else {
+        apply_partner(static_cast<int>(i - presets - toggles));
     }
+}
+
+void Trainer::sync_partner_choices() {
+    const PartnerState st = read_partners(ram_);
+    for (int s = 0; s < kPartnerSlots; ++s)
+        partner_choice_[static_cast<size_t>(s)] = st.ok ? st.slots[static_cast<size_t>(s)].partner : -1;
+}
+
+void Trainer::apply_partner(int slot) {
+    const PartnerChange r = set_partner(ram_, slot, partner_choice_[static_cast<size_t>(slot)]);
+    if (r.ok) sync_partner_choices();  // a swap changes the other slot too
+    set_status(r.message, !r.ok);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -275,7 +308,7 @@ void Trainer::presets_char(char c) {
 
 void Trainer::battle_step(int delta) {
     const size_t i = static_cast<size_t>(battle_sel_);
-    if (i >= battle_.list().size()) return;  // a game toggle: no value
+    if (i >= battle_.list().size()) return;
     const BattleAction& a = battle_.list()[i];
     if (!a.has_value()) return;
     const int v = battle_.set_value(i, a.value + delta);
@@ -285,7 +318,7 @@ void Trainer::battle_step(int delta) {
 }
 
 void Trainer::battle_key(Key k) {
-    const int count = static_cast<int>(battle_.list().size() + toggles_.list().size());
+    const int count = static_cast<int>(battle_.list().size());
     const size_t i = static_cast<size_t>(battle_sel_);
     switch (k) {
     case Key::Left: battle_step(-10); break;
@@ -318,20 +351,7 @@ void Trainer::battle_key(Key k) {
 
 void Trainer::battle_char(char c) {
     const size_t i = static_cast<size_t>(battle_sel_);
-    const size_t n = battle_.list().size();
-    if (i >= n) {  // a game toggle: Space switches it
-        if (c == ' ') {
-            const ToggleItem& t = toggles_.list()[i - n];
-            toggles_.set_enabled(i - n, !t.enabled);
-            dirty_ = true;
-            set_status(t.label + (t.enabled ? " on" : " off") + " (S saves)");
-        } else if (c == 's' || c == 'S') {
-            save();
-        } else if (c == 'r' || c == 'R') {
-            load();
-        }
-        return;
-    }
+    if (i >= battle_.list().size()) return;
     if (c >= '0' && c <= '9') {
         if (battle_.list()[i].has_value() && battle_edit_.size() < 4) battle_edit_ += c;
     } else if (c == ' ') {
@@ -508,7 +528,7 @@ std::vector<Line> Trainer::render(int cols, int rows) const {
     {
         std::string tabs;
         const auto tab = [&](Tab t, const char* name) { tabs += tab_ == t ? std::string("[") + name + "] " : std::string(" ") + name + "  "; };
-        if (!presets_.cheats().empty()) tab(Tab::Presets, "Presets");
+        tab(Tab::General, "General");
         tab(Tab::Battle, "Battle");
         tab(Tab::Cheats, "Custom");
         tab(Tab::Search, "Search");
@@ -520,16 +540,35 @@ std::vector<Line> Trainer::render(int cols, int rows) const {
     const int body = std::max(0, rows - kHeader - kFooter);
     std::vector<Line> lines;  // body
 
-    if (tab_ == Tab::Presets) {
+    if (tab_ == Tab::General) {
         const std::vector<Cheat>& list = presets_.cheats();
-        lines.push_back({"Built into the port for this game.", Style::Dim});
+        int row = 0;  // selectable rows: presets, toggles, partner slots
+        const auto check = [&](bool on, const std::string& label) {
+            const bool sel = row++ == general_sel_;
+            lines.push_back({std::string(sel ? "> " : "  ") + (on ? "[x] " : "[ ] ") + label,
+                             sel ? Style::Selected : on ? Style::Good : Style::Normal});
+        };
+        if (!list.empty()) {
+            lines.push_back({"Built into the port (held while on):", Style::Dim});
+            for (const Cheat& c : list) check(c.enabled, c.name);
+            lines.push_back({});
+        }
+        lines.push_back({"Outside battle (held while on):", Style::Dim});
+        for (const ToggleItem& t : toggles_.list()) check(t.enabled, t.label);
         lines.push_back({});
-        const int visible = body - 3;
-        for (int i = 0; i < static_cast<int>(list.size()) && i < visible; ++i) {
-            const Cheat& c = list[static_cast<size_t>(i)];
-            const bool sel = i == preset_sel_;
-            lines.push_back({std::string(sel ? "> " : "  ") + (c.enabled ? "[x] " : "[ ] ") + c.name,
-                             sel ? Style::Selected : c.enabled ? Style::Good : Style::Normal});
+        const PartnerState st = read_partners(ram_);
+        lines.push_back({st.ok ? "Partners (Left/Right: choose, Enter: apply now):" : "Partners: " + st.error, Style::Dim});
+        const auto name = [](int p) { return p < 0 ? std::string("(empty)") : std::string(kPartners[static_cast<size_t>(p)].name); };
+        for (int s = 0; s < kPartnerSlots; ++s) {
+            const bool sel = row++ == general_sel_;
+            const PartnerSlot& now = st.slots[static_cast<size_t>(s)];
+            const int choice = partner_choice_[static_cast<size_t>(s)];
+            std::string have = !st.ok ? "?" : name(now.partner);
+            if (st.ok && now.partner >= 0) have += " Lv " + std::to_string(now.level);
+            char buf[96];
+            std::snprintf(buf, sizeof buf, "%sPartner %d  < %-12s >  now %s", sel ? "> " : "  ", s + 1,
+                          name(choice).c_str(), have.c_str());
+            lines.push_back({buf, sel ? Style::Selected : st.ok && choice != now.partner ? Style::Good : Style::Normal});
         }
     } else if (tab_ == Tab::Cheats) {
         const std::vector<Cheat>& list = cheats_.cheats();
@@ -584,15 +623,6 @@ std::vector<Line> Trainer::render(int cols, int rows) const {
             lines.push_back({buf, sel ? Style::Selected : a.enabled ? Style::Good : Style::Normal});
             if (i == 4 || i == 9 || i == 11) lines.push_back({});
         }
-        lines.push_back({});
-        lines.push_back({"Outside battle (held while on):", Style::Dim});
-        const int first = static_cast<int>(list.size());
-        for (int i = 0; i < static_cast<int>(toggles_.list().size()); ++i) {
-            const ToggleItem& t = toggles_.list()[static_cast<size_t>(i)];
-            const bool sel = first + i == battle_sel_;
-            lines.push_back({std::string(sel ? "> " : "  ") + (t.enabled ? "[x]      " : "[ ]      ") + t.label,
-                             sel ? Style::Selected : t.enabled ? Style::Good : Style::Normal});
-        }
     } else {
         const int sel = search_sel_;
         const auto control = [&](int row, std::string label, std::string value) {
@@ -632,9 +662,9 @@ std::vector<Line> Trainer::render(int cols, int rows) const {
         if (static_cast<size_t>(i) < lines.size()) add(lines[static_cast<size_t>(i)].text, lines[static_cast<size_t>(i)].style);
         else add("");
     }
-    if (tab_ == Tab::Presets) {
-        add("Enter/Space: on/off  S: save", Style::Dim);
-        add("Your own codes: the Custom tab", Style::Dim);
+    if (tab_ == Tab::General) {
+        add("Enter/Space: on/off, apply a partner  S: save", Style::Dim);
+        add("Partners are written once: save in game to keep them", Style::Dim);
     } else if (tab_ == Tab::Cheats) {
         add("Enter/Space: on/off  Del: remove", Style::Dim);
         add("R: reload file  S: save file", Style::Dim);

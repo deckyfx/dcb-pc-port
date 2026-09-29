@@ -27,7 +27,7 @@
 800DF1EA 0000
 
 # --- Found with the write watch (docs/re/save-data.md). The port also has these two built in,
-# on the trainer's Presets tab; they are here as examples of the repeat code.
+# on the trainer's General tab; they are here as examples of the repeat code.
 # Card collection: one byte per card at 800E0646 + card number (low 3 bits = copies, max 6).
 # Cards 172-190 are left out: the game's add-card function refuses them.
 [All cards x4] off

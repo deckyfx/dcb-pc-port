@@ -24,11 +24,14 @@ Per-player data repeats every **10040 bytes** (`0x2738`): player 0 is you (the s
 | `+0x2C` | u32 | Fusion Shop flags, bits 0-9 = shop script registers r20-r29 ([below](#fusion-shop-flags-0x2c)) | `city_fusion_flags` (SAISEG `801E3628`), `fusion_flags_save` (EVOSEG `801EB914`) | H |
 | `+0x3C` | 16 bytes | Digi parts owned, one bit per part (parts 0-126), RAM `800DF200`-`800DF20F` | `digipart_give` (`8004BE48`); `digipart_has` (`8004C010`) tests | H |
 | `+0x50` / `+0x52` / `+0x54` | u16 ×3 | fusions done, cards used (+2 each), fusion mutations (all capped at 9999; the records screen's "Fusion Info") | `fusion_execute` (EVOSEG `801EE4B8`) | H |
+| `+0x56` | u16 | the starter partner chosen at a new game (0-2); picks a screen resource (`800322AC`, also read by EVOSEG). The trainer leaves it alone | starter choice (OPENSEG `801EC450`) | M |
 | `+0x80` | 0x288 × 3 | partner slots ([below](#partners-and-digimentals)); slot 0's card is `+0x2F8` | `partner_add` (`8004A0F8`) | H |
 | `+0x2F9` | u8 | partner level (slot 0) | `partner_gain_exp` (KAWSEG `801F7600`) | M |
 | `+0x2FA` | u16 | partner EXP (slot 0) | `partner_gain_exp` (KAWSEG `801F7600`) | M |
 | `+0x818` | u16 × 32 | battle counters (capped at 999), role unknown (maybe wins per opponent), RAM `800DF9DC` | `battle_counters_add` (KAWSEG `801FCF78`) | M |
 | `+0x1482` | u8 × 301 | card collection, one byte per card number, RAM `800E0646` | `collection_add_card` (`8004850C`) | H |
+| `+0x15B0` | u16 × 6 per card | a random serial per copy (card × 12 + copy × 2) | `card_copy_serial` (`8004835C`) | M |
+| `+0x2408` | 0x10C × 3 | saved decks ([below](#saved-decks-0x2408)) | `deck_store` (`8004979C`), `deck_fixup` (`8004945C`) | H |
 | `+0x23CC` | 12 × u32 | city flags: bit n = city script register r(12+n), r12-r362 ([below](#city-flags-0x23cc)) | `city_flags_save` (SAISEG `801E36A8`) | H |
 | `+0x23FC` | u8 × 9 | city script registers r363-r371 (small counters, e.g. r364) | `city_flags_save` | M |
 | `+0x272C` | u16 × 3 | last battle's reward cards (`0xFFFF` = none) | `battle_rewards_pick` (`80048D68`) | H |
@@ -106,19 +109,38 @@ starts), but a script may also use them for its own flow; see the Digimental cav
 
 ### Partners and Digimentals
 
-Partner slots: 3 records of `0x288` bytes at `game_data + 0x80 + slot*0x288` (slot 0 at `+0x80`).
-Fields by the record's own offset (`game_data + 0x2F8` = slot 0's card):
+Partner slots: 3 records of `0x288` bytes at `game_data + 0x80 + slot*0x288` (slot 0 at `+0x80`),
+per player (`+ player*0x2738`). Fields by the record's own offset (`game_data + 0x2F8` = slot 0's
+card). What survives a save is the card, level, EXP, bonuses, parts and Digimentals: the working
+copies and pointers are rebuilt from them when a save is loaded (`partner_refresh_all`,
+`80049F10`, from OPENSEG `801F02D0`: level capped at 99, `+0x268` = the card's record, `+0x26C` =
+the armed Digimental's record or the card's, then `partner_rebuild` per filled slot).
 
 | Record offset | Size | What | Conf. |
 |---|---|---|---|
-| `+0x268` / `+0x26C` | u32 × 2 | the card's record in the card database (RAM pointers) | M |
-| `+0x270` / `+0x272` | u16 / u16 × 3 | zeroed by `partner_add`; role not worked out | L |
-| `+0x278` | u8 | partner card (0 = empty slot) | H |
-| `+0x279` | u8 | level (1 on arrival) | H |
-| `+0x27A` | u16 | EXP | M |
-| `+0x27C` | u8 × 3 | set to `0xFF` by `partner_add`; written by the SUBSEG deck screens (role not worked out) | L |
+| `+0x000` / `+0x134` | 0x134 × 2 | working copies of the card database records at `+0x268` / `+0x26C` (the Partner screen and battles read them), made by `partner_rebuild` (`8004AC98`): copied, `+0x58` set to 100 when 0, `+0x1E` += the HP bonus, the three attacks (`+0x20 + 28·i`) += their bonuses, the fitted Digi parts' effects (table `80071590`, 8 bytes per part), attacks clamped at 0, `+0x58` = 0 when the type byte `+0xE4` is 5-8 | H (code; the trainer's native rebuild of a fresh partner is byte-identical to the game's after a save/load) |
+| `+0x268` / `+0x26C` | u32 × 2 | RAM pointers: card database record (`*801DB000 + card·0x134`) of the card / of the armed Digimental | H |
+| `+0x270` | u16 | HP bonus from level-ups | M |
+| `+0x272` | u16 × 3 | circle / triangle / cross attack bonuses from level-ups (each level-up adds 10 to HP or one attack, picked by `8004C260`, counted up by the battle-end EXP screen `partner_gain_exp`) | M |
+| `+0x278` | u8 | partner card (0 = empty slot; an empty slot's other bytes are leftovers) | H |
+| `+0x279` | u8 | level (1 on arrival, max 99) | H |
+| `+0x27A` | u16 | EXP (`8004C248(level)`: EXP for the next level) | H (field), M (function) |
+| `+0x27C` | u8 × 3 | Digi parts fitted (`0xFF` = none; `partner_fit_part`, `8004BD38`, needs the part owned) | H |
 | `+0x27F` | u8 × 3 | the partner's Digimental cards received (0 = not yet), in `g_digimental_cards` order | H |
-| `+0x282` | u8 | the armed Digimental (set by `partner_armor_select`, `8004A8EC`, on the first one) | M |
+| `+0x282` | u8 | the armed Digimental's card (0 = none; `partner_armor_select`, `8004A8EC`) | H |
+| `+0x283` / `+0x284` | u8 × 2 | bonuses from parts (effect kind 8), recomputed by `partner_rebuild` | M |
+
+Other things that refer to a partner:
+
+- the partner-owned city flag (r294 ... r310, [above](#city-flags-0x23cc)): what the city
+  scripts test;
+- the collection byte of its card: `partner_give` sets it to 1 copy, then `|= 0xF0` (obtained,
+  seen, new, full);
+- the saved decks: a Digimon entry whose card is a partner's points at that partner's slot
+  record ([below](#saved-decks-0x2408)); battles find a partner by card
+  (`partner_slot_of_card`, `8004A62C`, and `digimental_slot_of_card`, `8004ABC0`);
+- nothing else was found: no "active partner" index (all three are shown and levelled; a deck
+  takes the partner it holds).
 
 - `g_partner_cards` (`800710F4`, u8[6]): Veemon 175, Hawkmon 182, Armadillomon 190, Gatomon 184,
   Patamon 183, Wormmon 187 (the "partner index" used below). **H**
@@ -126,8 +148,10 @@ Fields by the record's own offset (`game_data + 0x2F8` = slot 0's card):
   Armadillomon 189/176, Gatomon 181/178, Patamon 180/174, Wormmon 186/177. These 19 cards
   (172-190) are the ones `collection_add_card` refuses. **H**
 - `partner_add(player, index, given)` (`8004A0F8`) fills the first empty slot (none when all 3
-  are used or the partner is already there); `partner_give` (`8004A4F0`) calls it with
-  `given = 1`: collection byte = 1 copy | `0xF0`, the starter Digi part (`80071AD8`). Callers: the
+  are used or the partner is already there): pointers, card, level 1, EXP 0, parts `0xFF`,
+  Digimentals and armed 0, bonuses 0, then `partner_rebuild`. Its only caller is `partner_give`
+  (`8004A4F0`, `given = 1`): collection byte = 1 copy | `0xF0`, a copy serial, the rank update
+  (`8002F484`) and the starter Digi part (`80071AD8`). Callers: the
   starter choice (OPENSEG `801EC450`) and the city partner choice (`partner_choose_task`,
   SAISEG `801F6058`), which offers what the script pushed with host `0x0B 10 n` (the list at
   SAISEG `801F7CE0`) and then sets the partner flag. **M** (code)
@@ -139,6 +163,49 @@ Fields by the record's own offset (`game_data + 0x2F8` = slot 0's card):
   flags that is set (`g_digimental_flags`, SAISEG `801E0EE4`): record byte `+0x27F+n` = the card,
   collection byte `|= 0x50`. It also builds the 13-bit mask at `*80070C30 + 0xFB8` for the
   Partner screen. Seen at run time with the flags set: Veemon got 172/185/173, armed 172. **H**
+
+### Saved decks (`+0x2408`)
+
+Three records of `0x10C` bytes. **H** (code: `deck_fixup` `8004945C`, the starter deck
+OPENSEG `801EC450`, `deck_entry_set` `800495D8`; seen in a save)
+
+| Offset | Size | What |
+|---|---|---|
+| `+0x00` | u8 | 0 = unused, else in use |
+| `+0x01` | 13 bytes | deck name ([name-entry.md](name-entry.md)) |
+| `+0x10` | 8 × 30 | entries: u8 kind (0 Digimon, card < 191; 1 option, card − 191; 2 other, card − 293), u8 index in that kind, u16 card number, u32 RAM pointer to the card's data |
+| `+0x100` | u16 × 6 | counters (`+0x104` +1 and `+0x106`/`+0x108` capped at 9999 by `deck_store`) (L) |
+
+The pointers are rebuilt when a save is loaded (`deck_fixup` for each used deck, from
+`decks_fixup_all` `800493C0`): Digimon → `*801DB000 + index·0x134`, or the partner's slot record
+when a slot holds that card; option → `*801DAFF8 + index·0xDA`; other → `*801DAFFC + index·0x68`.
+
+### Trainer: partner editor (General tab)
+
+`src/platform/trainer_partners.cpp` (`set_partner`), written once when Enter is pressed on a
+partner row (the game is paused while the panel is open); saving in game keeps it. It relies on
+the fields above:
+
+- a new partner in a slot: what `partner_add` writes (level 1, EXP 0, no parts, no
+  Digimentals, bonuses 0) and `partner_rebuild` with nothing fitted; its owned flag set and its
+  collection byte `0xF1`. The next city Menu hands out its Digimentals whose flags are set.
+- the partner it replaces: owned flag cleared, collection byte `0x40` (seen, none), and the deck
+  entries that held it now hold the new partner (so a deck keeps a partner).
+- a partner already in another slot: the two records are swapped (a partner is never in two
+  slots: `partner_add` and the lookups by card assume one).
+- refused: no save loaded (partner tables at `800710F4`/`800710FC` checked, `game_data` and
+  `*801DB000` in RAM, a partner in slot 1); a gap before a filled slot or an empty partner 1;
+  removing a partner that is still in a deck; a partner whose card sits in a deck as a plain
+  card (possible only with the all-cards cheat).
+- deck pointers are then redone as `deck_fixup` does.
+
+Verified at run time (H): with the player's save in Flame City, Veemon → Gatomon in partner 1
+and Patamon added as partner 2: the Edit Partner screen shows both at level 1, the flags
+(r307, r304 set, r294 cleared) and deck 1's partner (184) held through opening the city Menu,
+saving in game and loading the save again; the slot records the game rebuilt on load equal the
+trainer's byte for byte. A swap (Patamon to partner 1) showed on the Partner screen too.
+Not tried: a battle with a changed partner (the deck's entry points at the slot record, as
+with a partner received in game).
 
 ### Fusion Shop flags (`+0x2C`)
 
@@ -195,7 +262,7 @@ cards 300 + 299 (`+0x54` 0 → 1); the same fusion without the toggles gave a no
 What makes the Digi-Jewels hard is the odds: about 1-4 % per fusion for a mutation, then 21 % for
 a jewel (1 in 12 for a given one). The trainer's fusion toggles below change that.
 
-### Trainer toggles (Battle tab, "Outside battle")
+### Trainer toggles (General tab, "Outside battle")
 
 `src/platform/trainer_toggles.hpp` (the list, cheat-file lines `!toggle <id> on|off`) and
 `src/game/overrides/fusion.cpp` (the game side):
