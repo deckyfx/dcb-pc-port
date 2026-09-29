@@ -1,0 +1,8 @@
+# English for KAWSEG strings the US build draws differently (catalog-kawseg.txt, pair <id> -).
+# id<TAB>text; \n line break; placeholders in the JP template's order.
+KAWSEG:360	W
+KAWSEG:364	L
+# The US text has a bare % (drawn as is); a template needs %% for a literal percent sign.
+KAWSEG:500	Boost Battle Experience by 30%%.
+KAWSEG:514	Boost Battle Experience by 20%%.
+KAWSEG:528	Boost Battle Experience by 10%%.
