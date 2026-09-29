@@ -18,8 +18,11 @@ documented in [../RE_WORKFLOW.md](../RE_WORKFLOW.md).
 ## Pages
 
 - [Game data and save](save-data.md) — save layout in RAM, card collection, Digi parts, partner
-  level/EXP, battle rewards, and the functions that write them.
+  slots, battle rewards, progression flags (city flags, partners, Digimentals, the Mutation
+  Detector), the Fusion Shop roll, and the functions that write them.
 - [Battle data](battle.md) — players' HP, attacks and DP in a card battle (translated from the
   US GameShark codes), and the battle hotkeys.
 - [Text engine](text-engine.md) — SJIS/ASCII encoding, the JP/US renderers, fonts and glyph
   cache, string sources, override plan and the state of the English-text port.
+- [Name entry](name-entry.md) — the player / deck name and keyword entry screens (character
+  grid, tab list) and the override that opens them on the letters page.

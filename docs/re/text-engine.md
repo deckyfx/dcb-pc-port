@@ -42,7 +42,7 @@ data), **L** low (a guess).
   half-width kana mini font, a 6×6 mini font, 16×21 big digits) and a **big-name font**
   (32×32 TIMs per character). (H)
 * Several callers **expand variables before drawing** by scanning for bare ASCII letters: `P0`/`P1`
-  (battle banner), `p` (tutorial), `S`/`E` (memory-card slot, US `*S`/`*E`). With English text
+  (battle banner), `p` (tutorial), `hN` (Fusion Shop), `S`/`E` (memory-card slot, US `*S`/`*E`). With English text
   these scanners corrupt ordinary words ("Preparation" contains `P`). They need overrides too. (H
   for `P` and `p`, M for `S`/`E`)
 * No renderer wraps text. Every line break is in the data. Windows size themselves from the
@@ -90,7 +90,8 @@ Codes that are **not** handled by the renderer but are expanded by the caller be
 | Code (JP) | Code (US) | Expanded by | Replaced with | Conf. |
 |---|---|---|---|---|
 | `P0`, `P1` | `*P0`, `*P1` | battle banner `FUN_800466d0` | player name (player struct `+0x1ca`); index XOR the current side `DAT_801dafca` | H |
-| `p` | `*p` (not verified) | tutorial box `FUN_KAWSEG__801ed334` | own player name (`DAT_801daf40 + 0x1ca`) | H (JP) |
+| `p` | `*p` | tutorial box `FUN_KAWSEG__801ed334` | own player name (`DAT_801daf40 + 0x1ca`) | H (the US `BETA.MSD` uses `*p`, §7.12) |
+| `h0`–`h3` | `*h1` (the only one seen) | Fusion Shop line builder EVOSEG `801ebf4c` | `h0` player name (game_data + 0), `h1` the fusion result's card name, `h2`/`h3` the same with all but the first character as ？ | H |
 | `S`, `E` | `*S`, `*E` | memory-card screens (OPENSEG) | slot number | M (seen in strings, expander not traced) |
 
 ### 2.3 Other encodings in the JP EXE
@@ -179,9 +180,10 @@ The counts are static `jal` sites from the recompiled code.
 | Battle card-info panel | `FUN_8003c0b0(panel, ot)` | draw (name, attacks, 4 effect lines), 6×11 digits, icons | card record in `CARD2.CDD` (+0x03 name, +0x26/+0x42/+0x5E attacks, +0xE7 effect lines) | H |
 | Battle banner (top line) | `FUN_800466d0(brightness)` | draw at (16, 14 + slide), clip 288×12 | pointer table `0x80070e78` (18 entries), with `P0/P1` expansion | H |
 | Battle help line (bottom) | `FUN_80046a3c(brightness)` | draw at (80, 0xDB − slide) | pointer table `0x80070ed4`, special `0x80011a2c` | H |
-| Tutorial message | `FUN_KAWSEG__801ed334(y, str)` → callback `FUN_KAWSEG__801ed2d8` | measure + draw_grey, CLUT 7 | `B:\BETA.MSD` via the MSD VM, `p` expansion into a **144-byte stack buffer** | H |
+| Tutorial message | `FUN_KAWSEG__801ed334(y, str)` → callback `FUN_KAWSEG__801ed2d8` | measure + draw_grey, CLUT 7 | `B:\BETA.MSD` via the MSD VM, `p` expansion into a **144-byte stack buffer** (§7.12) | H |
+| Fusion Shop (Andromon) lines | EVOSEG `801ebf4c` builds a line of the 4-line page, `801ec33c` reveals it, `801ec468` draws the page | draw_grey, CLUT 7 | `C:\EVENT\unit0%d.MSD` via the MSD VM (§7.12) | H |
 | Pause/options dialogs in battle | `FUN_KAWSEG__801fa768` | dialog `FUN_80019ff0` | KAWSEG `.rodata` (`0x801e2524`…) | H |
-| Big name (VS screen) | `FUN_80044684(name, row, ...)` task, spawned by `KAWSEG 801F0558` | per-char TIM → VRAM | player name | H (M for the spawner's arguments) |
+| Big name (VS screen) | `bigname_load` `80044684(name, row, parent)` task, spawned by `vs_names_load` (KAWSEG `801F04FC`) | per-char TIM → VRAM | player name (both names in a battle with a friend); the opponent's name is a picture in `B:\MATCH\NNN.ARC` | H (§7.11) |
 | System error screens | `FUN_8004c320`, `FUN_8004c410`, `FUN_8004c828` (table-dispatched) | measure, draw, 6×6 font | EXE `0x80012e90`… ("ＳＹＳＴＥＭ ＥＲＲＯＲ") | M |
 | Overlay menus (OPENSEG, SUBSEG, SAISEG, EVOSEG, ENDSEG) | 20 direct `FUN_8002ae00` sites, 80 `FUN_8002adc8` sites, 12 `FUN_8002b638` sites | draw / measure | overlay `.rodata`, often via pointer tables | H (counts) |
 
@@ -203,7 +205,7 @@ The counts are static `jal` sites from the recompiled code.
 | Main ASCII font | inside `B:\SYSTEM.TIM` (same TIM geometry as JP) | glyph `i = c − 0x20`: u = (i%16)·6 + (width[c] >> 4), v = 0x30 + (i/16)·12, sprite w = width[c] & 0xF (prop) or 6, h = 12 | H (disassembly of US `0x80028d48`) |
 | Width table | US EXE `0x8006df9c` indexed by `c − 0x20` (= `0x8006df7c` indexed by `c`); byte = `uoff << 4 | advance`. For example `' '` = `04` (advance 4), `'!'` = `13` (u+1, advance 3). | | H |
 | Icons | `SYSTEM.TIM`, row base v = 0x7F (JP 0x69) | | H (per HYBRID §4.3) |
-| Big name | `B:\FONT.ARC`, 64 TIMs of 16×32 indexed `c − 0x20`, max 12 chars (US `FUN_80041ca8`) | | M (per HYBRID §4.3) |
+| Big name | `B:\FONT.ARC` (20 848 B): 92 u32 offsets for `0x20`–`0x7B`, then 64 TIMs of 16×32 4 bpp (320 B each, one shared CLUT). Own glyphs: space, `-`, digits, A–Z, a–z; other codes point at the next glyph (`.` → `0`, `:` → `A`), `{` at the end of the file. Max 12 chars (US `FUN_80041ca8`) | | H (§7.11) |
 
 The US ASCII sheet overwrites the rows that JP uses for the mini-font kana (v ≈ 42–115). **Loading the
 US `SYSTEM.TIM` breaks the JP mini font's kana, and moves the icons.** (M)
@@ -231,7 +233,7 @@ extra rows are unused by the ASCII path). (H: verified by ASCII-art decode of th
 |---|---|---|---|
 | Boot EXE `.rdata` | NUL-terminated, 4-byte aligned | direct `lui/addiu` or pointer tables (for example `0x80070e78` battle banner, `0x80070ed4` help line) | H |
 | Overlays (P.DRV, load address `0x801E0B30`) | same | direct, or pointer tables in `.data` (for example OPENSEG memory-card messages via a table around `0x801f5440`–`0x801f5540`) | H |
-| MSD scripts (`B:\BETA.MSD`, `C:\EVENT\unit0%d.MSD`, city scripts in `C:\area%2.2d.pak` kind 2) | `"MSCD"`, `u32 3`, `u32 size`, `u32 nregs`(?), then 4-byte-aligned VM records `u16 op, ...`. Text record = **op 8**: `u16 8, u16 reg, u16 len, char[len]` (NUL included, padded to 4). | VM `FUN_80021198(vm, regs)` stores a **pointer to the text in register `reg`**. A following command record (op 0x0A–0x0E: `u16 op, u16 cmd, {u16 is_reg, u16 value}×(op−0x0A)`) yields to the overlay, which reads the text through the register. Other ops: 5 jump (8 B, offset at +4), 6 raw block (4 + `u16` len), 7 arithmetic (12 B), 9 conditional skip (12 B). Record sizes: 0x0A 4, 0x0B 8, 0x0C 12, 0x0D 16, 0x0E 20. A walker using these sizes parses both `BETA.MSD` files end to end (JP 128 / US 127 text records). | H (VM + walk), M (header) |
+| MSD scripts (`B:\BETA.MSD`, `C:\EVENT\unit0%d.MSD`, city scripts in `C:\area%2.2d.pak` kind 2) | `"MSCD"`, `u32 3`, `u32 size`, `u32 nregs`(?), then 4-byte-aligned VM records `u16 op, ...`. Text record = **op 8**: `u16 8, u16 reg, u16 len, char[len]` (NUL included, padded to 4). | VM `FUN_80021198(vm, regs)` stores a **pointer to the text in register `reg`**. A following command record (op 0x0A–0x0E: `u16 op, u16 cmd, {u16 is_reg, u16 value}×(op−0x0A)`) yields to the overlay, which reads the text through the register. Other ops: 5 jump (8 B, offset at +4), 6 raw block (4 + `u16` len), 7 arithmetic (12 B), 9 conditional skip (12 B). Record sizes: 0x0A 4, 0x0B 8, 0x0C 12, 0x0D 16, 0x0E 20. A walker using these sizes parses both `BETA.MSD` files end to end (JP 128 / US 127 text records), and the `UNIT0n.MSD` pairs (JP 207/185/153, US 233/207/153). | H (VM + walk), M (header) |
 | Card DB `B:\CARD2.CDD` | fixed slots (see HYBRID §6): name 21 bytes at +0x03, attack names, effect text 4 × 19 bytes (US 4 × 21) | record pointer + fixed offset (`FUN_8003c0b0`) | H |
 | Deck DB `B:\DECK2.DEK` | fixed slots | | M |
 | Player name | player struct `+0x1ca` (SJIS, from name entry) | `strcpy` in the expanders | H |
@@ -370,9 +372,11 @@ line is ~100 px in the US font, over 160 px in JP letters, in a ~108 px box).
 | Font + width-table assets | **done** — `tools/text/en_text.py` writes gitignored `assets/SLPS-03101/en_font.bin` (sheet rows 48–223 + the 96-byte width table from `0x8006DF9C`); the header is checked at load and a wrong file falls back to JP. |
 | Font placement | **done** — the GPU's private sheet, outside VRAM (see §7.3). |
 | Card/deck text | **done** — the converter grafts US names/attack names/effect lines into `CARD2.CDD`, deck/owner names into `DECK2.DEK`; lines too long for the JP slot are listed in the local `en_text_report.txt`. DEK field layout measured from both dumps: deck JP 13 / US 19 B at +60, owner 21 B at JP +73 / US +79, 10-byte tail at JP +94 / US +100. |
-| English inside JP strings | **done** — the game appends `デック` to a deck name (`"%sデック"`, EXE `0x800114E0`; the US has `"%s Deck"`) and drops names into JP messages. Each string is copied to the host and cut into pieces: English runs (two letters in a row outside bare JP codes) go to the US port, the rest to the JP original on a NUL-terminated copy pushed on the guest stack. The format itself is patched to the US `"%s Deck"` when `en_font.bin` loads (stock bytes only), so JP-named decks read "… Deck" too; three more "%sデック" copies live in overlays (P.DRV), so a string ending in `デック` (no newline) also gets `" Deck"` (`"Deck"` alone on the name-entry screen), leaving the name before it as typed; `デック` right after an ASCII character in other strings also becomes `" Deck"`. |
+| English inside JP strings | **done** — the game appends `デック` to a deck name (`"%sデック"`, EXE `0x800114E0`; the US has `"%s Deck"`) and drops names into JP messages. Each string is copied to the host and cut into pieces: English runs (two letters in a row outside bare JP codes, or one letter the JP renderer would skip: a capital or a lowercase letter that starts no JP code, e.g. a name typed on the ABC page next to kana) go to the US port, the rest to the JP original on a NUL-terminated copy pushed on the guest stack. The format itself is patched to the US `"%s Deck"` when `en_font.bin` loads (stock bytes only), so JP-named decks read "… Deck" too; three more "%sデック" copies live in overlays (P.DRV), so a string ending in `デック` (no newline) also gets `" Deck"` (`"Deck"` alone on the name-entry screen), leaving the name before it as typed; `デック` right after an ASCII character in other strings also becomes `" Deck"`. |
 | Deck names longer than the 13-byte slot | **done** — 48 US names (e.g. `Mountain CrusherDX`, 18 letters). The slot holds the first 11 letters + a tag byte (1, 2… per shared prefix: `Mountain Crusher` and `Mountain CrusherDX` both start `Mountain Cr`); `en_names.txt` maps the key to the full name, which the renderer draws (and measures) wherever the key appears. Renderers not taken over yet show the 11 letters. |
-| Battle banner / tutorial / slot expanders, the five extra renderers, EXE + MSD strings | not started (later milestones). |
+| VS-screen big names | **done** — §7.11. |
+| Tutorial and Fusion Shop scripts | **done** — §7.12. |
+| Battle banner / slot expanders, the five extra renderers, EXE + MSD strings | not started (later milestones). |
 | Verification | headless runs with `DCB_TRACE_TEXT=1` + `DCB_SNAPSHOT`: an ASCII message (poked into the memory-card dialog source at OPENSEG `0x801E27F4`, draw buffer `0x800E5638`) renders through the US port, and a clean run of the same build renders the JP string through the fallback. |
 
 ### 7.7 Text catalog (whole strings, any language)
@@ -396,6 +400,26 @@ entry whole, draws the translation instead.
   `DCB_LANG=<lang>`. The US font has ASCII only, so accented letters need glyphs first.
 - **Runtime:** `text::Catalog` (`src/platform/text_catalog.*`, unit-tested), used by
   `load_text` in `src/game/overrides/text.cpp` before the deck-name rules.
+- **Typed-out messages:** many message windows reveal a line a Shift-JIS character per frame
+  (the new-game guide, for one), drawing each partial string. `translate_prefix` matches a
+  partial string against the start of a template (it must end inside a literal part, so a
+  template starting with `%s` does not take everything) and draws the same share of the English:
+  k of n Japanese characters shown -> k/n of the English glyphs, so the English types along
+  instead of the Japanese showing until the line completes. While the start could still be two
+  different messages it draws nothing. `DCB_TRACE_TEXT=hex` logs `catalog=prefix -> "..."`,
+  and `out=jp|en` + `outhex=` (what is drawn after every expansion: `out=jp` is Japanese on
+  screen, even for a line the catalog "translated").
+- **Templates with a literal start first** (`Catalog::lookup`, used by `load_text`): a whole
+  template that starts with a literal, else the start of one (typed out), else a whole
+  `%s...` template (`%sデック`, `%sの...`), else the start of one. A line typed out passes
+  through a whole `%sデック` for a frame: the partner select's deck descriptions reach
+  `ブイモンがパートナーのc5デック` before `c7です。...`, and were drawn for that frame as
+  "ブイモンがパートナーのc5 Deck" (Japanese flash, twice per description; also the starter-deck
+  line before it). `%s` captures also end on a character boundary: byte-wise, `ブイモ` (ends
+  `83 82`) "started" `%sの...` (`の` = `82 CC`) and drew nothing for that frame. (H: run
+  headless, new game → partner select, all three decks: no `out=jp` draws besides the typed
+  name and the kana grid.) Two messages that start alike (`パートナーカード...`, `この世界...`)
+  still draw nothing for the few characters they share.
 
 Coverage (1271 strings): Yes/No and the save/load flow (`catalog.txt`), the EXE (battle
 dialogs, banner, help lines, support effects, packs, rank titles: `catalog-exe.txt`), KAWSEG
@@ -430,9 +454,9 @@ bare JP codes (all ASCII is dropped) and without a length check (the US lines re
 the reveal types two characters a frame through the text renderer (the shown count stays in the
 slot, so save states keep their place). JP lines take the originals.
 
-Not covered yet: the other MSD scripts (tutorial `B:\BETA.MSD`, `C:\EVENT\UNIT0x.MSD`, E/F/C PAK
-scripts); the other renderers
-(the tiny font, the VS big names; the mini font is §7.10). `DCB_TRACE_TEXT=hex` logs each drawn string's bytes and
+Not covered yet: the other MSD scripts (E/F/C PAK scripts; the tutorial and the Fusion Shop are
+§7.12); the other renderers
+(the tiny font; the mini font is §7.10, the VS big names §7.11). `DCB_TRACE_TEXT=hex` logs each drawn string's bytes and
 whether the catalog translates it (decode with cp932) — the way to find what is still Japanese.
 
 ### 7.9 Counts and units on the deck / card screens (SUBSEG)
@@ -504,6 +528,131 @@ not (text.cpp calls `f_80029F70` directly), so they keep the JP art.
   2320.., catalog-exe) in deck edit / card selection / partner / battle, battle card names.
   `DCB_TRACE_TEXT=1|hex` logs them as `[text] mini jp|prop w=N|fixed`.
 
+### 7.11 VS-screen big names
+
+Before a card battle the VS screen (`vs_screen`, KAWSEG `801F2B9C`) shows both names in 32-px
+letters. It spawns the task `vs_names_load` (KAWSEG `801F04FC`, a0 = mode, a1 = match number,
+a2 = the VS task) and keeps running; the drawer (`vs_screen_draw`, `801F35D8`) draws each name
+as one sprite from VRAM (704, 448) (row 0) / (704, 480) (row 1), CLUT (752, 471 / 472), width
+`battle_data+0x114`. (H: read in code, run headless)
+
+| Step (`vs_names_load`) | What it does |
+|---|---|
+| names | mode ≠ 0 (a city/arena opponent): row 0 only, the player. Mode 0 (battle with a friend): rows 0 and 1, and match = 999. For each: `task_spawn` of `bigname_load(*g_game_data + row·10040, row, self)`, then `task_sleep(0x7FFFFFFF)` until it wakes the parent. |
+| `bigname_load` (`80044684`) | `g_bigname_busy` = 1; for each 2-byte character (max 8): sprintf `B:\FONT\%04X.tim` (EXE `800117C0`), `task_spawn(file_load_task)`, sleep, `tim_upload(tim, 704 + i·8, 448 + row·32, 752, 471 + row)`, `DrawSync(0)`, `mem_free`; `g_bigname_busy` = 0; `task_wake(parent, leftover a1)`. |
+| opponent picture | sprintf `B:\MATCH\%3.3d.ARC` (KAWSEG `801E0E1C`), load it, `tim_upload(entry, -1, -1, -1, -1)` for **every** offset-table entry (the last one is the end of the file: ReadTIM fails and the previous TIM is uploaded again), sleeping `g_wait_frames` after each. The 14 TIMs are the portrait, frames, the 戦 勝 敗 record strip (464, 184/202), and last the opponent's name picture at (704, 480), CLUT (752, 472), JP 32 halfwords (128 px). |
+| widths | `battle_data[0]+0x114` = (strlen(`+0x1CA`)/2)·32; `battle_data[1]+0x114` = `g_tim_image.prect->w`·4 (mode ≠ 0) or the same formula (mode 0). |
+| end | four slide-in records at `g_vs_slide` (801FE788; the picture enters from −width), `task_sleep(10)`, `g_vs_names_busy` (801FF1E8) = 0, `task_wake(parent)`. |
+
+Name sources (run headless, Meramon in the Flame City Battle Café): `*g_game_data` = 800DF1C4
+(the loaded save's name, +0), `battle_data[0]+0x1CA` = 800E61C2 holds the same name (a battle
+copy); the opponent's `+0x1CA` (800E63A2; presumably its DEK owner name, not checked) is not used here: the VS screen shows the
+MATCH picture instead. **The player name is typed on the JP kana grid, so it is Shift-JIS**; an
+ASCII name comes from outside (a US save, a cheat) or, in the port, from the name entry's ABC page (half-width letters, docs/re/name-entry.md).
+
+JP behaviour with an ASCII name: `%04X` of two ASCII bytes asks for files such as `FONT\4A6F.tim`
+that do not exist, the load task wakes with NULL and `tim_upload(NULL, …)` uploads garbage; an odd
+length pairs the last letter with the NUL and reads past it; the width formula drops the odd
+letter.
+
+**Port** (`src/game/overrides/bigname.cpp`, `tools/text/bigfont.py`):
+
+- `en_text.py` → `bigfont.write_assets` writes `en_bigfont.bin` (the US FONT.ARC repacked: "BGF1",
+  first 0x20, count 92, 4 halfwords × 32 rows, the CLUT, a has-glyph byte per code, 92 × 256 B of
+  pixels; a code whose TIM belongs to another code has no glyph) and `files/B/MATCH/NNN.ARC`: the
+  JP archive with only its last TIM (the name picture) taken from the US archive — "Meramon",
+  40–64 halfwords wide. 141 of 142 archives; `999.ARC` (mode 0) has no name picture and stays JP.
+  The rest of the US archive is not used (its record strip is blank and wider: the US draws those
+  words as text).
+- `dcb_bigname_load` (override of `80044684`): a name made only of 2-byte Shift-JIS characters
+  takes the original. Anything else is drawn with the US glyphs: ASCII as is, full-width
+  letters/digits/space in a mixed name mapped to ASCII, bytes < 0x20 (DEK tag bytes) dropped,
+  codes without a glyph drawn as a space, at most **12 characters** (the CLUTs at x 752 end the
+  strip, as in the US loader). Each glyph is a 320-byte TIM built on the task's stack and uploaded
+  with the game's `tim_upload(tim, 704 + i·4, 448 + row·32, 752, 471 + row)` + `DrawSync(0)`;
+  `g_bigname_busy` and `task_wake(parent, 1)` as the original. Without `en_bigfont.bin` an ASCII
+  name uploads nothing and gets width 0.
+- `dcb_vs_names_load` (override of KAWSEG `801F04FC`): the routine re-implemented step by step
+  (same spawns, stack arguments, sleeps, uploads, globals and slide-in records) with one change:
+  an ASCII name's width is 16 px per drawn character. A wrapper around the original cannot do it:
+  the VS screen draws concurrently and would use the JP width during the task's last 10 frames.
+- Verified headless (`DCB_TRACE_TEXT=1` logs `[bigname] ...`): Meramon's VS screen with the JP
+  save name ああああああ (original path, width 192, unchanged) and the US "Meramon" picture;
+  with a cheat writing the save name, "Decky" (odd length, width 80) and "Tai.Kamiya-20"
+  (`.` drawn as a space, cut at 12, width 192). Mode 0 (battle with a friend) not run.
+- Not done: the 戦 勝 敗 record strip on the VS screen (and the WIN archives' copy) is still JP
+  kanji; the US shows a blank strip and draws the words as text (US code not traced).
+
+### 7.12 Tutorial and Fusion Shop scripts (B:\BETA.MSD, C:\EVENT\UNIT0n.MSD)
+
+The other two MSD hosts besides the cities (§7.8). `tools/text/scripts.py` (hooked into
+`en_text.py`) writes the US scripts as loose files `files/B/BETA.MSD` and
+`files/C/EVENT/UNIT0n.MSD` (the loader upper-cases the path, so `C:\EVENT\unit00.MSD` finds
+`UNIT00.MSD`), each only when `msd.same_program` passes for that host. The loose
+`C:\EVENT\CITYnn.MSD` are unused copies of the city scripts in `AREAnn.PAK`.
+
+**Hosts** (H: decompiled, and run headless with the grafted scripts):
+
+| Script | Loader | Host (VM step) | Text commands | Other host facts |
+|---|---|---|---|---|
+| `B:\BETA.MSD`: the new-game practice battle with Betamon (`Tutorial Deck` vs `Practice Deck`) | KAWSEG `801ED178`, from the battle set-up `80042800` when `*(80070C30)+4` is 0 | `tutorial_script_step` KAWSEG `801ED5A8` | `0x0A` cmd 0: `tutorial_msg_show(reg 8, reg 0)` (box, waits for circle); cmd 3 copies reg 0 into a player's deck name ("Practice" / "Tutorial": both fit) | registers 4-7 = pad pressed this frame: circle (0x20), square (0x80), triangle (0x10), cross (0x40); a prompt polls them every frame with `op 9` tests |
+| `C:\EVENT\unit0%d.MSD`: Andromon No.1-3 at the Fusion Shop | `unit_msd_load` EVOSEG `801EB200` (sprintf of `801E1D90`), from the shop entry `801EB980` | `fusion_shop_host` EVOSEG `801EACBC` | `0x0A` cmd 0: `unit_msg_build(reg 4)` adds a line to the page (4 lines; the first, the speaker's name, shows at once); `-1` (page full) makes the shop wait for circle, clear the page and add the line again (`801EB6D0`); cmd 11: wait for circle, then clear the page | the camera/model VM of EVOSEG (`801F1134`, `801F20F4`) has no text |
+
+**What the JP code does to English**, and the overrides (`src/game/overrides/event_text.cpp`):
+
+- `tutorial_msg_show` (KAWSEG `801ED334`) copies the text into a 144-byte stack buffer and
+  replaces **every bare `p`** with the player name, then sizes the box with `text_measure`, opens
+  the "TUTORIAL" window `801FF1A0`, points the tutorial VM's `+0x10` at the buffer (the draw
+  callback `801ED2D8` draws it every frame) and loops until circle. In English every `p` of a word
+  became the name, and the US `*p` left its `*`. `dcb_tutorial_msg_show` runs the same steps for an
+  English line with `*p` expanded, in a buffer as long as the line (never shorter than the
+  original's); JP lines (the catalog's first-turn lines, KAWSEG `0x428` / `0x44C`, come through
+  here too) take the original. A JP name inside the English line is drawn by the mixed-string
+  path of `text.cpp`.
+- `unit_msg_build` (EVOSEG `801EBF4C`) claims a 64-byte line of `unit_msg_lines` (`801F7CF0`, 4
+  lines; `+60` s16 shown, `+62` in use, `+63` length; `unit_msg_slot_alloc` `801EBEC0` sets shown
+  to -1 on the first line), writes `w1`, copies Shift-JIS and the bare codes `a b c e s` + digit,
+  expands `h0`-`h3`, and **drops every other byte** (all English), and marks a line of 60 bytes or
+  more unused. `unit_msg_reveal` (`801EC33C`) shows one Shift-JIS character per call. The
+  overrides `dcb_unit_msg_build` / `dcb_unit_msg_reveal` do what `city_text.cpp` does (shared
+  helpers in `typewriter.hpp`): the English line, with `*h0`-`*h3` expanded as the JP does (the US
+  uses `*h1`: "a(n) *c5*h1 Card*c7!"), stays host-side, the line holds a marker and a serial, and
+  the reveal types two characters a frame; the name line shows at once, as in JP.
+
+**Script check** (`msd.same_program(jp, us, show_text, button_regs)`). The check compares
+*skeletons*: with every text-side record (op 8 and the host's show-text commands) taken out, the
+two record lists must be equal (jumps by kind). The first version aligned the two record lists
+with difflib, which failed on UNIT00/UNIT01: the US re-paginated whole scenes and the aligner
+paired the repeated page structures wrongly, although the skeletons are identical (232 / 216
+records). Text-side commands per host (from the host code above): cities 0x0A cmd 4/5; tutorial
+0x0A cmd 0; Fusion Shop 0x0A cmd 0 and cmd 11 (the page break: the US moved them with the text).
+Text records must load the same registers (tutorial 0, Fusion Shop 4).
+
+**Buttons in the tutorial.** `BETA.MSD` differed in 24 button tests: the US script tests other
+pad registers at the same places, with the same jumps. Paired prompt by prompt, US cross = JP
+circle (confirm), US triangle = JP cross (discard the hand), US circle = JP triangle (skip); the
+attack choices (circle, triangle, cross) are the same on both discs. `button_regs` = {4..7} lets
+an `op 9` test of a pad register differ, and the graft writes the JP test back, so the tutorial
+follows the JP controls (checked headless: circle confirms, cross redraws, square shows the hand,
+triangle skips). The icons in the prompts are remapped the same way (`TUTORIAL_BUTTONS`: `*b2`→`*b0`,
+`*b1`→`*b2`, `*b0`→`*b1`; icons b0/b1/b2/b3 = circle/triangle/cross/square), per stretch of text
+between two program records: a stretch whose US icons already equal the JP ones (attack prompts
+such as "I chose *b0") and lines about attacks ("Attack") stay; 21 lines change. The stretches
+that still differ from the JP afterwards are listed by `en_text.py`; all are rewordings (the US
+names the button where the JP says "a button", or the other way round).
+
+**Other text fixes.** The US Fusion Shop text writes a double quote as the six characters
+`\0x22` (6 times in UNIT00); no renderer decodes it (the US game shows it as is), so the graft
+writes `"` in place (NUL-padded: no record moves).
+
+**Verified headless** (`DCB_TRACE_TEXT=hex`, snapshots): UNIT00 (Flame City, from the player's
+save: City menu → Fusion Shop): pages, typewriter, the name line, `"Partner Fusion."`, level
+icons, and a fusion's "Wow! You got a(n) Black Gear Card!" (`*h1`); the tutorial (new game → name,
+partner, save → Beginner City Battle Cafe, Betamon) up to the Digivolve phase of the second turn,
+with a Shift-JIS player name ("ああああああ, now you know which Attack to choose, right?"). UNIT01 /
+UNIT02 (Andromon No.2 / No.3 in other cities) were not reached: they pass the same check and run
+on the same host code.
+
 ## 8. Proposed names
 
 For later import into Ghidra / `config/SLPS-03101/functions.json`. Not applied in the shared database.
@@ -544,7 +693,7 @@ For later import into Ghidra / `config/SLPS-03101/functions.json`. Not applied i
 | `80028524` | `text_draw_tiny_grey` | wrapper |
 | `80029010` | `text_draw_bigdigits` | 16×21 digits |
 | `8002a37c` | `sjis_to_mini` | SJIS → mini-font bytes |
-| `80044684` | `bigname_load_task` | per-character `FONT\%4.4X.tim` loader |
+| `80044684` | `bigname_load` | per-character `FONT\%4.4X.tim` loader (task; §7.11, in `ghidra/symbols`) |
 | `80019ff0` | `dialog_setup` | message/Yes-No dialog |
 | `8001a590` | `dialog_draw_cb` | dialog draw callback (no Ghidra function) |
 | `8001a284` | `dialog_run` | modal loop |
@@ -558,6 +707,13 @@ For later import into Ghidra / `config/SLPS-03101/functions.json`. Not applied i
 | `KAWSEG::801ed178` | `tutorial_msd_load` | loads `B:\BETA.MSD` |
 | `KAWSEG::801ed334` | `tutorial_msg_show` | `p` expansion + box |
 | `KAWSEG::801ed2d8` | `tutorial_msg_draw_cb` | draw callback |
+| `KAWSEG::801ed5a8` | `tutorial_script_step` | tutorial MSD host (§7.12) |
+| `EVOSEG::801eb200` | `unit_msd_load` | loads `C:\EVENT\unit0%d.MSD`, makes the VM |
+| `EVOSEG::801eacbc` | `fusion_shop_host` | Fusion Shop MSD host |
+| `EVOSEG::801ebec0` | `unit_msg_slot_alloc` | free line of the page |
+| `EVOSEG::801ebf4c` | `unit_msg_build` | line of the message page |
+| `EVOSEG::801ec33c` | `unit_msg_reveal` | typewriter |
+| `EVOSEG::801ec468` | `unit_msg_draw` | draws the page |
 | `8004c320`, `8004c410`, `8004c828` | `syserr_screen_*` | system error screens |
 
 Data:
@@ -591,8 +747,8 @@ Data:
 3. Where `DAT_801d7438` (text palettes) comes from, and whether the US palettes differ. The
    implementation sidesteps it: the ASCII path uses the JP CLUT base (`g_text_clut_x/y`) and the JP
    colours look right on screen.
-4. Whether the US `*p` is really the tutorial name code (only `*P0/*P1`, `*S`, `*E`, `*s0` were
-   seen in the sampled strings).
+4. **Answered: yes.** The US `BETA.MSD` writes the player name as `*p` (11 lines, e.g. `*p, now you
+   know which Attack to choose`); §7.12.
 5. **Answered: yes, both mechanisms work.** `overrides.json` entries with `"overlay": "OPENSEG"`
    replace overlay addresses (e.g. `dcb_movie_play`), and guest calls into main-EXE functions are
    routed through `function_table.c`, which the recompiler rewires to the override symbols —

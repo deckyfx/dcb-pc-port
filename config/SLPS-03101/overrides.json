@@ -12,7 +12,11 @@
     { "addr": "0x801E38A0", "overlay": "OPENSEG", "symbol": "dcb_movie_play", "why": "play movie N (0 opening, 1 credits, 2 BANDAI logo): native MPEG-1 from movie/movie<N>.mpg when present, else the CD stream" },
     { "addr": "0x801E2978", "overlay": "SAISEG", "symbol": "dcb_city_msg_build", "why": "city_msg_build: English city lines (grafted US scripts, catalog hits) kept host-side; the original drops ASCII and has no length check (src/game/overrides/city_text.cpp)" },
     { "addr": "0x801E2B94", "overlay": "SAISEG", "symbol": "dcb_city_msg_reveal", "why": "city_msg_reveal: typewriter for those English lines, drawn through the text renderer" },
+    { "addr": "0x801ED334", "overlay": "KAWSEG", "symbol": "dcb_tutorial_msg_show", "why": "tutorial_msg_show: English tutorial lines (grafted US BETA.MSD) with *p expanded and a buffer as long as the line; the original turns every bare p into the name and has a 144-byte stack buffer (src/game/overrides/event_text.cpp)" },
+    { "addr": "0x801EBF4C", "overlay": "EVOSEG", "symbol": "dcb_unit_msg_build", "why": "unit_msg_build: English Fusion Shop lines (grafted US UNIT0n.MSD) kept host-side with *h names expanded; the original drops ASCII (src/game/overrides/event_text.cpp)" },
+    { "addr": "0x801EC33C", "overlay": "EVOSEG", "symbol": "dcb_unit_msg_reveal", "why": "unit_msg_reveal: typewriter for those English lines, drawn through the text renderer" },
     { "addr": "0x80043E24", "symbol": "dcb_deck_shuffle", "why": "deck shuffle of player a0: skipped (only the pending count cleared) while the trainer's 'deck in order' is on for that player (src/game/overrides/battle.cpp)" },
+    { "addr": "0x801EF738", "overlay": "EVOSEG", "symbol": "dcb_fusion_roll", "why": "fusion_roll (Fusion Shop, second card picked): re-rolled while the trainer's fusion toggles ask for a mutation / a Digi-Jewel (src/game/overrides/fusion.cpp)" },
     { "addr": "0x80043B00", "symbol": "dcb_dp_calc", "why": "battle DP of player a0: returns the value a battle hotkey locked (src/game/overrides/battle.cpp), else the original" },
     { "addr": "0x8002AE00", "symbol": "dcb_text_draw", "why": "text draw: ASCII strings take the US-renderer port, SJIS falls back to the JP original" },
     { "addr": "0x8002B638", "symbol": "dcb_text_measure", "why": "text measure: same ASCII/SJIS dispatch as draw" },
@@ -21,6 +25,15 @@
     { "addr": "0x80029F70", "symbol": "dcb_text_icon", "why": "text icon: level badges 16-19 (JP III, A, IV, kan) drawn as the US R/A/C/U badges from the private sheet when the English assets are loaded (src/game/overrides/level_badges.cpp)" },
     { "addr": "0x800288C8", "symbol": "dcb_text_draw_mini", "why": "mini font draw (8x7; the grey wrapper 80028898 calls it): catalog translation, English drawn with proportional ink widths, JP to the original (src/game/overrides/mini_text.cpp)" },
     { "addr": "0x8002A37C", "symbol": "dcb_sjis_to_mini", "why": "sjis_to_mini: ASCII card names copied through (the original drops every ASCII letter), SJIS to the original" },
+    { "addr": "0x80044684", "symbol": "dcb_bigname_load", "why": "bigname_load (VS-screen big name, task): ASCII names drawn with the US 16x32 font from en_bigfont.bin (the JP loader asks for FONT\\%04X.tim files that do not exist); Shift-JIS to the original (src/game/overrides/bigname.cpp)" },
+    { "addr": "0x801F04FC", "overlay": "KAWSEG", "symbol": "dcb_vs_names_load", "why": "vs_names_load (VS screen, task): re-implemented so an ASCII name gets 16 px per character (the JP width (strlen/2)*32 drops odd letters); everything else as the original" },
+    { "addr": "0x801EB5BC", "overlay": "OPENSEG", "symbol": "dcb_name_entry_frame_open", "why": "player name entry, per frame: the ABC/123 page first (row table rotated, tab labels aliased; src/game/overrides/name_entry.cpp)" },
+    { "addr": "0x801E37B4", "overlay": "SUBSEG", "symbol": "dcb_name_entry_frame_sub", "why": "deck name entry, per frame: the ABC/123 page first (as the player name entry)" },
+    { "addr": "0x801EDC40", "overlay": "SAISEG", "symbol": "dcb_name_entry_frame_sai", "why": "WORD INPUT keyword entry, per frame: the ABC/123 page first (as the player name entry)" },
+    { "addr": "0x801EA910", "overlay": "OPENSEG", "symbol": "dcb_name_entry_input_open", "why": "player name entry pad input: the original, then circle/triangle/cross done on bytes so the ABC page types half-width letters (12 per name; src/game/overrides/name_entry.cpp)" },
+    { "addr": "0x801E2960", "overlay": "SUBSEG", "symbol": "dcb_name_entry_input_sub", "why": "deck name entry pad input: as the player name entry" },
+    { "addr": "0x801EBE18", "overlay": "OPENSEG", "symbol": "dcb_name_box_open", "why": "player name box (window callback): the name drawn verbatim, L1/R1 and the underline by whole 1-/2-byte characters" },
+    { "addr": "0x801E417C", "overlay": "SUBSEG", "symbol": "dcb_name_box_sub", "why": "deck name box (window callback, name + Deck label): as the player name box" },
     { "addr": "0x80059D30", "symbol": "dcb_cd_search_file", "why": "libcd CdSearchFile: answered from the disc's root directory without reading it through the drive (the movie player looks up DIGIMON.MOV)" }
   ]
 }

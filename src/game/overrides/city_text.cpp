@@ -18,6 +18,7 @@
 // state taken mid-line restores the right line at the right point. JP lines take the originals.
 
 #include "text.hpp"
+#include "typewriter.hpp"
 
 #include <psx/recomp.h>
 
@@ -27,11 +28,12 @@
 #include <unordered_map>
 
 extern "C" {
-void f_8002ADC8(PsxContext* ctx);         // text_draw_grey(x, y, clut, prop, ot@sp16, str@sp20)
 void o_SAISEG_801E293C(PsxContext* ctx);  // city_msg_slot_alloc(slots) -> slot or 0
 }
 
 namespace {
+
+using namespace dcb::typewriter;
 
 constexpr uint32_t kSlots = 0x801F7E88u;  // 3 line slots, 64 bytes each
 constexpr uint32_t kSlotSize = 64;
@@ -40,86 +42,38 @@ constexpr uint32_t kBuild = 0x801E2978u;
 constexpr uint32_t kReveal = 0x801E2B94u;
 constexpr uint8_t kMarker = 0x7F;
 constexpr size_t kCharsPerFrame = 2;  // an English letter is about half a JP character wide
-constexpr int kA0 = 4, kA1 = 5, kA2 = 6, kA3 = 7, kV0 = 2, kSp = 29;
+constexpr int kA0 = 4, kA1 = 5, kA2 = 6, kA3 = 7, kV0 = 2;
 
 std::unordered_map<uint32_t, std::string> g_lines;  // serial -> English line
 uint32_t g_next_serial = 1;
-
-bool sjis_lead(uint8_t c) { return (c >= 0x81 && c <= 0x9F) || (c >= 0xE0 && c <= 0xFC); }
-
-std::string read_string(PsxContext& ctx, uint32_t addr) {
-    std::string s;
-    for (uint32_t i = 0; i < 4096; ++i) {
-        const uint8_t c = psx_read8(&ctx, addr + i);
-        if (c == 0) break;
-        s.push_back(static_cast<char>(c));
-    }
-    return s;
-}
-
-/// Length of the control code at s[i] (`*` + letter + argument), or 0 when s[i] shows a glyph.
-size_t code_length(const std::string& s, size_t i) {
-    if (s[i] != '*' || i + 1 >= s.size()) return 0;
-    const char code = s[i + 1];
-    if (code < 'a' || code > 'w') return 2;
-    if ((code == 'h' || code == 'w') && i + 2 < s.size() && s[i + 2] == '-') return std::min<size_t>(4, s.size() - i);
-    return std::min<size_t>(3, s.size() - i);
-}
-
-/// How many characters of `s` show (control codes excluded).
-size_t visible_count(const std::string& s) {
-    size_t n = 0;
-    for (size_t i = 0; i < s.size();) {
-        const size_t code = code_length(s, i);
-        if (code) {
-            i += code;
-        } else {
-            ++n;
-            ++i;
-        }
-    }
-    return n;
-}
-
-/// The first `visible` characters of `s`, with every control code before the next character.
-std::string prefix(const std::string& s, size_t visible) {
-    size_t i = 0, n = 0;
-    while (i < s.size()) {
-        const size_t code = code_length(s, i);
-        if (code) {
-            i += code;
-            continue;
-        }
-        if (n == visible) break;
-        ++n;
-        ++i;
-    }
-    return s.substr(0, i);
-}
 
 uint32_t slot_serial(PsxContext& ctx, uint32_t slot) {
     if (psx_read8(&ctx, slot) != kMarker) return 0;
     return psx_read32(&ctx, slot + 4);
 }
 
-/// text_draw_grey(x, y, 7, 1, ot, text) with the text in a frame pushed on the guest stack.
-void draw_line(PsxContext& ctx, int x, int y, uint32_t ot, const std::string& text) {
-    const uint32_t regs[4] = {ctx.r[kA0], ctx.r[kA1], ctx.r[kA2], ctx.r[kA3]};
-    const uint32_t sp = ctx.r[kSp];
-    const uint32_t frame = sp - ((32 + static_cast<uint32_t>(text.size()) + 1 + 7) & ~7u);
-    const uint32_t str = frame + 32;
-    for (size_t i = 0; i < text.size(); ++i) psx_write8(&ctx, str + static_cast<uint32_t>(i), static_cast<uint8_t>(text[i]));
-    psx_write8(&ctx, str + static_cast<uint32_t>(text.size()), 0);
-    psx_write32(&ctx, frame + 16, ot);
-    psx_write32(&ctx, frame + 20, str);
-    ctx.r[kA0] = static_cast<uint32_t>(x);
-    ctx.r[kA1] = static_cast<uint32_t>(y);
-    ctx.r[kA2] = 7;  // the JP call's CLUT and proportional flag
-    ctx.r[kA3] = 1;
-    ctx.r[kSp] = frame;
-    f_8002ADC8(&ctx);
-    ctx.r[kSp] = sp;
-    for (int i = 0; i < 4; ++i) ctx.r[kA0 + i] = regs[i];
+}  // namespace
+
+namespace {
+
+constexpr uint32_t kGameData = 0x80070C2Cu;  // -> game_data (+0 the player's name)
+
+/// `*h0` -> the player's name (game_data + 0, at most 12 bytes): the city builder's `h0` code
+/// (its jump table sends `h` to the name copy, 801E2A64); the US city lines write it `*h0`.
+std::string expand_player_name(PsxContext& ctx, const std::string& text) {
+    const size_t at = text.find("*h0");
+    if (at == std::string::npos) return text;
+    const std::string name = read_string(ctx, psx_read32(&ctx, kGameData), 12);
+    std::string out;
+    for (size_t i = 0; i < text.size(); ++i) {
+        if (text.compare(i, 3, "*h0") == 0) {
+            out += name;
+            i += 2;
+        } else {
+            out.push_back(text[i]);
+        }
+    }
+    return out;
 }
 
 }  // namespace
@@ -130,9 +84,10 @@ extern "C" {
 void dcb_city_msg_build(PsxContext* ctx) {
     const std::string src = read_string(*ctx, ctx->r[kA0]);
     std::string text;
-    const bool english = std::none_of(src.begin(), src.end(), [](char c) { return sjis_lead(static_cast<uint8_t>(c)); });
+    const bool english = is_english(src);
     if (english) text = src;
     else if (!dcb::text_translate(*ctx, src, text)) return psx_call_original(ctx, kBuild);
+    text = expand_player_name(*ctx, text);
 
     ctx->r[kA0] = kSlots;
     o_SAISEG_801E293C(ctx);  // city_msg_slot_alloc: marks the slot in use, zeroes the shown count

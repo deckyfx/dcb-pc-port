@@ -14,6 +14,10 @@ paused while it is open; `F4` or `Esc` closes it, `Tab` switches between its pag
   number and press Enter. Two more lines, "P1 / P2 deck in order (no shuffle)", work on their own
   while ticked: that player's deck is never shuffled, so cards are drawn in deck order. Saved in
   the cheat file as `!battle` lines. See [docs/re/battle.md](../re/battle.md).
+  Under them, "Outside battle" toggles (saved as `!toggle` lines): every Fusion Shop fusion
+  mutates, mutations give a Digi-Jewel, and all Digimentals (their flags, handed out at the next
+  city Menu to the partners you have). Izzy's Mutation Detector does not block mutations: the
+  keeper only warns, and "yes" still fuses. See [docs/re/save-data.md](../re/save-data.md).
 - **Custom:** your own codes from the cheat file below, and what you freeze on the Search page.
 - **Search:** memory search, below.
 

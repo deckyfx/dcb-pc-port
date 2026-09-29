@@ -282,6 +282,80 @@ void test_presets() {
     fs::remove_all(dir);
 }
 
+// Game toggles: listed under the battle actions on the Battle tab, kept in the cheat file as
+// "!toggle" lines; the fusion roll filter and the Digimental flag bits.
+void test_game_toggles() {
+    GameToggles toggles;
+    CHECK(toggles.list().size() == 3 && !toggles.on(GameToggle::FusionMutate));
+    CHECK(toggles.list()[0].id == "fusion_mutate" && toggles.list()[2].id == "digimentals");
+    CHECK(toggles.parse_line("!toggle fusion_jewel on") && toggles.on(GameToggle::FusionJewel));
+    CHECK(!toggles.parse_line("!toggle nonsense on") && !toggles.parse_line("!toggle fusion_mutate maybe"));
+    CHECK(!toggles.parse_line("!toggle fusion_mutate on extra") && !toggles.on(GameToggle::FusionMutate));
+    CHECK(GameToggles::owns_line(" !toggle digimentals on") && GameToggles::owns_line("#!toggle comment"));
+    CHECK(!GameToggles::owns_line("!battle p1_hp on 0") && !BattleActions::owns_line("!toggle digimentals on"));
+
+    // The roll filter: a special fusion is always kept; a mutation is asked for, then a jewel.
+    CHECK(fusion_roll_wanted(FusionKind::Special, 0, true, true));
+    CHECK(!fusion_roll_wanted(FusionKind::Normal, 50, true, false));
+    CHECK(fusion_roll_wanted(FusionKind::Mutation, 200, true, false));
+    CHECK(!fusion_roll_wanted(FusionKind::Mutation, 200, true, true));  // Fake Sevens: roll again
+    CHECK(fusion_roll_wanted(FusionKind::Mutation, 273, false, true) && fusion_roll_wanted(FusionKind::Mutation, 284, true, true));
+    CHECK(!fusion_roll_wanted(FusionKind::Mutation, 285, true, true) && !fusion_roll_wanted(FusionKind::Normal, 273, false, true));
+    CHECK(fusion_roll_wanted(FusionKind::Normal, 50, false, false));
+
+    // City flag rN is bit N-12 of the bytes at game_data + 0x23CC (Veemon, r294, is bit 282).
+    CHECK(city_flag_bit(12).byte == 0 && city_flag_bit(12).mask == 0x01);
+    CHECK(city_flag_bit(294).byte == 35 && city_flag_bit(294).mask == 0x04);
+    CHECK(city_flag_bit(267).byte == 31 && city_flag_bit(267).mask == 0x80);
+    std::vector<uint8_t> flags(48, 0);
+    flags[35] = 0x04;  // Veemon
+    CHECK(set_digimental_flags(flags.data()));
+    CHECK(flags[35] == (0x04 | 0xB8) && flags[36] == 0x6D && flags[37] == 0x1B);
+    CHECK(!set_digimental_flags(flags.data()));  // already set: nothing changes
+    for (size_t i = 0; i < flags.size(); ++i)
+        if (i < 35 || i > 37) CHECK(flags[i] == 0);
+
+    // In the panel: after the 14 battle rows; Space switches, S saves, the file keeps them.
+    const fs::path dir = fs::temp_directory_path() / "dcb_test_trainer_toggles";
+    fs::remove_all(dir);
+    fs::create_directories(dir);
+    const fs::path file = dir / "cheats.txt";
+    CHECK(platform::write_text_file(file, "[Keep me] on\n80000100 0001\n!toggle digimentals on\n!toggle bad on\n"));
+    std::vector<uint8_t> ram(kRamSize, 0);
+    Trainer t(ram.data(), file);
+    const std::vector<std::string> log = t.load();
+    CHECK(t.toggles().on(GameToggle::Digimentals) && t.cheats().cheats().size() == 1);
+    bool reported = false;
+    for (const std::string& line : log) reported = reported || line.find("bad toggle line") != std::string::npos;
+    CHECK(reported);
+    t.set_open(true);
+    CHECK(contains(t.render(kPanelCols, kPanelRows), "Fusion: every fusion mutates"));
+    CHECK(contains(t.render(kPanelCols, kPanelRows), "All Digimentals"));
+    for (int i = 0; i < 14; ++i) t.key(Key::Down);  // the first toggle
+    t.key(Key::Right);                              // no value: nothing happens
+    t.text("5");
+    t.key(Key::Enter);                              // Enter switches it
+    CHECK(t.toggles().on(GameToggle::FusionMutate));
+    CHECK(t.battle().list()[13].value == 0 && !t.battle().list()[13].enabled);
+    t.key(Key::End);
+    t.text(" ");  // digimentals off
+    CHECK(!t.toggles().on(GameToggle::Digimentals));
+    check_fits(t, kPanelCols, kPanelRows);
+    check_fits(t, 20, 12);
+    t.text("s");
+    const std::string saved = *platform::read_text_file(file);
+    CHECK(saved.find("!toggle fusion_mutate on\n") != std::string::npos);
+    CHECK(saved.find("!toggle digimentals off\n") != std::string::npos);
+    CHECK(saved.find("[Keep me] on\n") != std::string::npos && saved.find("bad") == std::string::npos);
+    Trainer again(ram.data(), file);
+    again.load();
+    CHECK(again.toggles().on(GameToggle::FusionMutate) && !again.toggles().on(GameToggle::Digimentals));
+    CHECK(again.save());
+    const std::string twice = *platform::read_text_file(file);
+    CHECK(twice.find("#!toggle") == twice.rfind("#!toggle"));
+    fs::remove_all(dir);
+}
+
 }  // namespace
 
 int main() {
@@ -289,6 +363,7 @@ int main() {
     test_invalid_cheat_and_rendering();
     test_battle_tab();
     test_presets();
+    test_game_toggles();
     std::puts("trainer panel: all tests passed");
     return 0;
 }

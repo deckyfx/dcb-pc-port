@@ -11,6 +11,7 @@
 #include "trainer_battle.hpp"
 #include "trainer_cheats.hpp"
 #include "trainer_search.hpp"
+#include "trainer_toggles.hpp"
 
 #include <cstdint>
 #include <filesystem>
@@ -77,6 +78,8 @@ public:
     const CheatSet& cheats() const { return cheats_; }
     /// The Battle tab's actions (the battle hotkeys read them).
     const BattleActions& battle() const { return battle_; }
+    /// The game toggles listed under them (Fusion Shop, progression flags; src/game reads them).
+    const GameToggles& toggles() const { return toggles_; }
     const MemorySearch& search() const { return search_; }
     const std::filesystem::path& cheat_path() const { return path_; }
     const std::string& status() const { return status_; }
@@ -113,6 +116,7 @@ private:
     CheatSet presets_;
     std::vector<std::pair<std::string, bool>> preset_states_;  ///< "!preset" lines from the file
     BattleActions battle_;
+    GameToggles toggles_;
     MemorySearch search_;
     bool open_ = false;
     bool dirty_ = false;
@@ -121,7 +125,7 @@ private:
     Tab tab_ = Tab::Battle;  ///< the first tab; Presets once the game supplies some
     int cheat_sel_ = 0;
     int preset_sel_ = 0;
-    int battle_sel_ = 0;
+    int battle_sel_ = 0;  ///< a battle action, then (past their count) a game toggle
     std::string battle_edit_;  ///< digits typed on the Battle tab, applied with Enter
     int search_sel_ = kRowValue;
     int size_index_ = 1;  ///< 16-bit

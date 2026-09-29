@@ -72,12 +72,69 @@ void test_escapes_and_load() {
     fs::remove_all(dir);
 }
 
+void test_prefix_while_typing() {
+    text::Catalog c;
+    // "c2" + 4 SJIS characters, then "!" ; English "*c2Welcome*c7!" (8 glyphs)
+    const std::string jp = "c2\x83\x66\x83\x57\x83\x5E\x83\x8B!";
+    CHECK(c.add("w", jp, "*c2Welcome*c7!"));
+    CHECK(c.add("x", "\x82\xA0\x82\xA2", "Yes"));
+    CHECK(c.add("y", "\x82\xA0\x82\xA4", "No"));
+    std::string out;
+    CHECK(!c.translate_prefix(jp, out) || out.size() > 0);            // whole string: translate() handles it
+    CHECK(c.translate_prefix("c2\x83\x66", out) && out == "*c2We");   // 1 of 4 -> 2 of 8 glyphs
+    CHECK(c.translate_prefix("c2\x83\x66\x83\x57\x83\x5E\x83\x8B", out) && out == "*c2Welcome*c7!");  // all 4 shown: all 8
+    CHECK(c.translate_prefix("\x82\xA0", out) && out.empty());        // could be either: nothing yet
+    CHECK(!c.translate_prefix("c2", out));                            // no SJIS character shown
+    CHECK(!c.translate_prefix("\x83\x41", out));                      // starts nothing we know
+    CHECK(c.add("deck", "%s\x83\x66\x83\x62\x83\x4E", "%s Deck"));
+    // "c2デ" could also be a deck name + デック, but a template that starts with the drawn bytes
+    // themselves wins over "%s" + a literal: those count only when no such template fits
+    CHECK(c.translate_prefix("c2\x83\x66", out) && out == "*c2We");
+    CHECK(c.translate_prefix("c2\x83\x66\x83\x57", out) && out == "*c2Welc");  // 2 of 4 -> 4 of 8
+    CHECK(!c.translate_prefix("New Power\x83\x66\x83\x62\x83\x4E", out));  // a whole %s template
+}
+
+// A typed-out line passes through a whole "%sデック" for one frame (the partner select's deck
+// descriptions reach "ブイモンがパートナーのc5デック" before "c7です。..."). lookup() keeps it the
+// start of the known message instead of "<Japanese> Deck".
+void test_lookup_prefers_the_known_message() {
+    text::Catalog c;
+    const std::string deck = "\x83\x66\x83\x62\x83\x4E";            // デック
+    const std::string veemon = "\x83\x75\x83\x43\x83\x82\x83\x93";  // ブイモン
+    CHECK(c.add("deck", "%s" + deck, "%s Deck"));
+    CHECK(c.add("vee", veemon + "c5" + deck + "c7!!", "A *c5Veemon Deck*c7!"));
+    std::string out;
+    const std::string typed = veemon + "c5" + deck;  // every SJIS character shown, "c7!!" not yet
+    CHECK(c.translate(typed, out) && out == veemon + "c5 Deck");  // whole: the %s template
+    CHECK(c.lookup(typed, out) && out == "A *c5Veemon Deck*c7!");  // drawn: the message
+    CHECK(c.lookup(veemon.substr(0, 4), out) && out == "A *c5Ve");  // 2 of 7 -> 4 of 14 glyphs
+    CHECK(c.lookup(typed + "c7!!", out) && out == "A *c5Veemon Deck*c7!");  // whole message
+    CHECK(c.lookup("New Power" + deck, out) && out == "New Power Deck");  // a real deck name
+    CHECK(!c.lookup("\x82\xA0", out));
+}
+
+// A %s capture ends between characters: モ is 83 82, and 82 is also the lead byte of の (82 CC),
+// so byte-wise "モ" + CC could be read as a split モ and "%sの".
+void test_str_capture_keeps_characters_whole() {
+    text::Catalog c;
+    const std::string no = "\x82\xCC";                                // の
+    const std::string veemon = "\x83\x75\x83\x43\x83\x82\x83\x93";  // ブイモン
+    CHECK(c.add("of", "%s" + no + "!", "%s's!"));
+    std::string out;
+    CHECK(!c.translate(std::string("\x83\x82") + "\xCC!", out));  // モ + CC + !: no の in it
+    CHECK(!c.translate_prefix(veemon.substr(0, 6), out));       // "ブイモ" starts no "%sの!"
+    CHECK(c.translate(veemon + no + "!", out) && out == veemon + "'s!");
+}
+
 }  // namespace
 
 int main() {
     test_literal_and_placeholders();
     test_lone_percent_is_literal();
     test_escapes_and_load();
+    test_prefix_while_typing();
+    test_lookup_prefers_the_known_message();
+    test_str_capture_keeps_characters_whole();
     std::printf("text_catalog: ok\n");
     return 0;
 }

@@ -60,8 +60,10 @@ std::vector<std::string> Trainer::load() {
         cheats_ = CheatSet::parse("");
         log.push_back("no cheat file at " + where);
     } else if (const std::optional<std::string> text = platform::read_text_file(path_)) {
-        // The Battle tab's lines ("!battle ...") are its own; the cheat parser gets the rest.
+        // The Battle tab's lines ("!battle ...", "!toggle ...") are its own; the cheat parser gets
+        // the rest.
         battle_ = BattleActions();
+        toggles_ = GameToggles();
         preset_states_.clear();
         std::string rest;
         size_t pos = 0;
@@ -84,6 +86,9 @@ std::vector<std::string> Trainer::load() {
             } else if (BattleActions::owns_line(line)) {
                 if (line.find("#!battle") == std::string_view::npos && !battle_.parse_line(line))
                     log.push_back(where + ": bad battle line '" + std::string(line) + "'");
+            } else if (GameToggles::owns_line(line)) {
+                if (line.find("#!toggle") == std::string_view::npos && !toggles_.parse_line(line))
+                    log.push_back(where + ": bad toggle line '" + std::string(line) + "'");
             } else {
                 rest.append(line);
                 rest += '\n';
@@ -129,7 +134,7 @@ bool Trainer::save() {
     std::string presets;
     for (const Cheat& c : presets_.cheats())
         presets += "!preset " + c.name + (c.enabled ? " on\n" : " off\n");
-    if (!platform::write_text_file(path_, text + presets + battle_.text())) {
+    if (!platform::write_text_file(path_, text + presets + battle_.text() + toggles_.text())) {
         set_status("cannot write " + path_.string(), true);
         return false;
     }
@@ -270,6 +275,7 @@ void Trainer::presets_char(char c) {
 
 void Trainer::battle_step(int delta) {
     const size_t i = static_cast<size_t>(battle_sel_);
+    if (i >= battle_.list().size()) return;  // a game toggle: no value
     const BattleAction& a = battle_.list()[i];
     if (!a.has_value()) return;
     const int v = battle_.set_value(i, a.value + delta);
@@ -279,7 +285,7 @@ void Trainer::battle_step(int delta) {
 }
 
 void Trainer::battle_key(Key k) {
-    const int count = static_cast<int>(battle_.list().size());
+    const int count = static_cast<int>(battle_.list().size() + toggles_.list().size());
     const size_t i = static_cast<size_t>(battle_sel_);
     switch (k) {
     case Key::Left: battle_step(-10); break;
@@ -287,7 +293,7 @@ void Trainer::battle_key(Key k) {
     case Key::PageUp: battle_step(1000); break;
     case Key::PageDown: battle_step(-1000); break;
     case Key::Enter:
-        if (!battle_edit_.empty()) {  // typed number: set it
+        if (!battle_edit_.empty() && i < battle_.list().size()) {  // typed number: set it
             const BattleAction& a = battle_.list()[i];
             const int typed = std::atoi(battle_edit_.c_str());
             const int v = battle_.set_value(i, typed);
@@ -312,6 +318,20 @@ void Trainer::battle_key(Key k) {
 
 void Trainer::battle_char(char c) {
     const size_t i = static_cast<size_t>(battle_sel_);
+    const size_t n = battle_.list().size();
+    if (i >= n) {  // a game toggle: Space switches it
+        if (c == ' ') {
+            const ToggleItem& t = toggles_.list()[i - n];
+            toggles_.set_enabled(i - n, !t.enabled);
+            dirty_ = true;
+            set_status(t.label + (t.enabled ? " on" : " off") + " (S saves)");
+        } else if (c == 's' || c == 'S') {
+            save();
+        } else if (c == 'r' || c == 'R') {
+            load();
+        }
+        return;
+    }
     if (c >= '0' && c <= '9') {
         if (battle_.list()[i].has_value() && battle_edit_.size() < 4) battle_edit_ += c;
     } else if (c == ' ') {
@@ -544,8 +564,7 @@ std::vector<Line> Trainer::render(int cols, int rows) const {
             lines.push_back({"File: " + file, Style::Dim});
         }
     } else if (tab_ == Tab::Battle) {
-        lines.push_back({"In a card battle: F10 applies the P1 lines that are on,", Style::Dim});
-        lines.push_back({"F11 the P2 lines, F12 puts every changed stat back.", Style::Dim});
+        lines.push_back({"In battle: F10/F11 apply P1/P2 lines, F12 resets all.", Style::Dim});
         lines.push_back({});
         const std::vector<BattleAction>& list = battle_.list();
         for (int i = 0; i < static_cast<int>(list.size()); ++i) {
@@ -565,7 +584,15 @@ std::vector<Line> Trainer::render(int cols, int rows) const {
             lines.push_back({buf, sel ? Style::Selected : a.enabled ? Style::Good : Style::Normal});
             if (i == 4 || i == 9 || i == 11) lines.push_back({});
         }
-        lines.push_back({"      F12  reset P1 and P2 (always)", Style::Dim});
+        lines.push_back({});
+        lines.push_back({"Outside battle (held while on):", Style::Dim});
+        const int first = static_cast<int>(list.size());
+        for (int i = 0; i < static_cast<int>(toggles_.list().size()); ++i) {
+            const ToggleItem& t = toggles_.list()[static_cast<size_t>(i)];
+            const bool sel = first + i == battle_sel_;
+            lines.push_back({std::string(sel ? "> " : "  ") + (t.enabled ? "[x]      " : "[ ]      ") + t.label,
+                             sel ? Style::Selected : t.enabled ? Style::Good : Style::Normal});
+        }
     } else {
         const int sel = search_sel_;
         const auto control = [&](int row, std::string label, std::string value) {

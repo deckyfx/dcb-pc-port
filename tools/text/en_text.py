@@ -18,6 +18,9 @@ gitignored assets/SLPS-03101/ (never into git):
   text/source.tsv, text/en.tsv
                  the text catalog (config/SLPS-03101/text/catalog.txt): JP
                  templates the renderer matches, and their English
+  en_bigfont.bin, files/B/MATCH/NNN.ARC
+                 VS-screen big names: the US 16x32 font and the US opponent
+                 name pictures (tools/text/bigfont.py)
   en_names.txt   those long names: "<11 letters>\t<tag>\t<full name>" per
                  line; the renderer (src/game/overrides/text.cpp) draws the
                  full name wherever the key shows up
@@ -42,6 +45,8 @@ import drv_unpack as _drv  # noqa: E402
 import catalog as _catalog  # noqa: E402  (tools/text/catalog.py)
 import msd as _msd  # noqa: E402  (tools/text/msd.py)
 import fixes as _fixes  # noqa: E402  (tools/text/fixes.py)
+import bigfont as _bigfont  # noqa: E402  (tools/text/bigfont.py)
+import scripts as _scripts  # noqa: E402  (tools/text/scripts.py)
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "assets"))
 import dcb_containers as _containers  # noqa: E402  (PAK reader/writer)
@@ -316,6 +321,7 @@ def main(argv=None) -> int:
     font_blob = build_font(us_tim, us_text, 0x80010000)
     (out / "en_font.bin").write_bytes(font_blob)
     print(f"font: rows {FONT_FIRST_ROW}..{FONT_LAST_ROW}, widths {WIDTH_COUNT}B -> en_font.bin ({len(font_blob)} B)")
+    print(_bigfont.write_assets(jp_b, us_b, out))  # VS-screen big names (en_bigfont.bin, MATCH\*.ARC)
 
     # 2. card + deck graft
     report: list[str] = []
@@ -366,6 +372,10 @@ def main(argv=None) -> int:
         (out / "files" / "C" / name).write_bytes(pak)
         grafted_cities += 1
     print(f"city scripts: {grafted_cities}/12 AREAnn.PAK with the US script -> files/C/")
+
+    # 3b. tutorial + Fusion Shop scripts (tools/text/scripts.py): loose B/BETA.MSD, C/EVENT/UNIT0n.MSD
+    drvs = {"B": (jp_b, us_b), "C": (jp_c, us_c)}
+    _scripts.write_all(lambda d, p: drv_file(drvs[d][0], p), lambda d, p: drv_file(drvs[d][1], p), out)
 
     # 4. text catalog (config/SLPS-03101/text/catalog.txt): source.tsv + en.tsv
     jp_p = (jp_fs / "P.DRV").read_bytes()
