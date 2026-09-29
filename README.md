@@ -8,9 +8,24 @@ executable: MIPS R3000A → C, with native HLE of the kernel and Psy-Q libraries
 
 ## Showcase
 
-![Title screen running natively (Linux, SDL3 on Wayland)](screenshoots/00_title_screen.png)
+<table>
+  <tr>
+    <td align="center" width="33%"><img src="screenshoots/00_title_screen.png" alt="Title screen"><br><sub>Title screen</sub></td>
+    <td align="center" width="33%"><img src="screenshoots/01_load_screen.png" alt="Load screen in English"><br><sub>Load screen in English</sub></td>
+    <td align="center" width="33%"><img src="screenshoots/02_card_data.png" alt="Card data"><br><sub>Card data</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="33%"><img src="screenshoots/03_battle_cafe.png" alt="Battle Cafe"><br><sub>Battle Cafe</sub></td>
+    <td align="center" width="33%"><img src="screenshoots/04_battle_ui.png" alt="Battle UI"><br><sub>Battle UI</sub></td>
+    <td align="center" width="33%"><img src="screenshoots/05_debug_menu.png" alt="Native pause menu"><br><sub>Native pause menu</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="33%"><img src="screenshoots/06_polygon_battle.png" alt="Polygon battle"><br><sub>Polygon battle</sub></td>
+  </tr>
+</table>
 
-*Title screen running natively on Linux (SDL3 on Wayland): recompiled game code, native GPU renderer.*
+*Running natively on Linux (SDL3 on Wayland): recompiled game code, native GPU renderer, English
+text and art built from the player's own discs.*
 
 ## Progress
 
