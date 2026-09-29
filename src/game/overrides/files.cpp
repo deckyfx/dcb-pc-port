@@ -50,6 +50,7 @@ constexpr uint32_t kSource = 0x30, kOffset = 0x34;
 
 hle::Disc* g_disc = nullptr;
 std::string g_serial;
+std::string g_assets_dir;  ///< assets/<serial>/ next to the binary ("" when absent)
 
 bool use_cd() {
     static const bool cd = std::getenv("DCB_CD_FILES") != nullptr;
@@ -173,9 +174,8 @@ bool resolve(const std::string& path, bool want_dir, uint32_t& id, Dir* dir_out)
             return true;
         }
         Source src;
-        const fs::path loose = fs::path("assets") / g_serial / "files" / key;
-        std::error_code ec;
-        if (fs::is_regular_file(loose, ec)) {
+        const std::string loose = dcb::asset_path(std::string("files/") + key);
+        if (!loose.empty()) {
             std::ifstream in(loose, std::ios::binary);
             src.bytes.assign(std::istreambuf_iterator<char>(in), {});
             src.size = static_cast<uint32_t>(src.bytes.size());
@@ -189,7 +189,7 @@ bool resolve(const std::string& path, bool want_dir, uint32_t& id, Dir* dir_out)
         g_source_ids.emplace(key, id);
         if (log_files())
             std::printf("[file] %s: %u bytes from %s\n", path.c_str(), g_sources[id].size,
-                        g_sources[id].loose ? loose.string().c_str() : "the game data");
+                        g_sources[id].loose ? loose.c_str() : "the game data");
         return true;
     }
     if (want_dir && dir_out) *dir_out = dir;
@@ -213,10 +213,24 @@ void set_field(PsxContext& ctx, uint32_t handle, uint32_t off, uint32_t v) { psx
 
 namespace dcb {
 
-void attach_native_files(hle::Disc* disc, const std::string& serial) {
+void attach_native_files(hle::Disc* disc, const std::string& serial, const std::string& assets_dir) {
     g_disc = disc;
     g_serial = serial;
+    g_assets_dir = assets_dir;
     if (!use_cd()) std::printf("[file] game data is read directly (DCB_CD_FILES=1 reads it through the CD drive)\n");
+}
+
+/// Loose asset file `rel` under assets/<serial>/: the attached folder first, then the
+/// CWD-relative one. "" when neither exists.
+std::string asset_path(const std::string& rel) {
+    std::error_code ec;
+    for (const fs::path& base : {fs::path(g_assets_dir), fs::path("assets") / g_serial}) {
+        if (base.empty()) continue;
+        const fs::path p = base / rel;
+        ec.clear();
+        if (fs::is_regular_file(p, ec) || fs::is_directory(p, ec)) return p.string();
+    }
+    return {};
 }
 
 }  // namespace dcb

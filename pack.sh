@@ -5,8 +5,10 @@
 #   ./pack.sh [-s SERIAL] [-o OUTDIR]
 #
 # Needs the player's own imported dumps (extracted/<serial>/, JP and optionally US for the
-# English data); nothing copyrighted ships in the repo. Produces, in OUTDIR (default dist/):
-#   dcb-pc-v<version>-linux.zip     dcb (linux-release) + <serial>.pak + README + settings.ini
+# English data); nothing copyrighted ships in the repo. The zips bundle the player's own
+# extracted/<serial>/ (the game data the build runs from) plus the compiled <serial>.pak,
+# so the game boots with no import step. Produces, in OUTDIR (default dist/):
+#   dcb-pc-v<version>-linux.zip     dcb (linux-release) + extracted/ + <serial>.pak + README
 #   dcb-pc-v<version>-windows.zip   dcb.exe (windows-cross) + the same payload
 #
 # The version is the CMake project VERSION (x.y.z); the window title carries it too.
@@ -39,20 +41,19 @@ cmake --preset windows-cross -DDCB_GAME_ID="$SERIAL" >/dev/null
 cmake --build --preset windows-cross --target dcb 2>&1 | tail -1
 
 ASSETS="assets/$SERIAL"
-if [[ ! -f "$ASSETS/$SERIAL.pak" ]]; then
-    echo "-- assets: rip + English data + pack"
-    ./build/linux-release/dcb_asset_ripper unpack "extracted/$SERIAL" >/dev/null
-    ./build/linux-release/dcb_asset_ripper sfx "assets/raw/$SERIAL" --game "$SERIAL" >/dev/null
-    if [[ -d "extracted/SLUS-01328" ]]; then
-        ./build/linux-release/dcb_asset_ripper unpack "extracted/SLUS-01328" >/dev/null
-        python3 tools/text/en_text.py --jp "extracted/SLPS-03101" --us extracted/SLUS-01328 \
-            --out "$ASSETS" >/dev/null
-        python3 tools/assets/swap_us_images.py --apply >/dev/null
-    fi
-    ./build/linux-release/dcb_asset_ripper pack "assets/converted/$SERIAL" "$ASSETS/$SERIAL.pak"
-else
-    echo "-- assets: $ASSETS/$SERIAL.pak is up to date"
+echo "-- assets: rip + English data + movies + pack"
+./build/linux-release/dcb_asset_ripper unpack "extracted/$SERIAL" >/dev/null
+./build/linux-release/dcb_asset_ripper sfx "assets/raw/$SERIAL" --game "$SERIAL" >/dev/null
+if [[ -d "extracted/SLUS-01328" ]]; then
+    ./build/linux-release/dcb_asset_ripper unpack "extracted/SLUS-01328" >/dev/null
+    python3 tools/text/en_text.py --jp "extracted/SLPS-03101" --us extracted/SLUS-01328 \
+        --out "$ASSETS" >/dev/null
+    python3 tools/assets/swap_us_images.py --apply >/dev/null
 fi
+# Movies go into converted/ BEFORE the pack: the running game only reads
+# movie/movie<N>.mpg from the .pak (or a loose asset folder), never movie_src/.
+python3 tools/disc/rip_movies.py --serial "$SERIAL" >/dev/null
+./build/linux-release/dcb_asset_ripper pack "assets/converted/$SERIAL" "assets/$SERIAL.pak"
 
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
@@ -61,24 +62,44 @@ cat > "$STAGE/README.txt" <<EOF
 Digimon Digital Card Battle PC v$VERSION ($SERIAL)
 =================================================
 
-Run dcb (Linux) or dcb.exe (Windows). No BIOS or disc needed: import your own
-Japanese SLPS-03101 dump once (file picker on first run, or: dcb --import <disc.cue>),
-and optionally your US SLUS-01328 dump for English text and art.
+Run dcb (Linux) or dcb.exe (Windows) from this folder. No BIOS, disc, or import
+step needed: extracted/$SERIAL/ (your own dump, bundled by pack.sh) is the game
+data, and assets/$SERIAL/ holds the English/compiled data.
 
-$SERIAL.pak holds textures/sound compiled from the player's own dumps.
-Cheats live in cheats/<serial>.txt (F4 in game); saves in saves/<serial>/.
-Settings (window size, keys, gamepad, volume) are written to settings.ini on first run.
+Cheats live in cheats/<serial>.txt (F4 in game, a starter file is included);
+saves in saves/<serial>/. Settings (window size, keys, gamepad, volume) are
+written to settings.ini on first run.
 EOF
-cp "$ASSETS/$SERIAL.pak" "$STAGE/linux/"
-cp "$ASSETS/$SERIAL.pak" "$STAGE/windows/"
-cp "$STAGE/README.txt" "$STAGE/linux/"
-cp "$STAGE/README.txt" "$STAGE/windows/"
+for OS in linux windows; do
+    # assets/<serial>.pak: the ONLY texture/movie/sfx source the game mounts
+    # (packed from converted/, movies included). It must sit at assets/<serial>.pak:
+    # assets/<serial>/<serial>.pak is an unused leftover some runs produce.
+    # assets/<serial>/: the loose English files the game reads directly
+    # (en_font.bin, en_bigfont.bin, en_names.txt, text/ catalog, files/ for
+    # CARD2.CDD etc.).
+    mkdir -p "$STAGE/$OS/assets/$SERIAL"
+    cp "assets/$SERIAL.pak" "$STAGE/$OS/assets/"
+    for f in en_font.bin en_bigfont.bin en_names.txt; do
+        if [[ -f "$ASSETS/$f" ]]; then cp "$ASSETS/$f" "$STAGE/$OS/assets/$SERIAL/"; fi
+    done
+    if [[ -d "$ASSETS/files" ]]; then cp -r "$ASSETS/files" "$STAGE/$OS/assets/$SERIAL/"; fi
+    cp "$STAGE/README.txt" "$STAGE/$OS/"
+    # cheats/<serial>.txt bootstrap (the trainer saves back to it).
+    mkdir -p "$STAGE/$OS/cheats"
+    if [[ -f "cheats/$SERIAL.txt" ]]; then
+        cp "cheats/$SERIAL.txt" "$STAGE/$OS/cheats/$SERIAL.txt"
+    else
+        cp docs/cheats.example.txt "$STAGE/$OS/cheats/$SERIAL.txt"
+    fi
+    mkdir -p "$STAGE/$OS/extracted"
+    cp -r "extracted/$SERIAL" "$STAGE/$OS/extracted/"
+done
 cp build/linux-release/dcb "$STAGE/linux/"
 cp build/windows-cross/dcb.exe "$STAGE/windows/"
 
 LINUX_ZIP="$OUTDIR/dcb-pc-v$VERSION-linux.zip"
 WIN_ZIP="$OUTDIR/dcb-pc-v$VERSION-windows.zip"
-(cd "$STAGE/linux" && zip -q -9 "$OLDPWD/$LINUX_ZIP" dcb "$SERIAL.pak" README.txt)
-(cd "$STAGE/windows" && zip -q -9 "$OLDPWD/$WIN_ZIP" dcb.exe "$SERIAL.pak" README.txt)
+(cd "$STAGE/linux" && zip -q -9 -r "$OLDPWD/$LINUX_ZIP" dcb README.txt assets extracted cheats)
+(cd "$STAGE/windows" && zip -q -9 -r "$OLDPWD/$WIN_ZIP" dcb.exe README.txt assets extracted cheats)
 ls -la "$LINUX_ZIP" "$WIN_ZIP"
 echo "== packed v$VERSION =="
