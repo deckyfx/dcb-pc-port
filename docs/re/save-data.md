@@ -182,7 +182,7 @@ when a slot holds that card; option → `*801DAFF8 + index·0xDA`; other → `*8
 
 ### Trainer: partner editor (General tab)
 
-`src/platform/trainer_partners.cpp` (`set_partner`), written once when Enter is pressed on a
+`src/platform/trainer_partners.cpp` (`set_partner`), written once when Enter or Space is pressed on a
 partner row (the game is paused while the panel is open); saving in game keeps it. It relies on
 the fields above:
 

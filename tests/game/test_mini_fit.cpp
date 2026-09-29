@@ -120,13 +120,22 @@ void test_place() {
     CHECK(place(72, 120, 56, 150) == 56);
     // An empty name stays put.
     CHECK(place(72, 0, 56, 150) == 72);
-    // The battle panel's two sides at rest in the micro font (mini_text.cpp kSlots): P1 x 57
-    // [56, 150], P2 x 167 [167, 263]. The longest name (19 capitals, 95) fits both in place.
-    CHECK(place(57, 95, 57 - 1, 57 + 93) == 57);
-    CHECK(place(167, 95, 167, 167 + 96) == 167);
+    // The battle panel's two sides at rest, from sources independent of mini_text.cpp:
+    // - name x: the US build's card panel (US 800398A0, disassembly of SLUS_013.28) draws the
+    //   name at panel x + 17 - 14 * side; with the panel at x 40 (P1, side 0) and x 164 (P2,
+    //   side 1) that is 57 and 167;
+    // - usable columns: measured in a battle snapshot (frame 9900 of the headless run, docs
+    //   text-engine.md 7.10): P1 fill 56..150 (DP separator at 55, border at 151), P2 fill
+    //   167..263 (bar edge at 166, DP box border at 264).
+    constexpr int kP1Panel = 40, kP2Panel = 164;
+    constexpr int kP1X = kP1Panel + 17 - 14 * 0, kP2X = kP2Panel + 17 - 14 * 1;
+    CHECK(kP1X == 57 && kP2X == 167);
+    // The longest name (19 capitals, 95) fits both in place.
+    CHECK(place(kP1X, 95, 56, 150) == kP1X);
+    CHECK(place(kP2X, 95, 167, 263) == kP2X);
     // One letter more: P1 moves left by the one column it has; P2 has none to give.
-    CHECK(place(57, 100, 56, 150) == 56);
-    CHECK(place(167, 100, 167, 263) == 167);
+    CHECK(place(kP1X, 100, 56, 150) == 56);
+    CHECK(place(kP2X, 100, 167, 263) == kP2X);
 }
 
 void test_micro_layout() {
