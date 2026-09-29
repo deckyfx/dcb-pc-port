@@ -44,6 +44,13 @@ ASSETS="assets/$SERIAL"
 echo "-- assets: rip + English data + movies + pack"
 ./build/linux-release/dcb_asset_ripper unpack "extracted/$SERIAL" >/dev/null
 ./build/linux-release/dcb_asset_ripper sfx "assets/raw/$SERIAL" --game "$SERIAL" >/dev/null
+# The rip rewrites every PNG in converted/: put hand-edited images back over it.
+# assets/<serial>/custom/textures/ mirrors converted/<serial>/textures/ (e.g. the
+# English title art); keep your edits there, not only in converted/.
+if [[ -d "$ASSETS/custom/textures" ]]; then
+    cp -r "$ASSETS/custom/textures/." "assets/converted/$SERIAL/textures/"
+    echo "   custom images: $(find "$ASSETS/custom/textures" -type f | wc -l) restored over the rip"
+fi
 if [[ -d "extracted/SLUS-01328" ]]; then
     ./build/linux-release/dcb_asset_ripper unpack "extracted/SLUS-01328" >/dev/null
     python3 tools/text/en_text.py --jp "extracted/SLPS-03101" --us extracted/SLUS-01328 \
