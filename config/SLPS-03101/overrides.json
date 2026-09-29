@@ -12,6 +12,10 @@
     { "addr": "0x801E38A0", "overlay": "OPENSEG", "symbol": "dcb_movie_play", "why": "play movie N (0 opening, 1 credits, 2 BANDAI logo): native MPEG-1 from movie/movie<N>.mpg when present, else the CD stream" },
     { "addr": "0x80043E24", "symbol": "dcb_deck_shuffle", "why": "deck shuffle of player a0: skipped (only the pending count cleared) while the trainer's 'deck in order' is on for that player (src/game/overrides/battle.cpp)" },
     { "addr": "0x80043B00", "symbol": "dcb_dp_calc", "why": "battle DP of player a0: returns the value a battle hotkey locked (src/game/overrides/battle.cpp), else the original" },
+    { "addr": "0x8002AE00", "symbol": "dcb_text_draw", "why": "text draw: ASCII strings take the US-renderer port, SJIS falls back to the JP original" },
+    { "addr": "0x8002B638", "symbol": "dcb_text_measure", "why": "text measure: same ASCII/SJIS dispatch as draw" },
+    { "addr": "0x8002BD3C", "symbol": "dcb_text_draw_condensed", "why": "condensed draw: ASCII takes the normal US port, SJIS the JP condensed original" },
+    { "addr": "0x8002C574", "symbol": "dcb_text_measure_condensed", "why": "condensed measure: same dispatch as condensed draw" },
     { "addr": "0x80059D30", "symbol": "dcb_cd_search_file", "why": "libcd CdSearchFile: answered from the disc's root directory without reading it through the drive (the movie player looks up DIGIMON.MOV)" }
   ]
 }

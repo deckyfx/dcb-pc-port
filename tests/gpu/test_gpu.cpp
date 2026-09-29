@@ -303,6 +303,55 @@ void test_sprite_scale() {
     CHECK(Gpu::parse_sprite_scales("192 0  0 0  2 1  4 1  4\n").empty());  // 9 numbers: incomplete
 }
 
+void test_private_sheet() {
+    auto gpu = make_gpu();
+    // Palette at (0,480): 1 = red, 2 = green (15-bit, STP clear).
+    const uint16_t clut[16] = {0, rgb15(31, 0, 0), rgb15(0, 31, 0)};
+    upload(*gpu, 0, 480, 16, 1, clut);
+    // VRAM page 1 (x=64) holds texel 2 everywhere; the sheet holds texel 1 in its first unit.
+    const uint16_t vram_row[4] = {0x2222, 0x2222, 0x2222, 0x2222};
+    for (int v = 0; v < 4; ++v) upload(*gpu, 64, v, 4, 1, vram_row);
+    gpu->set_private_sheet({0x1111, 0x0000, 0x1111, 0x0000}, 2, 2);  // 2 units x 2 rows
+    gpu->gp0(0xE1000001u);  // texpage x=64, 4-bit
+    const auto sprite = [&](int x) {
+        gpu->gp0(0x65808080u);  // raw textured rectangle
+        gpu->gp0(xy(x, 50));
+        gpu->gp0((480u << 6) << 16);  // clut (0,480), u=0 v=0
+        gpu->gp0(xy(4, 2));
+    };
+    gpu->gp0(Gpu::kSheetMarker);  // arms the next rectangle
+    sprite(100);
+    CHECK(px(*gpu, 100, 50) == rgb15(31, 0, 0) && px(*gpu, 103, 51) == rgb15(31, 0, 0));  // from the sheet
+    sprite(200);  // one-shot: back to the texture page
+    CHECK(px(*gpu, 200, 50) == rgb15(0, 31, 0));
+    // Outside the sheet: transparent (nothing drawn).
+    gpu->gp0(Gpu::kSheetMarker);
+    gpu->gp0(0x65808080u);
+    gpu->gp0(xy(300, 50));
+    gpu->gp0(((480u << 6) << 16) | 8u);  // u = 8: past the 2-unit (8-texel) sheet
+    gpu->gp0(xy(2, 1));
+    CHECK(px(*gpu, 300, 50) == 0);
+    // A marker before a polygon does nothing and does not leak to the next rectangle.
+    gpu->gp0(Gpu::kSheetMarker);
+    gpu->gp0(0x20000000u);  // flat triangle, black
+    gpu->gp0(xy(0, 0));
+    gpu->gp0(xy(1, 0));
+    gpu->gp0(xy(0, 1));
+    sprite(400);
+    CHECK(px(*gpu, 400, 50) == rgb15(0, 31, 0));
+    // Without a sheet the marker is a plain NOP.
+    auto bare = make_gpu();
+    upload(*bare, 0, 480, 16, 1, clut);
+    for (int v = 0; v < 4; ++v) upload(*bare, 64, v, 4, 1, vram_row);
+    bare->gp0(0xE1000001u);
+    bare->gp0(Gpu::kSheetMarker);
+    bare->gp0(0x65808080u);
+    bare->gp0(xy(100, 50));
+    bare->gp0((480u << 6) << 16);
+    bare->gp0(xy(4, 2));
+    CHECK(px(*bare, 100, 50) == rgb15(0, 31, 0));
+}
+
 void test_semi_transparency() {
     auto gpu = make_gpu();
     // Background (16,16,16), front (8,8,8) -> expected per mode.
@@ -548,6 +597,7 @@ constexpr Case kCases[] = {
     {"gouraud", test_gouraud},
     {"textured_sprite", test_textured_sprite},
     {"sprite_scale", test_sprite_scale},
+    {"private_sheet", test_private_sheet},
     {"semi_transparency", test_semi_transparency},
     {"draw_area_clipping", test_draw_area_clipping},
     {"polyline", test_polyline},

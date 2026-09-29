@@ -87,6 +87,17 @@ void trace_prim(const uint32_t* words, std::size_t count, uint32_t draw_mode, ui
 
 }  // namespace
 
+void Gpu::set_private_sheet(std::vector<uint16_t> units, int width, int height) {
+    if (width <= 0 || height <= 0 || units.size() != static_cast<size_t>(width) * static_cast<size_t>(height)) {
+        sheet_.clear();
+        sheet_w_ = sheet_h_ = 0;
+        return;
+    }
+    sheet_ = std::move(units);
+    sheet_w_ = width;
+    sheet_h_ = height;
+}
+
 std::vector<Gpu::SpriteScale> Gpu::parse_sprite_scales(const std::string& text) {
     std::vector<SpriteScale> rules;
     std::size_t pos = 0;
@@ -210,6 +221,12 @@ void Gpu::environment(uint32_t word) {
             set_mask_ = (word & 1u) != 0;
             check_mask_ = (word & 2u) != 0;
             break;
+        case 0xEF:  // a NOP on the real GPU; the port's private-sheet marker (set_private_sheet)
+            if ((word & 0xFFFFFFFCu) == kSheetMarker && !sheet_.empty()) {
+                sheet_next_ = true;
+                sheet_semi_mode_ = word & 3u;
+            }
+            break;
         default: break;  // E0h, E7h-FFh: NOP
     }
 }
@@ -263,6 +280,7 @@ void Gpu::draw_polygon() {
         draw_mode_ = (draw_mode_ & ~0x9FFu) | (texpage & 0x1FFu) | (allow_tex_disable_ ? texpage & 0x800u : 0u);
     }
     Prim p = make_prim(cmd, textured, texpage, clut);
+    sheet_next_ = false;  // the marker only arms rectangles
     p.gouraud = gouraud;
     p.dither = (draw_mode_ & 0x200u) && (gouraud || (p.textured && !p.raw));
     draw_triangle(v[0], v[1], v[2], p);
@@ -323,7 +341,14 @@ void Gpu::draw_rect() {
         case 2: w = h = 8; break;
         default: w = h = 16; break;
     }
-    const Prim p = make_prim(cmd, textured, draw_mode_, tex >> 16);
+    Prim p = make_prim(cmd, textured, draw_mode_, tex >> 16);
+    if (sheet_next_ && p.textured) {  // armed by a marker: the private sheet, 4-bit
+        p.sheet = true;
+        p.depth = 0;
+        p.tex_x = p.tex_y = 0;
+        p.semi_mode = sheet_semi_mode_;
+    }
+    sheet_next_ = false;
     Vertex origin = decode_vertex(fifo_[1], fifo_[0]);
     origin.u = static_cast<int32_t>(tex & 0xFFu);
     origin.v = static_cast<int32_t>((tex >> 8) & 0xFFu);
@@ -507,6 +532,11 @@ uint16_t Gpu::fetch_texel(const Prim& p, int32_t u, int32_t v) const {
     // psx-spx "GPU Rendering Attributes / Texture Window" and "Textures / CLUT".
     const int32_t tu = static_cast<int32_t>((static_cast<uint32_t>(u) & tw_and_x_) | tw_or_x_);
     const int32_t tv = static_cast<int32_t>((static_cast<uint32_t>(v) & tw_and_y_) | tw_or_y_);
+    if (p.sheet) {
+        if (tu < 0 || tv < 0 || (tu >> 2) >= sheet_w_ || tv >= sheet_h_) return 0;  // outside: transparent
+        const uint32_t w = sheet_[static_cast<size_t>(tv * sheet_w_ + (tu >> 2))];
+        return at(p.clut_x + static_cast<int32_t>((w >> ((tu & 3) * 4)) & 0xFu), p.clut_y);
+    }
     switch (p.depth) {
         case 0: {
             const uint32_t w = at(p.tex_x + (tu >> 2), p.tex_y + tv);
