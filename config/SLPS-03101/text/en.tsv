@@ -1,0 +1,6 @@
+# English written for this port (not game text): strings the US version does not have, or has
+# with other values. id<TAB>text; \n is a line break. Merged into assets/SLPS-03101/text/en.tsv.
+OPENSEG:1e60	%3dh %2dm
+OPENSEG:1e70	Battle Titles
+OPENSEG:1e80	Collector Titles
+OPENSEG:1e90	2P Battle Titles
