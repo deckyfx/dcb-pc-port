@@ -1,6 +1,6 @@
 #pragma once
-// Game toggles: the trainer's on/off switches outside a card battle (shown on the Battle tab under
-// the battle actions). Fusion Shop rolls and progression flags; the game side lives in
+// Game toggles: the trainer's on/off switches outside a card battle (shown on the General tab under
+// the presets). Fusion Shop rolls and progression flags; the game side lives in
 // src/game/overrides/fusion.cpp, the flags in docs/re/save-data.md ("Progression flags").
 // No SDL, no guest runtime: unit-tested on its own (tests/trainer).
 //
@@ -19,7 +19,7 @@ namespace trainer {
 enum class GameToggle : uint8_t {
     FusionMutate,  ///< every card fusion mutates (special fusions are kept)
     FusionJewel,   ///< a mutation always gives a Digi-Jewel (cards 273-284)
-    Digimentals,   ///< the 13 Digimental city flags are held set
+    Digimentals,   ///< the 13 Digimental city flags are held set (handed out at the next city Menu)
 };
 
 struct ToggleItem {
@@ -27,6 +27,9 @@ struct ToggleItem {
     GameToggle kind = GameToggle::FusionMutate;
     bool enabled = false;
     std::string label;  ///< the panel text
+    /// The status line when it is switched on, when the label alone does not say what to do next
+    /// (empty: "<label> on").
+    std::string on_status;
 };
 
 class GameToggles {

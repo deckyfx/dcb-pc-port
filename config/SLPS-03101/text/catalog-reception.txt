@@ -1,0 +1,8 @@
+# Text catalog, new-game reception (OPENSEG): entries added after catalog-openseg.txt. Format: see
+# catalog.txt.
+
+# Old-save conversion ("have you ever played Digital Card Battle?" -> yes -> SLPS-02506 data found
+# -> convert): "??枚のカードデータの修復に成功しました。" + "see the explanation?". The game writes
+# the card count over "??" (OPENSEG 801EA4F4: " n" / "nn"); tools/text/catalog.py turns "??枚"
+# into "%2d枚" so the drawn string matches. JP only (the US has no conversion): en-reception.tsv.
+pair OPENSEG:494   -

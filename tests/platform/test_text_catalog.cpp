@@ -126,6 +126,18 @@ void test_str_capture_keeps_characters_whole() {
     CHECK(c.translate(veemon + no + "!", out) && out == veemon + "'s!");
 }
 
+// A count the game writes over "??" at the start of a message (the old-save conversion's
+// "??枚の...", OPENSEG 801EA4F4): " 5" or "12" before 枚; the template starts with %2d.
+void test_leading_count() {
+    text::Catalog c;
+    const std::string mai = "\x96\x87\x82\xCC\x8F\x43";  // 枚の修
+    CHECK(c.add("n", "%2d" + mai, "The data of %d Card(s)."));
+    std::string out;
+    CHECK(c.lookup(" 5" + mai, out) && out == "The data of 5 Card(s).");
+    CHECK(c.lookup("12" + mai, out) && out == "The data of 12 Card(s).");
+    CHECK(!c.lookup("??" + mai, out));
+}
+
 }  // namespace
 
 int main() {
@@ -135,6 +147,7 @@ int main() {
     test_prefix_while_typing();
     test_lookup_prefers_the_known_message();
     test_str_capture_keeps_characters_whole();
+    test_leading_count();
     std::printf("text_catalog: ok\n");
     return 0;
 }

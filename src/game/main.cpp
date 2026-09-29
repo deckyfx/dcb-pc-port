@@ -430,7 +430,7 @@ int main(int argc, char** argv) {
         static platform::InputLog input_log = platform::InputLog::from_env(DCB_GAME_ID);
         // Trainer: cheats/<serial>.txt (DCB_CHEATS) applied at each frame boundary, F4 panel.
         const std::unique_ptr<trainer::Trainer> cheats = trainer::make_trainer(machine.ctx().ram, DCB_GAME_ID);
-        cheats->set_presets(dcb::cheat_presets());  // the Presets tab (cheat_presets.cpp)
+        cheats->set_presets(dcb::cheat_presets());  // the General tab (cheat_presets.cpp)
         std::printf("[cheats] %zu built-in presets (%zu on)\n", cheats->presets().cheats().size(),
                     cheats->presets().enabled_count());
         host->attach_trainer(cheats.get());

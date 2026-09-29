@@ -28,10 +28,18 @@ TIS image lists (C.DRV: the city screens' AREAnn.PAK, WORLD.TIS, DECK.TIS, UNIT.
 straight from the disc instead, since the ripper lists only some copies of their TIMs, and not the
 same ones for both games; the US build stores them in another order, so they pair by shape too.
 Every AREAnn.PAK carries the same copy of the city menu art (menu buttons, city-name plates, area
-signs), so one manifest entry per image covers all twelve cities. KEEP_JP lists images left JP on
-purpose (the city HELP MENU plate: the US one names the US buttons). JP_DRAW_SCALE lists images the
+signs), so one manifest entry per image covers all twelve cities. The VS and result screens'
+B:\\MATCH\\NNN.ARC and B:\\WIN\\NNN.ARC are read from the disc the same way (1st / 2nd turn cards,
+portraits, WIN / LOSS banners). KEEP_JP / KEEP_JP_AT list images left JP on purpose (the opponent
+name pictures, which tools/text/bigfont.py grafts). COMPOSE rebuilds a US image for the JP
+controls (the city HELP MENU plate: the US one says X enters and triangle opens the menu, this
+build enters with circle and opens the menu with X; the JP circle icon goes in, the US X icon
+moves down). NARROW cuts a wider US image to the JP width (the VS record strip: blank in the US
+build, the port draws the words, src/game/overrides/vs_record.cpp). JP_DRAW_SCALE lists images the
 JP code draws at another scale than the US code (the city sub-menu labels: 68 texels on 64 pixels
-in JP, 1:1 in US); their US pixels are moved to the texels the JP draw shows. area_image_chunk()
+in JP, 1:1 in US); their US pixels are moved to the texels the JP draw shows. A US palette that is
+the JP one uploaded in another w x h (the battle phase banner: JP 16x2, US 32x1, the same colours)
+is reshaped to the JP upload (reshaped()) and pairs like any other. area_image_chunk()
 builds the same result as a new kind-5 chunk for a tool that rewrites C:\\AREAnn.PAK anyway.
 
     tools/assets/swap_us_images.py --root DIR  # use DIR/assets and DIR/extracted (a scratch copy)
@@ -81,13 +89,32 @@ DEFAULT_ENTRIES = [
 # chunk kind 5, a TIS with the city's backgrounds and a copy of the WORLD.TIS menu art (city-name
 # plates, menu buttons, area signs); the US build stores the same TIMs in another order. The card
 # menu (DECK.TIS) and the fusion and evolution screens (UNIT.TIS) are reordered the same way.
+# The VS and result screens' archives (B:\MATCH\NNN.ARC, B:\WIN\NNN.ARC: a u32 offset table, then
+# TIMs) are read the same way; the ripper lists each shared TIM once. Their name picture and record
+# strip changed shape in the US build (PARTIAL, NARROW); the rest pairs: the 1st / 2nd turn cards
+# and labels, the portraits holding a card (US card back), the WIN / LOSS banners.
 TIS_ENTRIES = [
     ("C.DRV", r"AREA\d\d\.PAK"),
     ("C.DRV", r"OBJECT/(WORLD|DECK|UNIT)\.TIS"),
+    ("B.DRV", r"(MATCH|WIN)/\d+\.ARC"),
 ]
 # Images kept JP although the US build redrew them: (DRV, VRAM image rect x, y, w, h) -> why.
-KEEP_JP = {
-    ("C.DRV", (808, 0, 22, 80)): "the city HELP MENU plate (the US one says X enters, this build enters with Circle)",
+KEEP_JP: dict[tuple, str] = {}
+# US images whose button icons name the US controls, recomposed for the JP controls: (DRV, VRAM
+# image rect) -> list of (source "us" / "jp", source rect x, y, w, h in pixels, destination x, y).
+# Each block is copied from the untouched source image into the US one; JP pixels take the US
+# palette index of the same colour, and colours the US palette lacks take palette slots the result
+# no longer uses (compose_image). The city HELP MENU plate (88x80 at 808,0): JP "+ Move, O Enter,
+# X Menu", US "+ Move, X Enter, /\ Menu"; the result says "+ Move, O Enter, X Menu" in the US
+# letters (the US X icon moves one row down, the JP O icon goes in its place).
+COMPOSE = {
+    ("C.DRV", (808, 0, 22, 80)): [("us", (13, 26, 11, 11), (13, 41)),
+                                  ("jp", (13, 26, 11, 11), (13, 26))],
+}
+# The same by VRAM position, for images whose size varies: (DRV, x, y) -> why.
+KEEP_JP_AT = {
+    ("B.DRV", 704, 480): "the VS screen's opponent name pictures (tools/text/bigfont.py grafts the US one "
+                         "into the MATCH archives; its palette is the big font's)",
 }
 # Images the JP code draws at another scale than the US code: (DRV, VRAM image rect) -> (texels
 # the JP code reads per cell row, screen pixels it draws them on). The city sub-menu labels (Cards,
@@ -101,8 +128,19 @@ JP_DRAW_SCALE = {
 }
 NEVER = re.compile(r"(^|/)SYSTEM\.TIM$")
 # Entries where a few images changed shape: swap the images whose shape still matches, keep the
-# rest JP. CBTL_SYS: one palette is uploaded as 32x1 in the US build instead of 16x2.
-PARTIAL = {"B.DRV:CBTL_SYS.ARC"}
+# rest JP. MATCH: the opponent's name picture is wider in the US build (tools/text/bigfont.py grafts
+# it). (CBTL_SYS's phase banner palette, uploaded 32x1 in the US build instead of 16x2, is the same
+# 32 colours: reshaped() pairs it whole.)
+PARTIAL = re.compile(r"^B\.DRV:(MATCH|WIN)/\d+\.ARC$")
+# US images that are a wider copy of a JP image with a plain inside: (DRV, JP image rect) ->
+# (US image rect, texels kept from the US right edge). The US columns are cut to the JP width: the
+# left part, then the right edge. The VS / result screen record strip: JP 136 px with the kanji for
+# battles / wins / losses in it, US 192 px and blank (the US code draws the words as text). Cut,
+# the US strip is the JP one without the kanji; the port draws the words
+# (src/game/overrides/vs_record.cpp).
+NARROW = {
+    ("B.DRV", (464, 184, 34, 18)): ((464, 184, 48, 18), 10),
+}
 PAL_RE = re.compile(r"_pal(\d+)\.png$")
 JP_ONLY_DRVS = {"W.DRV", "X.DRV", "Y.DRV", "Z.DRV"}  # D-1 Grand Prix: not in the US build
 RAW_DIR = "us"
@@ -166,6 +204,147 @@ def prewarp_columns(pixels: bytes, bpp: int, width: int, read: int, shown: int) 
         new = [idx[s] for s in src_of]
         out += bytes(new[x] | (new[x + 1] << 4) for x in range(0, width, 2))
     return bytes(out)
+
+
+def narrow_columns(pixels: bytes, bpp: int, width: int, new_width: int, right: int) -> bytes:
+    """4-bit rows of `width` texels cut to `new_width`: the first new_width - right texels, then
+    the last `right` ones (the right edge)."""
+    if (bpp != 4 or width % 2 or new_width % 2 or not 0 <= right <= new_width <= width
+            or len(pixels) % (width // 2)):
+        raise ValueError("narrow_columns takes 4-bit rows of an even width, cut to a smaller one")
+    stride, out = width // 2, bytearray()
+    for r in range(0, len(pixels), stride):
+        row = pixels[r:r + stride]
+        idx = [(row[x // 2] >> 4) if x & 1 else (row[x // 2] & 15) for x in range(width)]
+        new = idx[:new_width - right] + idx[width - right:]
+        out += bytes(new[x] | (new[x + 1] << 4) for x in range(0, new_width, 2))
+    return bytes(out)
+
+
+def narrowed(drv_name: str, tims: list[tuple[Tim, list[dict]]]) -> list[tuple[Tim, list[dict]]]:
+    """US TIMs listed in NARROW as the JP-shaped image they stand for (pixels cut to the JP width),
+    so they pair with it; other TIMs as they are."""
+    wider = {us: (jp, right) for (d, jp), (us, right) in NARROW.items() if d == drv_name}
+    out = []
+    for t, v in tims:
+        if t.image in wider:
+            jp, right = wider[t.image]
+            px = narrow_columns(t.pixels, t.bpp, t.image[2] * 16 // t.bpp, jp[2] * 16 // t.bpp, right)
+            t = Tim(t.offset, t.bpp, jp, t.clut, px, t.palette)
+        out.append((t, v))
+    return out
+
+
+def is_palette_reshape(jp: Tim, us: Tim) -> bool:
+    """True when the US TIM's palette is the JP one uploaded in another rect shape: the same
+    depth, image rect and CLUT corner, the same number of entries in a different w x h, and every
+    entry the same colour (the semi-transparency bit may differ). Only then can the US palette go
+    up in the JP shape without moving a colour."""
+    if (jp.clut is None or us.clut is None or jp.bpp != us.bpp or jp.image != us.image
+            or jp.clut[:2] != us.clut[:2] or jp.clut[2:] == us.clut[2:]
+            or jp.clut[2] * jp.clut[3] != us.clut[2] * us.clut[3]
+            or len(jp.palette) != len(us.palette) or len(jp.palette) != 2 * jp.clut[2] * jp.clut[3]):
+        return False
+    n = len(jp.palette) // 2
+    return all((a ^ b) & 0x7FFF == 0 for a, b in zip(struct.unpack(f"<{n}H", jp.palette),
+                                                      struct.unpack(f"<{n}H", us.palette)))
+
+
+def reshaped(jp_tims: list[tuple[Tim, list[dict]]], us_tims: list[tuple[Tim, list[dict]]]
+             ) -> list[tuple[Tim, list[dict]]]:
+    """US TIMs whose palette is a JP palette uploaded in another shape (is_palette_reshape) as
+    the JP-shaped TIM they stand for, so they pair with it: CLUT rect and palette variants as JP
+    has them, US palette data as it is (the entries in upload order are the same, so the JP rows
+    take the US colours row for row). Other TIMs as they are. CBTL_SYS's phase banner: JP 16x2,
+    US 32x1 at (816, 497), the same 32 colours."""
+    by_image: dict[tuple, list[tuple[Tim, list[dict]]]] = defaultdict(list)
+    for t, v in jp_tims:
+        by_image[(t.bpp, t.image)].append((t, v))
+    out = []
+    for t, v in us_tims:
+        jp = by_image.get((t.bpp, t.image), [])
+        if len(jp) == 1 and is_palette_reshape(jp[0][0], t):
+            jt, jv = jp[0]
+            t = Tim(t.offset, t.bpp, t.image, jt.clut, t.pixels, t.palette)
+            if v:  # TIS / ARC images read from the disc carry no variants on either side
+                v = [dict(v[0], w=e["w"], h=e["h"]) for e in jv]
+        out.append((t, v))
+    return out
+
+
+def _rgb_distance(a: int, b: int) -> int:
+    """Squared distance of two 15-bit PSX colours (the semi-transparency bit ignored)."""
+    return sum((((a >> s) & 31) - ((b >> s) & 31)) ** 2 for s in (0, 5, 10))
+
+
+def compose_image(us: Tim, jp: Tim, blocks: list[tuple[str, tuple[int, int, int, int], tuple[int, int]]]
+                  ) -> tuple[bytes, bytes]:
+    """The US 4-bit image with `blocks` copied in (COMPOSE): (source "us" / "jp", source rect x, y,
+    w, h, destination x, y), each read from the untouched source image. Returns (pixels, palette).
+    A JP pixel takes the US palette index of the same colour; JP colours the US palette lacks take
+    the slots (1-15) no pixel of the result uses any more, the ones farthest from any US colour
+    first; any left take the nearest US colour."""
+    if us.bpp != 4 or jp.bpp != 4 or us.image[2:] != jp.image[2:] or len(us.palette) != 32 \
+            or len(jp.palette) != 32:
+        raise ValueError("compose_image takes two 4-bit images of one size with 16-colour palettes")
+    width, height = us.image[2] * 4, us.image[3]
+
+    def grid(px: bytes) -> list[list[int]]:
+        return [[(px[y * width // 2 + x // 2] >> (4 * (x & 1))) & 15 for x in range(width)]
+                for y in range(height)]
+
+    src = {"us": grid(us.pixels), "jp": grid(jp.pixels)}
+    out = grid(us.pixels)
+    from_jp = [[False] * width for _ in range(height)]
+    for side, (sx, sy, w, h), (dx, dy) in blocks:
+        for y in range(h):
+            for x in range(w):
+                out[dy + y][dx + x] = src[side][sy + y][sx + x]
+                from_jp[dy + y][dx + x] = side == "jp"
+    us_pal = list(struct.unpack("<16H", us.palette))
+    jp_pal = struct.unpack("<16H", jp.palette)
+    used = {out[y][x] for y in range(height) for x in range(width) if not from_jp[y][x]}
+    needed = sorted({out[y][x] for y in range(height) for x in range(width) if from_jp[y][x]})
+    index: dict[int, int] = {}
+    missing = []
+    for j in needed:
+        exact = [k for k in range(16) if us_pal[k] == jp_pal[j]]
+        if exact:
+            index[j] = next((k for k in exact if k in used), exact[0])
+            used.add(index[j])
+        else:
+            missing.append(j)
+    free = [k for k in range(1, 16) if k not in used]
+    missing.sort(key=lambda j: -min(_rgb_distance(jp_pal[j], c) for c in us_pal))
+    for j in missing:
+        if free:
+            index[j] = free.pop(0)
+            us_pal[index[j]] = jp_pal[j]
+        else:
+            index[j] = min(range(16), key=lambda k: _rgb_distance(jp_pal[j], us_pal[k]))
+    for y in range(height):
+        for x in range(width):
+            if from_jp[y][x]:
+                out[y][x] = index[out[y][x]]
+    pixels = bytes(row[x] | (row[x + 1] << 4) for row in out for x in range(0, width, 2))
+    return pixels, struct.pack("<16H", *us_pal)
+
+
+def composed(drv_name: str, jt: Tim, ut: Tim) -> Tim:
+    """The US TIM paired with `jt`, recomposed when COMPOSE lists the image."""
+    blocks = COMPOSE.get((drv_name, jt.image))
+    if blocks is None:
+        return ut
+    pixels, palette = compose_image(ut, jt, blocks)
+    return Tim(ut.offset, ut.bpp, ut.image, ut.clut, pixels, palette)
+
+
+def with_palette(tim: bytes, palette: bytes) -> bytes:
+    """A TIM with its CLUT block payload replaced by `palette` (the same size)."""
+    t = read_tim(tim, 0)
+    if t is None or t.clut is None or len(palette) != len(t.palette):
+        raise ValueError("not a TIM with a CLUT, or the new palette is another size")
+    return tim[:20] + palette + tim[20 + len(palette):]
 
 
 def with_pixels(tim: bytes, pixels: bytes) -> bytes:
@@ -252,17 +431,38 @@ def tis_start(data: bytes, path: str) -> int | None:
     return None
 
 
+def arc_offsets(data: bytes) -> list[int]:
+    """Byte offsets of the entries of an ARC: u32 offsets, count = first offset / 4. The MATCH /
+    WIN archives end the table with the end of the file, which is left out."""
+    first = struct.unpack_from("<I", data, 0)[0]
+    if first % 4 or not 4 <= first <= len(data):
+        raise ValueError("not an ARC offset table")
+    return [o for o in struct.unpack_from(f"<{first // 4}I", data, 0) if o < len(data)]
+
+
+def container_offsets(data: bytes, path: str) -> list[int] | None:
+    """Byte offsets of the TIMs a DRV entry lists: a TIS (a .TIS file, or the kind-5 chunk of a
+    PAK) or an ARC offset table; None for other entries."""
+    if path.endswith(".ARC"):
+        try:
+            return arc_offsets(data)
+        except (ValueError, struct.error):
+            return None
+    base = tis_start(data, path)
+    return None if base is None else [base + o for o in tis_offsets(data[base:])]
+
+
 def tis_entry_tims(drv: bytes, toc: list, rx: re.Pattern) -> dict[str, list[tuple[Tim, list[dict]]]]:
-    """For each DRV entry matching `rx` that holds a TIS: its TIMs in file order (no variants)."""
+    """For each DRV entry matching `rx` that lists its TIMs (a TIS or an ARC): its TIMs in file
+    order (no variants)."""
     out: dict[str, list[tuple[Tim, list[dict]]]] = {}
     for f in toc:
         if not rx.search(f.path):
             continue
-        data = drv[f.offset:f.offset + f.size]
-        base = tis_start(data, f.path)
-        if base is None:
+        offsets = container_offsets(drv[f.offset:f.offset + f.size], f.path)
+        if offsets is None:
             continue
-        tims = (read_tim(drv, f.offset + base + o) for o in tis_offsets(data[base:]))
+        tims = (read_tim(drv, f.offset + o) for o in offsets)
         out[f.path] = [(t, []) for t in tims if t is not None]
     return out
 
@@ -298,7 +498,9 @@ def graft_tis(jp: bytes, us: bytes, keep: frozenset = frozenset(), drv_name: str
     out, n = list(ja), 0
     for (jt, _), (ut, _) in paired[0]:
         if jt.image not in keep and ua[ut.offset] != ja[jt.offset]:
-            out[jt.offset] = with_pixels(ua[ut.offset], pixels_for_jp(drv_name, ut))
+            ut = composed(drv_name, jt, ut)
+            tim = with_pixels(ua[ut.offset], pixels_for_jp(drv_name, ut))
+            out[jt.offset] = with_palette(tim, ut.palette) if ut.clut else tim
             n += 1
     return write_tis(out), n
 
@@ -436,6 +638,7 @@ def main() -> int:
     paired_palettes: set[str] = set()  # JP palettes of TIMs whose pair is planned
     hash_mismatch = 0
     kept: dict[str, set[str]] = defaultdict(set)  # KEEP_JP reason -> JP image hashes
+    recomposed: set[str] = set()  # JP image hashes whose US image COMPOSE rebuilt
 
     jp_by_hash: dict[str, list[dict]] = defaultdict(list)  # for TIS TIMs: JP manifest entries by hash
     for e in jp_manifest["entries"]:
@@ -467,7 +670,8 @@ def main() -> int:
             if path not in us_ents:
                 skipped.append((label, "no US entry"))
                 continue
-            paired = pair(jp_ents[path], us_ents[path], partial=label in PARTIAL)
+            paired = pair(jp_ents[path], reshaped(jp_ents[path], narrowed(drv_name, us_ents[path])),
+                          partial=bool(PARTIAL.search(label)))
             if paired is None:
                 skipped.append((label, "layout differs"))
                 continue
@@ -476,10 +680,13 @@ def main() -> int:
                 shared_entries.append(label)
             for (jt, jv), (ut, _) in pairs:
                 key = fnv1a64(jt.pixels)
-                why = KEEP_JP.get((drv_name, jt.image))
+                why = KEEP_JP.get((drv_name, jt.image)) or KEEP_JP_AT.get((drv_name, *jt.image[:2]))
                 if why and ut.pixels != jt.pixels:
                     kept[why].add(key)
                     continue
+                if (drv_name, jt.image) in COMPOSE and ut.pixels != jt.pixels:
+                    ut = composed(drv_name, jt, ut)
+                    recomposed.add(key)
                 if whole_tis:  # the replacer keys by hash: any entry of these pixels will do
                     jv = (sorted(jp_by_hash.get(key, []), key=variant_index)
                           or [tis_entry(jt, key, drv_name, path, jp_starts[path])])
@@ -581,6 +788,9 @@ def main() -> int:
               f"different images); each follows its picked image, so one of the others may show off-colour")
     for why, keys in kept.items():
         print(f"kept JP ({len(keys)} image{'s' if len(keys) > 1 else ''}): {why}")
+    if recomposed:
+        print(f"{len(recomposed)} US image(s) with button icons recomposed for the JP controls "
+              f"(the city HELP MENU plate)")
     if hash_mismatch:
         print(f"{hash_mismatch} images skipped: the manifest hash is not over the TIM's pixels")
     if shared_entries:

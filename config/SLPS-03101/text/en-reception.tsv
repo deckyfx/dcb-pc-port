@@ -1,0 +1,3 @@
+# English for catalog-reception.txt. id<TAB>text; \n line break; placeholders in the JP template's
+# order. Worded like OPENSEG:4e0 (en-openseg.tsv), the conversion's other outcome.
+OPENSEG:494	The data of %d Card(s) was recovered.\nDo you want to learn about the game?

@@ -1,7 +1,10 @@
 # English for KAWSEG strings the US build draws differently (catalog-kawseg.txt, pair <id> -).
 # id<TAB>text; \n line break; placeholders in the JP template's order.
-KAWSEG:360	W
-KAWSEG:364	L
+# 勝 / 敗 after a win / loss count (every screen: the lowest id wins). The count is in the 6x11 digit
+# font, one row lower than the US letters (*y1, text_codes.hpp), and ends 2 px before the unit's x
+# (the leading space: "5 W", not "5W"). docs/re/text-engine.md §7.9.
+KAWSEG:360	*y1 W
+KAWSEG:364	*y1 L
 # The US text has a bare % (drawn as is); a template needs %% for a literal percent sign.
 KAWSEG:500	Boost Battle Experience by 30%%.
 KAWSEG:514	Boost Battle Experience by 20%%.

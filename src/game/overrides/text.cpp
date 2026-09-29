@@ -23,6 +23,7 @@
 #include "hw/mmio.hpp"
 #include "text.hpp"
 #include "text_catalog.hpp"
+#include "text_codes.hpp"
 
 #include <psx/backtrace.hpp>
 #include <psx/recomp.h>
@@ -309,6 +310,7 @@ struct Cursor {
     int spacing = 0;       // *w letter spacing
     int clut = 0;          // *c text colour (starts at the clut argument)
     int h_extra = 0;       // *h extra line spacing
+    int dy = 0;            // *y draw offset (port code, text_codes.hpp)
     int max_w = 0;         // max line width so far (relative)
 };
 
@@ -388,6 +390,13 @@ Item next_item(const Text& t, size_t& s, Cursor& cur, bool jp_codes = false) {
         s += 1;
         it.step = Step::Newline;
         return it;
+    }
+    if (!bare_code) {  // port code *yN / *y-N: draw lower / higher (text_codes.hpp)
+        char p[3] = {static_cast<char>(code), static_cast<char>(t.at(s + 1)), static_cast<char>(t.at(s + 2))};
+        if (const size_t n = text::parse_y_code(p, cur.dy)) {
+            s += n;
+            return it;
+        }
     }
     if (code < 'a' || code > 'w') {
         s += 1;  // not a code letter: skip it (US table has 23 entries, a..w)
@@ -476,7 +485,7 @@ int run_string(PsxContext& ctx, int x, int y, int clut, int prop, uint32_t rgb, 
         if (it.step == Step::Icon) {
             if (draw) {
                 if (prim_full(ctx)) break;
-                emit_icon(ctx, cur.x, cur.y, it.mode, it.index, rgb, ot);
+                emit_icon(ctx, cur.x, cur.y + cur.dy, it.mode, it.index, rgb, ot);
             }
             cur.x += it.advance + cur.spacing;
             int w = cur.x - cur.x0;
@@ -492,7 +501,7 @@ int run_string(PsxContext& ctx, int x, int y, int clut, int prop, uint32_t rgb, 
             int u = ((it.ch - 0x20) % kFontCols) * kCellW + (cur.prop ? (g_widths[it.ch - 0x20] >> 4) : 0);
             int v = ((it.ch - 0x20) / kFontCols) * kCellH;  // sheet row 0 = font row 48
             int w = cur.prop ? (g_widths[it.ch - 0x20] & 0xF) : kCellW;
-            emit_sprt(ctx, cur.x, cur.y, u, v, w, kCellH, rgb, cur.clut, ot);
+            emit_sprt(ctx, cur.x, cur.y + cur.dy, u, v, w, kCellH, rgb, cur.clut, ot);
         }
         cur.x += it.advance + cur.spacing;
         int w = cur.x - cur.x0;
@@ -749,6 +758,7 @@ void trace_call(PsxContext& ctx, const char* fn, uint32_t str, int x, int y) {
     // finding what is still Japanese (decode with cp932).
     std::string extra;
     if (std::strcmp(std::getenv("DCB_TRACE_TEXT"), "hex") == 0) {
+        load_font(ctx);  // the catalog: the game's first text call is traced before dispatch loads it
         std::string raw;
         for (uint32_t i = 0; i < 4096 && rd8(ctx, str + i); ++i) raw.push_back(static_cast<char>(rd8(ctx, str + i)));
         std::string translated, whole;

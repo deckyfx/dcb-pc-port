@@ -10,9 +10,11 @@
 
 #include "trainer_battle.hpp"
 #include "trainer_cheats.hpp"
+#include "trainer_partners.hpp"
 #include "trainer_search.hpp"
 #include "trainer_toggles.hpp"
 
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
@@ -52,7 +54,7 @@ public:
     bool save();
 
     /// The port's built-in cheats for this game (GameShark text, like the cheat file), shown on the
-    /// Presets tab. They cannot be edited or removed; their on/off state is kept in the cheat file
+    /// General tab. They cannot be edited or removed; their on/off state is kept in the cheat file
     /// as "!preset <name> on|off" lines. Call before or after load(); either order keeps the state.
     void set_presets(std::string_view text);
     const CheatSet& presets() const { return presets_; }
@@ -78,21 +80,25 @@ public:
     const CheatSet& cheats() const { return cheats_; }
     /// The Battle tab's actions (the battle hotkeys read them).
     const BattleActions& battle() const { return battle_; }
-    /// The game toggles listed under them (Fusion Shop, progression flags; src/game reads them).
+    /// The game toggles on the General tab (Fusion Shop, progression flags; src/game reads them).
     const GameToggles& toggles() const { return toggles_; }
+    /// The General tab's partner selectors (kPartners index per slot, -1 = empty); Enter applies.
+    const std::array<int, kPartnerSlots>& partner_choices() const { return partner_choice_; }
     const MemorySearch& search() const { return search_; }
     const std::filesystem::path& cheat_path() const { return path_; }
     const std::string& status() const { return status_; }
     bool dirty() const { return dirty_; }
 
 private:
-    enum class Tab : uint8_t { Presets, Cheats, Battle, Search };
+    enum class Tab : uint8_t { General, Cheats, Battle, Search };
     /// Rows of the Search tab before the result list.
     enum SearchRow : int { kRowSize, kRowSigned, kRowValue, kRowFilter, kRowNew, kSearchControls };
 
     void cheats_key(Key k);
-    void presets_key(Key k);
-    void presets_char(char c);
+    void general_key(Key k);
+    void general_char(char c);
+    void sync_partner_choices();
+    void apply_partner(int slot);
     void apply_preset_states();
     void battle_key(Key k);
     void battle_char(char c);
@@ -122,10 +128,11 @@ private:
     bool dirty_ = false;
     bool trace_ = false;
     uint64_t frame_ = 0;
-    Tab tab_ = Tab::Battle;  ///< the first tab; Presets once the game supplies some
+    Tab tab_ = Tab::General;  ///< the first tab
     int cheat_sel_ = 0;
-    int preset_sel_ = 0;
-    int battle_sel_ = 0;  ///< a battle action, then (past their count) a game toggle
+    int general_sel_ = 0;  ///< a preset, then (past their count) a game toggle, then a partner slot
+    std::array<int, kPartnerSlots> partner_choice_{};  ///< per slot: kPartners index, -1 = empty
+    int battle_sel_ = 0;
     std::string battle_edit_;  ///< digits typed on the Battle tab, applied with Enter
     int search_sel_ = kRowValue;
     int size_index_ = 1;  ///< 16-bit

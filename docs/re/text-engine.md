@@ -85,6 +85,10 @@ s w handled, the rest fall back to "draw the letter").
 | `wN` / `w-N` | `*wN` | letter spacing ±N px added after every glyph | 0 | `case 0x77` | H |
 | `z` (1 byte) | – | toggle space width 6 ↔ 12 | 0 | `case 0x7a` | H |
 
+The port adds one code of its own to the English renderer (neither disc has it; the US table stops
+at `w`): `*yN` / `*y-N` draws the rest of the string N px lower / higher without moving the line
+(measure and `g_text_h` unchanged); `src/platform/text_codes.hpp`, used for the unit labels of §7.9.
+
 Codes that are **not** handled by the renderer but are expanded by the caller before drawing:
 
 | Code (JP) | Code (US) | Expanded by | Replaced with | Conf. |
@@ -374,7 +378,7 @@ line is ~100 px in the US font, over 160 px in JP letters, in a ~108 px box).
 | Card/deck text | **done** — the converter grafts US names/attack names/effect lines into `CARD2.CDD`, deck/owner names into `DECK2.DEK`; lines too long for the JP slot are listed in the local `en_text_report.txt`. DEK field layout measured from both dumps: deck JP 13 / US 19 B at +60, owner 21 B at JP +73 / US +79, 10-byte tail at JP +94 / US +100. |
 | English inside JP strings | **done** — the game appends `デック` to a deck name (`"%sデック"`, EXE `0x800114E0`; the US has `"%s Deck"`) and drops names into JP messages. Each string is copied to the host and cut into pieces: English runs (two letters in a row outside bare JP codes, or one letter the JP renderer would skip: a capital or a lowercase letter that starts no JP code, e.g. a name typed on the ABC page next to kana) go to the US port, the rest to the JP original on a NUL-terminated copy pushed on the guest stack. The format itself is patched to the US `"%s Deck"` when `en_font.bin` loads (stock bytes only), so JP-named decks read "… Deck" too; three more "%sデック" copies live in overlays (P.DRV), so a string ending in `デック` (no newline) also gets `" Deck"` (`"Deck"` alone on the name-entry screen), leaving the name before it as typed; `デック` right after an ASCII character in other strings also becomes `" Deck"`. |
 | Deck names longer than the 13-byte slot | **done** — 48 US names (e.g. `Mountain CrusherDX`, 18 letters). The slot holds the first 11 letters + a tag byte (1, 2… per shared prefix: `Mountain Crusher` and `Mountain CrusherDX` both start `Mountain Cr`); `en_names.txt` maps the key to the full name, which the renderer draws (and measures) wherever the key appears. Renderers not taken over yet show the 11 letters. |
-| VS-screen big names | **done** — §7.11. |
+| VS-screen big names, record strip | **done** — §7.11. |
 | Tutorial and Fusion Shop scripts | **done** — §7.12. |
 | Battle banner / slot expanders, the five extra renderers, EXE + MSD strings | not started (later milestones). |
 | Verification | headless runs with `DCB_TRACE_TEXT=1` + `DCB_SNAPSHOT`: an ASCII message (poked into the memory-card dialog source at OPENSEG `0x801E27F4`, draw buffer `0x800E5638`) renders through the US port, and a clean run of the same build renders the JP string through the fallback. |
@@ -395,7 +399,19 @@ entry whole, draws the translation instead.
   (the JP templates) and `en.tsv`.
 - **Templates:** printf placeholders the game fills (`%d`/`%3d` match padded numbers, `%s` any
   run, `%%` a literal %); the slot digit the game writes over `S`/`E` after `スロット` (US: over
-  `*S`/`*E`) is `%c`. Captured values go into the translation's placeholders in order.
+  `*S`/`*E`) is `%c`, and the card count OPENSEG `801EA4F4` writes over `??枚` (" n" / "nn", the
+  old-save conversion's "??枚のカードデータの修復に成功しました。", OPENSEG:494,
+  `catalog-reception.txt`) is `%2d`. Captured values go into the translation's placeholders in order.
+- **One JP string, two meanings:** the catalog has one translation per JP text (the lowest id's).
+  OPENSEG draws its choice labels みる / みない (801E1888 / 801E1890) for the Polygon Battle
+  setting and for the new-game "see the explanation?" prompts ("User Registration is complete.
+  Would you like to know more about this world?", "Do you want to learn about the game?"); the US
+  split them (a7c "Yes"/"No", ab4 "On"/"Off"), but here みる/みない took KAWSEG:1a48/1a50 "On"/"Off"
+  (the battle option) everywhere, so the registration prompts offered On / Off. `dcb_dialog_setup`
+  (override of `dialog_setup` 80019FF0, `src/game/overrides/dialog_labels.cpp`) gives a choice box
+  with no text and those labels the default labels はい / いいえ (80010028 / 80010030, "Yes" /
+  "No"); the Polygon Battle box has a title and keeps On / Off. Only with the English assets.
+  (H: headless new game, `DCB_TRACE_TEXT=hex`: the prompt box draws 80010028/80010030 → Yes/No.)
 - **Other languages:** a `<lang>.tsv` with the same ids next to `en.tsv`, picked with
   `DCB_LANG=<lang>`. The US font has ASCII only, so accented letters need glyphs first.
 - **Runtime:** `text::Catalog` (`src/platform/text_catalog.*`, unit-tested), used by
@@ -459,6 +475,14 @@ Not covered yet: the other MSD scripts (E/F/C PAK scripts; the tutorial and the 
 (the tiny font; the mini font is §7.10, the VS big names §7.11). `DCB_TRACE_TEXT=hex` logs each drawn string's bytes and
 whether the catalog translates it (decode with cp932) — the way to find what is still Japanese.
 
+Japanese that is not text (no text-engine call; found with `DCB_TRACE_PRIMS=1` + `DCB_LOG_TEX=1`):
+the battle phase banner's 準備 / 進化 / 戦闘 (B:\CBTL_SYS.ARC TIM #17 @0x11240, 44×72 4 bpp at
+VRAM (948, 304), CLUT (816, 497); the US TIM reads Prep / Digi-volve / Battle: now swapped by
+`tools/assets/swap_us_images.py`, its 32×1 US palette sent up as the JP 16×2), and the world map's HELP MENU
+plate (移動 / 入る / メニュー: a TIM of the C:\area01.pak image chunk, HD key
+`C_OBJECT_WORLD_off0000b51c`, 88×80 4 bpp at (808, 0), CLUT (528, 242), replaced by
+`C_OBJECT_WORLD_off0000b51c_88x80.png`).
+
 ### 7.9 Counts and units on the deck / card screens (SUBSEG)
 
 The JP screens draw a count with the 6×11 digit font (`80028C84`, `sprintf "%2d"/"%3d"/"%4d"`)
@@ -467,7 +491,9 @@ wins, losses), 計 (total). The US build moved those draws and drew the units in
 font** that the JP build does not have: US `8002790C` (grey wrapper of `8002793C`) and
 `80027DB8`, SPRT 4×5, advance 4, lower case folded to upper, u = (c & 15)·4 (+64 for
 `80027DB8`), v = 5·((c − 0x20) >> 4) − 22 in the SYSTEM.TIM page (TIM rows ≈ 234–253, outside
-`en_font.bin`). The counts use the main font with `*s0` (fixed 6 px). US overlay base: SUBSEG
+`en_font.bin`). `80027DB8` (→ `80027DE8`) advances 5 and is the micro font, which the JP
+build does have (`80027EC4` → `80027EF4`, no fold, no codes; §7.10). The counts use the main
+font with `*s0` (fixed 6 px). US overlay base: SUBSEG
 loads at **`0x801DDF38`** in the US build (not `0x801E0B30`; the US EXE is smaller), so US
 string `SUBSEG:x` is at `0x801DDF38 + x`. (H, US disassembly)
 
@@ -487,6 +513,19 @@ the deck select columns leave 13–15 px), 戦 → `Btl.`, ＯＰ → `Opt.`, �
 `Total`, 攻撃力 → `Atk. Power`, 最新入手 → `Newest`, 所持枚数 → `Cards Owned`; the sort
 menu's levels are spelled `Level R` / `C` / `U` / `A`. A JP string with several catalog entries
 takes the entry with the lowest id (`std::map` order of the ids), so a change goes on that id.
+
+**Baseline.** Every one of these labels sits on the line of a count in the 6×11 digit font, and
+both are drawn at the same y: the digit font draws at y + 1 and its digits fill 10 rows (y+1 ..
+y+10); the JP kanji filled y .. y+10 around them, but the US capitals fill the top 10 rows of their
+cell (y .. y+9), so every English unit sat one row too high ("W"/"L" most visibly). All the unit
+labels of `en-layout.tsv` (Cds, Btl., Opt., Tot., Total) and 勝/敗 (`en-kawseg.tsv`: KAWSEG:360/364,
+the lowest id of that text, so every screen's win/loss unit) start with the port code `*y1`
+(§2.2), which puts the letters on the digits' rows. (H: pixel rows of the card-info W/L and the
+card list's Tot./Total/Cds in headless snapshots, before 63–72 vs digits 64–73, after 64–73.)
+**Spacing.** A count ends 2 px before its unit's x (`%3d` +156 → 勝 +176 on the deck line, the same
+20-px step in KAWSEG / OPENSEG / SAISEG / the card info): the kanji's ink kept a gap there, "W" did
+not ("5W"), so W / L get a leading space ("5 W"). The card info's " 計" (25 px before a `%4d`)
+became "Tot." without the space: " Tot." was 24 px and touched a 4-digit total.
 
 **Level badges.** Icons 16–19 (mode 0) are the level badges: JP Ⅲ, A, Ⅳ, 完; the US grid (v base
 0x7F) has R, A, C, U there. Those US rows are inside the private sheet (TIM rows 48–223), so
@@ -511,18 +550,76 @@ not (text.cpp calls `f_80029F70` directly), so they keep the JP art.
   ≥ 0x80 or `~`) → the original. A string with lowercase letters → **proportional**: one call of
   the original per glyph on a 2-byte guest-stack string, each glyph trimmed to its ink columns
   (measured from the SYSTEM.TIM mini cells in VRAM), 1 px gap, space 3 px, no space after an
-  icon; `01 N` icons through `dcb_text_icon`. Capitals only (the JP disc's "RANK UP!",
+  icon; `01 N` icons through `dcb_text_icon`. A card name fitted by `sjis_to_mini` (capitals,
+  below) is drawn the same way, at its place in the slot. Other capitals only (the JP disc's "RANK UP!",
   "L1      ", translated "FULL SET!") keep the fixed 8 px cells, since callers pad with spaces.
-- Why not the micro font: the US drew these in a 4×5 capital font (US `80027DE8`; JP has the same
-  cells at `80027EF4`, no lowercase). The mini font already has full ASCII with lowercase; with
-  ink widths English fits the JP slots, and 7-px letters read better than 4×5 capitals.
-- Mini ink widths: capitals and digits 7, most lowercase 5, `i` 1, `l` 2. Slots: support label
-  ≈ 48 px (the specialty icon 49 px after it in the battle panel; deck edit's effect text at
-  +52). In that budget the US "1stAttack" (56) and "Eat-up HP" (57) do not fit: `en-mini.tsv`
-  shortens them ("1st Atk", "Eat HP"); "\x01\x08 Counter" is 51 with the icon. Battle card
-  names have ≈ 87 px before the DP box; 17 of the 293 US card/item names are wider
-  (HerculesKabuterimon 111, MasterTyrannomon 101, the "Mega Def. Disk" items ≈ 100) and run
-  into it. (H: measured)
+- Mini ink widths: capitals and digits 7, most lowercase 5 (`a`, `d`, `g` 6), `i` 1, `l` 2.
+  Slots: support label ≈ 48 px (the specialty icon 49 px after it in the battle panel; deck
+  edit's effect text at +52). In that budget the US "1stAttack" (56) and "Eat-up HP" (57) do not
+  fit: `en-mini.tsv` shortens them ("1st Atk", "Eat HP"); "\x01\x08 Counter" is 51 with the
+  icon. (H: measured)
+- **Card names in capitals.** The mini font's lowercase reads badly in a name ("MstrTyrannomon":
+  `a` has a stray dot, `g` looks like `s`), and the US build drew these names in capitals.
+  `dcb_sjis_to_mini` folds `a`–`z` to `A`–`Z` (`mini_fit.hpp`, `fold_upper`; code arguments
+  `01 N` / `0C N` left alone) for the three card-name callers only; other mini strings keep
+  their case.
+- **Battle card panel in the micro font, as the US.** The US build does not draw the panel's
+  card name with the mini font: US `800398A0` (JP `8003C200` `sjis_to_mini` + `8003C230` mini)
+  draws `card+3` straight with the **micro** renderer's grey wrapper (US `80027DB8` → `80027DE8`,
+  rgb 80 80 80, CLUT 7) at **x = panel x + 17 − 14·side, y = panel y + 2** (JP: panel x + 32 −
+  21·side, same y). The support label under the attack rows moved to micro as well: US
+  `80039994` at panel x + 24·side + 24, y + 51 (JP `8003C32C`, mini, x + 22·side + 25, y + 50),
+  and US `8003AA88` at x + 68, y + 64 (JP `8003D43C`, x + 68, y + 63), both the label table
+  (US `8006E47C`, JP `80071058`) by `card+0xE4`. (H, US disassembly; the US screenshot
+  `screenshoots/digimon-name-us.png` shows it: "MODOKIBETAMON" right after P1's DP label,
+  "VENOMMYOTISMON" from P2's bar start, "○ TO 0" / "FOE X3" under the attack rows.)
+  - The micro font (both builds): 4×5 glyphs, u = 64 + (c & 15)·4, v = ((c − 32) >> 4)·5 − 22
+    (SYSTEM.TIM rows 234–253, byte-identical in JP and US), advance 5 (space too), `0A` newline
+    +6, `0C N` CLUT. The JP renderer (`80027EF4`, grey wrapper `80027EC4`, `(x, y, str, clut,
+    rgb*, ot)`) stops there. The US one (`80027DE8`) also folds lowercase to capitals, takes the
+    `*a`..`*e` codes, and draws `01 N` as a 5×5 icon: US `text_icon` mode 3 (`80029A0C`; JP
+    `text_icon` has modes 0–2 only), u = 48 + (i % 14)·6, v = 160 + (i / 14)·6, CLUT row base + 5
+    (the mini icons' row), advance 6. Those icon rows are US-only art, inside the private sheet
+    (TIM rows 48–223).
+  - The port (`mini_text.cpp`): `dcb_text_draw_mini` knows these draws by the return address (for
+    the grey wrapper `80028898`, the caller's, from the wrapper's frame at sp + 24) and lays the
+    string out like the US (`mini_fit.hpp`, `micro_layout`: folded capitals, 5-px cells, icon
+    6), each glyph through the JP micro renderer `80027EF4` with the caller's CLUT, rgb and OT;
+    an icon is the JP `text_icon` mode-1 packet pointed at the US cell in the private sheet
+    (texpage word → sheet marker, u/v, 5×5), as `level_badges.cpp` does for the badges. The name
+    is drawn at the US x, the labels at the US x / y. The labels keep the catalog's English
+    (`en-mini.tsv`: "1ST ATK", "EAT HP"; the US "1STATTACK" / "EAT-UP HP" also fit in micro).
+    "Omnimon *e1" / "*e2" draw their icon (`01 0F` / `01 10`, US cells (48, 166) / (54, 166)).
+- **Card-name slots** (the ink area from the draw's own x; widths as the trace's `w=`, the pen
+  advance with the last glyph's 1 px gap; measured on headless snapshots, H: run):
+
+  | `sjis_to_mini` caller | screen | font, name x | ink area | budget |
+  |---|---|---|---|---|
+  | `8003C200`, side 0 (s5) | battle card panel, P1 (left, blue bar) | micro, panel + 17 = 57 at rest, right after the DP label's separator (55) | 56 .. 150: the bar's fill up to the border (151–153) | 96 |
+  | `8003C200`, side 1 | battle card panel, P2 (right, orange bar) | micro, panel + 3 = 167, the bar's first fill column | 167 .. 263: up to the DP box border (264) | 98 |
+  | SUBSEG `801E6AC4` (`801E65E8`) | Edit Partner, partner panel | mini, 59 | x .. x + 146 = 59 .. 205 (border at 206) | 148 |
+  | SUBSEG `801E78A4` (`801E73BC`) | Edit Partner, armor panel (a Digimental armor, cards 172–190; shown when `game_data + 0x302` ≠ 0) | mini, panel + 3 = 217 | x − 5 .. x + 86 = 212 .. 303 (borders at 211 and 304) | 93 |
+
+  In the micro font a name is 5 px a letter: the longest card name that reaches the battle
+  panel (only Digimon do), HerculesKabuterimon, is 19 capitals, 95 (ink 57 .. 150 on P1), so
+  **every name fits whole on both sides: no short names** (the port's short-name table,
+  `short-names.tsv`, is gone). The bar's fill is rows 93 .. 99 between borders at 92 and 100;
+  the micro capitals at the original y fill rows 94 .. 98, centred (the mini capitals needed
+  y − 1). **Placement** (`mini_fit.hpp`, `place`) stays as a guard: a name that ends inside the
+  area from its x stays there; a wider one moves left just enough, down to the area's first
+  column.
+
+  The Edit Partner panels keep the mini font: the US draws those names with its 6×6 font
+  (US `80028558` → `80028588`, 6-px cells, SUBSEG `801E32CC` partner at panel x + 44, `801E40E4`
+  armor, the JP positions), not micro, and the mini capitals fit there (HerculesKabuterimon 146
+  of 148; the armor cards up to Armadillomon 89 of 93). A name wider than the slot would be drawn
+  in **tight spacing** (1 px between two glyphs only where their facing ink columns share a row,
+  else 0; 2 px between words); none is. `dcb_sjis_to_mini` knows the caller by its return
+  address (and the battle side by s5); the font, spacing, the side's area and the x offset are
+  handed to the draw that follows (the same buffer and text), not written into the string.
+  `DCB_TRACE_TEXT` logs each name as `[text] mini-name <slot> side N src=… "NAME"
+  micro|normal|tight w=N (slot budget)`, the draw as `mini micro|prop|tight w=N` at the drawn
+  x, y, and the measured mini ink table once as `[text] mini ink`.
 - Strings seen through the mini path (headless runs): the Deck Select HELP legend (SUBSEG
   1ac8.., catalog-subseg), the deck edit sort hint (SUBSEG 1c88), the support labels (EXE
   2320.., catalog-exe) in deck edit / card selection / partner / battle, battle card names.
@@ -580,8 +677,21 @@ letter.
   save name ああああああ (original path, width 192, unchanged) and the US "Meramon" picture;
   with a cheat writing the save name, "Decky" (odd length, width 80) and "Tai.Kamiya-20"
   (`.` drawn as a space, cut at 12, width 192). Mode 0 (battle with a friend) not run.
-- Not done: the 戦 勝 敗 record strip on the VS screen (and the WIN archives' copy) is still JP
-  kanji; the US shows a blank strip and draws the words as text (US code not traced).
+- **Record strip** (戦 勝 敗, one picture in all 142 MATCH and 142 WIN archives, VRAM 464,184,
+  136×18): `vs_record_draw` (KAWSEG `801F03C8`, a0 x, a1 y, a2 wins, a3 losses; called by
+  `vs_screen_draw` for both players and twice by the result screen, near `801F6278` / `801F6524`)
+  draws `%4d` (wins + losses), `%3d`, `%3d` with the digit font (`80028C84`, CLUT 7, OT 1) at x + 8
+  / 56 / 97, y + 3, then the strip; the kanji are in the picture at columns 39–50 / 80–92 /
+  120–131. The US counterpart (US KAWSEG `801ED968`; US overlays load at `801DDF38`) draws a blank
+  192-px strip, `*s0%4d        %3d      %3d` in the main font at (x + 8, y + 3) and "BATTLES" /
+  "WINS" / "LOSSES" in its 4×5 capitals (`80027DB8`, CLUT 6) at x + 36 / 102 / 156, y + 9. Port:
+  `swap_us_images.py` cuts the US strip to 136 px (`NARROW`: it equals the JP strip without the
+  kanji) and `dcb_vs_record_draw` (`src/game/overrides/vs_record.cpp`) runs the original, then,
+  when the strip's kanji cells in VRAM are plain background, draws the catalog's English for
+  戦 / 勝 / 敗 (else "Btl." / "W" / "L", the deck select line's words; without English assets the
+  kanji) through `text_draw_grey` at x + 37 / 79 / 119, y + 3, CLUT 4 (the kanji's green). With the
+  JP strip loaded it adds nothing. Verified headless on Meramon's VS screen ("1 Btl. 0 W 1 L",
+  "5 Btl. 5 W 0 L"); the result screen was not run.
 
 ### 7.12 Tutorial and Fusion Shop scripts (B:\BETA.MSD, C:\EVENT\UNIT0n.MSD)
 
@@ -694,6 +804,7 @@ For later import into Ghidra / `config/SLPS-03101/functions.json`. Not applied i
 | `80029010` | `text_draw_bigdigits` | 16×21 digits |
 | `8002a37c` | `sjis_to_mini` | SJIS → mini-font bytes |
 | `80044684` | `bigname_load` | per-character `FONT\%4.4X.tim` loader (task; §7.11, in `ghidra/symbols`) |
+| KAWSEG `801f03c8` | `vs_record_draw` | VS / result screen record strip (§7.11, in `ghidra/symbols`) |
 | `80019ff0` | `dialog_setup` | message/Yes-No dialog |
 | `8001a590` | `dialog_draw_cb` | dialog draw callback (no Ghidra function) |
 | `8001a284` | `dialog_run` | modal loop |

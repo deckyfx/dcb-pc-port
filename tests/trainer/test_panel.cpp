@@ -45,7 +45,8 @@ void test_workflow() {
     CHECK(t.cheats().cheats().empty());
     t.set_open(true);
     CHECK(t.is_open());
-    CHECK(contains(t.render(kPanelCols, kPanelRows), "[Battle]"));  // the first tab without presets
+    CHECK(contains(t.render(kPanelCols, kPanelRows), "[General]"));  // the first tab, presets or not
+    t.key(Key::Tab);  // Battle
     t.key(Key::Tab);  // Custom
     CHECK(contains(t.render(kPanelCols, kPanelRows), "No cheats"));
 
@@ -98,6 +99,7 @@ void test_workflow() {
     CHECK(read_value(ram.data(), 0x0B1234, ValueSize::U16) == 42);
 
     // Cheats tab: save, toggle off (no effect on RAM), reload restores the saved state.
+    t.key(Key::Tab);  // General
     t.key(Key::Tab);  // Battle
     t.key(Key::Tab);  // Custom
     t.text("s");
@@ -131,13 +133,14 @@ void test_invalid_cheat_and_rendering() {
     CHECK(log.size() == 2 && log[0].find("2 cheats (0 on)") != std::string::npos);
     CHECK(log[1].find("C1") != std::string::npos);
     t.set_open(true);
-    t.key(Key::Tab);  // Battle -> Custom
+    t.key(Key::Tab);  // General -> Battle
+    t.key(Key::Tab);  // Custom
     t.key(Key::Down);
     t.text(" ");
     CHECK(t.status().find("cannot enable") != std::string::npos);
     CHECK(contains(t.render(kPanelCols, kPanelRows), "[!] Bad"));
     // Every size renders within bounds, including tiny ones, on both tabs, with long results.
-    for (int tab = 0; tab < 3; ++tab) {
+    for (int tab = 0; tab < 4; ++tab) {
         for (int cols : {1, 8, 20, 38, 64, 200})
             for (int rows : {1, 4, 12, 22, 30, 80}) check_fits(t, cols, rows);
         t.key(Key::Tab);
@@ -191,7 +194,8 @@ void test_battle_tab() {
     for (const std::string& line : log) reported = reported || line.find("bad battle line") != std::string::npos;
     CHECK(reported);
 
-    t.set_open(true);  // the Battle tab is first (no presets), P1 HP selected
+    t.set_open(true);
+    t.key(Key::Tab);  // General -> Battle, P1 HP selected
     CHECK(contains(t.render(kPanelCols, kPanelRows), "[Battle]"));
     t.text(" ");  // P1 HP on
     CHECK(t.battle().list()[0].enabled);
@@ -209,7 +213,7 @@ void test_battle_tab() {
     CHECK(t.battle().list()[4].value == 90);
     check_fits(t, kPanelCols, kPanelRows);
     check_fits(t, 20, 12);
-    // The toggles at the end: Space turns one on; values and typing do nothing there.
+    // The no-shuffle toggles: Space turns one on; values and typing do nothing there.
     for (int i = 0; i < 6; ++i) t.key(Key::Down);  // P1 deck in order
     t.text(" ");
     t.key(Key::Right);
@@ -237,8 +241,8 @@ void test_battle_tab() {
     fs::remove_all(dir);
 }
 
-// Presets: built-in cheats on their own tab (first when there are any), toggled, applied, and
-// their state kept in the cheat file as "!preset" lines (not as cheats).
+// Presets: built-in cheats at the top of the General tab, toggled, applied, and their state kept
+// in the cheat file as "!preset" lines (not as cheats).
 void test_presets() {
     const fs::path dir = fs::temp_directory_path() / "dcb_test_trainer_presets";
     fs::remove_all(dir);
@@ -254,7 +258,7 @@ void test_presets() {
     t.apply_frame();
     CHECK(read_value(ram.data(), 0x102, ValueSize::U16) == 5 && read_value(ram.data(), 0x100, ValueSize::U16) == 0);
     t.set_open(true);
-    CHECK(contains(t.render(kPanelCols, kPanelRows), "[Presets]"));
+    CHECK(contains(t.render(kPanelCols, kPanelRows), "[General]"));
     t.text(" ");  // One on
     CHECK(t.presets().cheats()[0].enabled);
     t.key(Key::Delete);  // presets cannot be removed
@@ -265,8 +269,13 @@ void test_presets() {
     CHECK(contains(t.render(kPanelCols, kPanelRows), "[Custom]"));
     t.key(Key::Tab);
     CHECK(contains(t.render(kPanelCols, kPanelRows), "[Search]"));
-    t.key(Key::Tab);  // back to Presets
-    CHECK(contains(t.render(kPanelCols, kPanelRows), "[Presets]"));
+    t.key(Key::Tab);  // back to General
+    CHECK(contains(t.render(kPanelCols, kPanelRows), "[General]"));
+    t.key(Key::Down);
+    t.key(Key::Down);  // past the two presets: the first game toggle
+    t.text(" ");
+    CHECK(t.toggles().on(GameToggle::FusionMutate) && t.presets().cheats()[1].enabled);
+    t.text(" ");
     check_fits(t, 20, 12);
     CHECK(t.save());
     const std::string saved = *platform::read_text_file(file);
@@ -282,8 +291,9 @@ void test_presets() {
     fs::remove_all(dir);
 }
 
-// Game toggles: listed under the battle actions on the Battle tab, kept in the cheat file as
-// "!toggle" lines; the fusion roll filter and the Digimental flag bits.
+// Game toggles: listed under the presets on the General tab, kept in the cheat file as "!toggle"
+// lines (older files wrote them from the Battle tab: same lines); the fusion roll filter and the
+// Digimental flag bits.
 void test_game_toggles() {
     GameToggles toggles;
     CHECK(toggles.list().size() == 3 && !toggles.on(GameToggle::FusionMutate));
@@ -315,12 +325,15 @@ void test_game_toggles() {
     for (size_t i = 0; i < flags.size(); ++i)
         if (i < 35 || i > 37) CHECK(flags[i] == 0);
 
-    // In the panel: after the 14 battle rows; Space switches, S saves, the file keeps them.
+    // In the panel: the General tab's first rows (no presets here); Space switches, S saves, the
+    // file keeps them.
     const fs::path dir = fs::temp_directory_path() / "dcb_test_trainer_toggles";
     fs::remove_all(dir);
     fs::create_directories(dir);
     const fs::path file = dir / "cheats.txt";
-    CHECK(platform::write_text_file(file, "[Keep me] on\n80000100 0001\n!toggle digimentals on\n!toggle bad on\n"));
+    // An older file: the block header still names the Battle tab.
+    CHECK(platform::write_text_file(file, "[Keep me] on\n80000100 0001\n#!toggle Battle tab, game toggles (Fusion Shop, "
+                                          "progression flags):\n!toggle digimentals on\n!toggle bad on\n"));
     std::vector<uint8_t> ram(kRamSize, 0);
     Trainer t(ram.data(), file);
     const std::vector<std::string> log = t.load();
@@ -331,15 +344,23 @@ void test_game_toggles() {
     t.set_open(true);
     CHECK(contains(t.render(kPanelCols, kPanelRows), "Fusion: every fusion mutates"));
     CHECK(contains(t.render(kPanelCols, kPanelRows), "All Digimentals"));
-    for (int i = 0; i < 14; ++i) t.key(Key::Down);  // the first toggle
+    CHECK(contains(t.render(kPanelCols, kPanelRows), "[General]"));  // the first toggle is selected
     t.key(Key::Right);                              // no value: nothing happens
     t.text("5");
     t.key(Key::Enter);                              // Enter switches it
     CHECK(t.toggles().on(GameToggle::FusionMutate));
     CHECK(t.battle().list()[13].value == 0 && !t.battle().list()[13].enabled);
-    t.key(Key::End);
+    t.key(Key::Down);
+    t.key(Key::Down);
     t.text(" ");  // digimentals off
     CHECK(!t.toggles().on(GameToggle::Digimentals));
+    CHECK(contains(t.render(kPanelCols, kPanelRows), "All Digimentals (given at the next city Menu) off (S saves)"));
+    // On again: the status line says where the game hands them out (and fits the panel).
+    t.text(" ");
+    CHECK(t.toggles().on(GameToggle::Digimentals));
+    CHECK(contains(t.render(kPanelCols, kPanelRows), "All Digimentals on: open the city Menu to get them (S saves)"));
+    check_fits(t, kPanelCols, kPanelRows);
+    t.text(" ");  // off again
     check_fits(t, kPanelCols, kPanelRows);
     check_fits(t, 20, 12);
     t.text("s");
@@ -347,6 +368,7 @@ void test_game_toggles() {
     CHECK(saved.find("!toggle fusion_mutate on\n") != std::string::npos);
     CHECK(saved.find("!toggle digimentals off\n") != std::string::npos);
     CHECK(saved.find("[Keep me] on\n") != std::string::npos && saved.find("bad") == std::string::npos);
+    CHECK(saved.find("#!toggle General tab") != std::string::npos && saved.find("#!toggle Battle tab") == std::string::npos);
     Trainer again(ram.data(), file);
     again.load();
     CHECK(again.toggles().on(GameToggle::FusionMutate) && !again.toggles().on(GameToggle::Digimentals));

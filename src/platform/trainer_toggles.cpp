@@ -8,9 +8,12 @@ namespace trainer {
 
 GameToggles::GameToggles() {
     list_ = {
-        {"fusion_mutate", GameToggle::FusionMutate, false, "Fusion: every fusion mutates (special kept)"},
-        {"fusion_jewel", GameToggle::FusionJewel, false, "Fusion: mutations give a Digi-Jewel"},
-        {"digimentals", GameToggle::Digimentals, false, "All Digimentals (given at the city Menu)"},
+        {"fusion_mutate", GameToggle::FusionMutate, false, "Fusion: every fusion mutates (special kept)", ""},
+        {"fusion_jewel", GameToggle::FusionJewel, false, "Fusion: mutations give a Digi-Jewel", ""},
+        // The flags only: the game gives the Digimentals to the partners when the city Menu opens
+        // (digimental_sync), so the status line says so.
+        {"digimentals", GameToggle::Digimentals, false, "All Digimentals (given at the next city Menu)",
+         "All Digimentals on: open the city Menu to get them"},
     };
 }
 
@@ -45,7 +48,8 @@ bool GameToggles::parse_line(std::string_view line) {
 }
 
 std::string GameToggles::text() const {
-    std::string out = "#!toggle Battle tab, game toggles (Fusion Shop, progression flags):\n";
+    std::string out = "#!toggle General tab, game toggles (Fusion Shop, progression flags; Digimentals: given "
+                      "at the next city Menu):\n";
     for (const ToggleItem& t : list_) out += "!toggle " + t.id + (t.enabled ? " on\n" : " off\n");
     return out;
 }
