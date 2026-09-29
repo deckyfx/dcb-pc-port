@@ -184,13 +184,7 @@ public:
                 break;
             }
         }
-        uint16_t pressed = static_cast<uint16_t>(read_keyboard() | read_gamepad());
-        // Card lists scroll a page with L1/R1; on keyboard (and for gamepads without
-        // shoulders) Left/Right do the same, so the lists stay navigable. Bits, not
-        // keys: the D-pad still reaches the game as well.
-        if ((pressed & Left) != 0) pressed = static_cast<uint16_t>(pressed | L1);
-        if ((pressed & Right) != 0) pressed = static_cast<uint16_t>(pressed | R1);
-        const uint16_t buttons = static_cast<uint16_t>(~pressed);
+        const uint16_t buttons = static_cast<uint16_t>(~(read_keyboard() | read_gamepad()));
         if (trace_input_ && buttons != buttons_) {
             std::string names;
             for (const PadButtonInfo& b : kPadButtons)

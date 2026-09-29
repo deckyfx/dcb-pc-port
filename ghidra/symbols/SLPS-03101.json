@@ -61,15 +61,25 @@
    "source": "re",
    "note": "(cursor, ot): steps the slide and draws the cursor box. Conf M"
   },
+  "0x800199F4": {
+   "name": "list_cursor_update",
+   "source": "re",
+   "note": "(list): the shared single-column list cursor, once a frame from the list's window callback. List: +0 window, +4 cursor, +0x14 s16 row, +0x16 previous row, +0x20 s16 count, +0x25 rows per page, +0x26 has the focus, +0x27 moved, +0x28 pad index. With the focus reads only pad +14 (auto-repeat): up/down a row, L2/R2 a page; never Left/Right (docs/re/card-lists.md). Overridden by dcb_list_cursor_update (Left/Right page the card lists). Conf H"
+  },
   "0x80019FF0": {
    "name": "dialog_setup",
    "source": "re",
    "note": "(win, text, style): message/Yes-No dialog: sizes the window from text_measure, centred on 320x240. Choice labels at win+0x98 / win+0x9C: style 2 keeps the caller's, otherwise the defaults hai/iie (80010028 / 80010030). Overridden (src/game/overrides/dialog_labels.cpp). Conf H"
   },
+  "0x8001A9E8": {
+   "name": "pad_decode",
+   "source": "re",
+   "note": "(port, state, reply): the live pad words from the SIO reply: +0 held, +2 pressed, +4 released, +6 pressed with auto-repeat (+0x10..+0x18 repeat timer); pad_update copies them to +8/+10/+12/+14. Conf M"
+  },
   "0x8001ABF4": {
    "name": "pad_update",
    "source": "re",
-   "note": "once a frame: computes the pad words at *8008C420 (= 8008FEE8): +10 buttons pressed this frame (PS1 bits, active high; Start 0x0800, Cross 0x0040). Overridden by dcb_pad_update (title: any button counts as Start). Found with the write watch. Conf H"
+   "note": "once a frame: computes the pad words at *8008C420 (= 8008FEE8): +8 held, +10 pressed this frame, +12 released, +14 pressed with auto-repeat (PS1 bits, active high; Start 0x0800, Cross 0x0040; docs/re/card-lists.md). Overridden by dcb_pad_update (title: any button counts as Start). Found with the write watch. Conf H"
   },
   "0x8001B0D4": {
    "name": "mem_free",
@@ -569,11 +579,35 @@
    "source": "re",
    "note": "card record pointers for the fusion list (0x134 / 0xDA / 0x68 strides) and the owned partners' own records. Conf M"
   },
+  "0x801E9A50": {
+   "name": "fusion_sort_menu",
+   "overlay": "EVOSEG",
+   "source": "re",
+   "note": "Fusion Shop sort-order menu (list 801F2AF4), then the card sort 8001C2EC and fusion_card_table_init. Conf M"
+  },
+  "0x801E9C08": {
+   "name": "fusion_card_list",
+   "overlay": "EVOSEG",
+   "source": "re",
+   "note": "Fusion Shop card list (list_cursor_update on g_fusion_card_list; return address 801EA030). Conf M"
+  },
   "0x801EA100": {
    "name": "reception_choice_step",
    "overlay": "OPENSEG",
    "source": "re",
    "note": "new-game reception, choice steps (jump table 801E193C, states 4-9): the 'see the explanation?' box with no text and the watch/don't-watch labels (801EA220), the old-save conversion result (801EA4F4 writes the recovered card count over the '??' of *801F4DBC as ' n' / 'nn'), the Polygon Battle box (801EA718). Conf M"
+  },
+  "0x801EA5A4": {
+   "name": "card_menu_sort_menu",
+   "overlay": "SUBSEG",
+   "source": "re",
+   "note": "Card Menu sort-order menu (list 801F5DB8), then the card sort 8001C2EC. Conf M"
+  },
+  "0x801EA7DC": {
+   "name": "card_menu_list_draw",
+   "overlay": "SUBSEG",
+   "source": "re",
+   "note": "window callback of the Card Menu card list (rows, list_cursor_update on g_card_list; return address 801EAD84). Conf M"
   },
   "0x801EA910": {
    "name": "name_entry_input",
@@ -707,6 +741,12 @@
    "source": "re",
    "note": "card list input: first card, then the second card runs fusion_roll and fusion_check_full. Refuses partner cards and levels above the shop's limit. Conf M"
   },
+  "0x801ED7DC": {
+   "name": "card_menu_type_panel",
+   "overlay": "SUBSEG",
+   "source": "re",
+   "note": "window callback of the Card Menu number panel: L1/R1 (pad +10) turn g_card_menu_type_page 0-7 (Fire, Ice, ...; wraps). Left/Right unused. Conf H"
+  },
   "0x801ED8D0": {
    "name": "title_draw_sprite",
    "overlay": "OPENSEG",
@@ -761,6 +801,24 @@
    "source": "re",
    "note": "(mode, match, parent) task: big names for the VS screen: bigname_load for the player (mode 0: both players), then B:\\MATCH\\%3.3d.ARC (999 for mode 0) uploaded TIM by TIM, the last being the opponent's name picture; widths to battle_data+0x114; slide-in records g_vs_slide; g_vs_names_busy. Overridden by dcb_vs_names_load. Conf H"
   },
+  "0x801F09F0": {
+   "name": "deck_edit_input",
+   "overlay": "SUBSEG",
+   "source": "re",
+   "note": "Deck Edit pad input: grid cursor with up/down/left/right (+14), L1/R1 (+10) switch the side panel between counts by type and by level, circle/cross/select. Conf M"
+  },
+  "0x801F22DC": {
+   "name": "deck_edit_card_list",
+   "overlay": "SUBSEG",
+   "source": "re",
+   "note": "Deck Edit card selection list (list_cursor_update on g_card_list; return address 801F2824). Conf M"
+  },
+  "0x801F2AC8": {
+   "name": "g_fusion_card_list",
+   "overlay": "EVOSEG",
+   "source": "re",
+   "note": "list struct of the Fusion Shop card list (301 rows). Conf M"
+  },
   "0x801F2B9C": {
    "name": "vs_screen",
    "overlay": "KAWSEG",
@@ -790,6 +848,12 @@
    "overlay": "SUBSEG",
    "source": "re",
    "note": "deck name row table: 63 x {left, right} string pointers, 7 pages of 9 rows (hiragana, katakana, letters / digits, other, kanji 1-3). Conf H"
+  },
+  "0x801F5CC4": {
+   "name": "g_card_list",
+   "overlay": "SUBSEG",
+   "source": "re",
+   "note": "list struct (list_cursor_update) of the Card Menu list and Deck Edit's card selection (301 rows). Conf M"
   },
   "0x801F6058": {
    "name": "partner_choose_task",
@@ -851,6 +915,12 @@
    "source": "re",
    "note": "4 x 64-byte message lines: text, +60 s16 shown, +62 u8 in use, +63 s8 length. Conf H"
   },
+  "0x801F7E62": {
+   "name": "g_card_menu_pad",
+   "overlay": "SUBSEG",
+   "source": "re",
+   "note": "s16: pad index the Card Menu panel reads. Conf M"
+  },
   "0x801F7E80": {
    "name": "g_city_vm",
    "overlay": "SAISEG",
@@ -892,6 +962,12 @@
    "overlay": "EVOSEG",
    "source": "re",
    "note": "u8: 0 normal, 1 special fusion, 2 mutation (script r17). Conf H"
+  },
+  "0x801F7FFC": {
+   "name": "g_card_menu_type_page",
+   "overlay": "SUBSEG",
+   "source": "re",
+   "note": "s16: Card Menu number panel type page 0-7 (card_menu_type_panel; write watch). Conf H"
   },
   "0x801F9D78": {
    "name": "g_name_box_cursor",
