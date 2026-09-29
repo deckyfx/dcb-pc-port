@@ -1,33 +1,128 @@
 # Short card names, our own English, used only where a card name is drawn in the mini font (8x7)
-# and does not fit its slot even in tight spacing: the battle card panel (88 px before the DP
-# box). Everywhere else, including the card info in the main font, the full US name stays.
+# and does not fit its slot even in tight spacing: in practice the battle card panel (96 px, the
+# narrower of its two sides; every name fits Edit Partner). Card names are drawn there in
+# capitals (7 px each, 'I' 1 px, 1 px gaps: about 12 letters, no more than 96 px). Everywhere
+# else, including the card info in the main font, the full US name stays.
 #
 # card number<TAB>short name<TAB>full US name (checked against the US CARD2.CDD, for review)
 #
+# Written in capitals as drawn (the runtime folds to capitals anyway). Styles: a one-letter or
+# two-letter prefix with a period for the long Digimon prefixes (M./MT./MG. for Mega/Metal, W.
+# for Were/Waru ...), a dropped letter where that still reads (MARINANGEMON), and the US's own
+# abbreviations for items (LV., ATK., DIGI.).
+#
 # tools/text/short_names.py writes assets/<serial>/en_short_names.txt (full<TAB>short) for
-# src/game/overrides/mini_text.cpp. Mini-font widths (px, normal / tight spacing) in the
-# comments; docs/re/text-engine.md §7.10.
+# src/game/overrides/mini_text.cpp. Capital widths (px, normal / tight spacing) in the comments;
+# docs/re/text-engine.md §7.10.
 
 # Digimon
-6	R.MetalGreymon	RealMetalGreymon
-# 98 / 95 -> 84
-8	MstrTyrannomon	MasterTyrannomon
-# 102 / 98 -> 89 / 86
-74	HrcKabuterimon	HerculesKabuterimon
-# 112 / 107 -> 85
-79	M.Kabuterimon	MegaKabuterimon
-# 93 / 90 -> 75
+0	IMPERIALDRMON	Imperialdramon
+# 100 / 100 -> 92
+6	R.MT.GREYMON	RealMetalGreymon
+# 128 / 126 -> 84 / 82
+8	M.TYRANNOMON	MasterTyrannomon
+# 128 / 128 -> 90 / 89
+25	B.NANIMON	BomberNanimon
+# 98 / 98 -> 60
+36	MT.SEADRAMON	MetalSeadramon
+# 112 / 111 -> 90 / 88
+37	MT.GARURUMON	MetalGarurumon
+# 112 / 110 -> 90 / 89
+38	MARINANGEMON	MarineAngemon
+# 98 / 98 -> 90
+39	W.GARURUMON	WereGarurumon
+# 104 / 103 -> 82
+42	MG.SEADRAMON	MegaSeadramon
+# 104 / 103 -> 90 / 89
+43	W.SEADRAMON	WaruSeadramon
+# 104 / 104 -> 82 / 81
+68	S.GOBURIMON	SnowGoburimon
+# 98 / 98 -> 76
+72	A.VEEDRAMON	AeroVeedramon
+# 104 / 104 -> 82 / 81
+74	H.KABUTERIMON	HerculesKabuterimon
+# 146 / 146 -> 92
+79	M.KABUTERIMON	MegaKabuterimon
+# 114 / 113 -> 92
+104	G.KUWAGAMON	GranKuwagamon
+# 104 / 104 -> 82
+106	V.MYOTISMON	VenomMyotismon
+# 106 / 104 -> 76 / 73
+108	MACHINDRAMON	Machinedramon
+# 98 / 98 -> 90
+115	W.MONZAEMON	WaruMonzaemon
+# 104 / 104 -> 82
+154	PLAT.SUKAMON	PlatinumSukamon
+# 114 / 113 -> 90 / 87
+161	N.DRIMOGEMON	NiseDrimogemon
+# 100 / 100 -> 84
+171	M.BETAMON	ModokiBetamon
+# 98 / 97 -> 66 / 65
 
 # Items
-198	Mega Atk. Chip	Mega Attack Chip
-# 95 / 89 -> 78
-212	Another Dim.	Another Dimension
-# 95 / 92 -> 65
+191	GOLD BANANA	Golden Banana
+# 99 / 97 -> 83 / 81
+195	METAL BANANA	Metallic Banana
+# 109 / 106 -> 91 / 88
+197	MEGA FLOPPY	Mega Rec. Floppy
+# 112 / 104 -> 83 / 79
+198	MEGA ATK. CHIP	Mega Attack Chip
+# 112 / 105 -> 90 / 83
+199	D.LORD'S CAPE	Dark Lord's Cape
+# 113 / 108 -> 88 / 84
+203	SHOGUN ORDER	Shogun's Order
+# 102 / 100 -> 91 / 89
+204	BEETLE DIAM.	Beetle Diamond
+# 101 / 99 -> 79 / 77
+212	ANOTHER DIM.	Another Dimension
+# 119 / 116 -> 79 / 76
+219	DARK ALTAR	Darkness Altar
+# 107 / 103 -> 75 / 71
+221	SUP. FLOPPY	Sup. Rec. Floppy
+# 106 / 98 -> 77 / 73
+231	LV. BALANCER	Level Balancer
+# 107 / 105 -> 85 / 81
+232	LV. MANAGER	Level Manager
+# 99 / 97 -> 77 / 73
+233	LV. BOOSTER	Level Booster
+# 99 / 97 -> 77 / 73
+242	DELUXE MUSH.	Deluxe Mushroom
+# 115 / 112 -> 85 / 82
+243	LUCKY MUSH.	Lucky Mushroom
+# 107 / 104 -> 77 / 74
+246	MED. FLOPPY	Med. Rec. Floppy
+# 106 / 98 -> 77 / 73
+247	DIGI ANALYZER	Digimon Analyzer
+# 111 / 108 -> 87 / 84
+248	TRAIN. MANUAL	Training Manual
+# 103 / 101 -> 87 / 85
+250	TRI. HITTER	Triangle Hitter
+# 103 / 101 -> 65 / 63
+253	CHERRY MIST	Cherrymon's Mist
+# 112 / 110 -> 77 / 75
+257	PARTNER FIND.	Partner Finder
+# 101 / 99 -> 87 / 84
+262	STUFFED ANIM.	Stuffed Animal
+# 101 / 99 -> 87 / 85
+266	RECOV. FLOPPY	Recovery Floppy
+# 115 / 110 -> 93 / 87
+275	D-AQUAMARINE	Digi-Aquamarine
+# 100 / 100 -> 88
 
 # Options (Digivolve cards)
-293	Download Digi.	Download Digivolve
-# 98 / 93 -> 73
-294	ArmorCrush Digi.	ArmorCrush Digivolve
-# 113 / 110 -> 88
-298	De-Armor Digi.	De-Armor Digivolve
-# 101 / 98 -> 76
+291	REV. SEVENS	Reverse Sevens
+# 107 / 105 -> 77 / 74
+292	ROSEMON LURE	Rosemon's Lure
+# 102 / 99 -> 91 / 88
+293	DOWNLOAD DIGI.	Download Digivolve
+# 127 / 123 -> 89 / 86
+294	ARMORCRSH DIGI.	ArmorCrush Digivolve
+# 143 / 140 -> 97 / 95
+295	SPECIAL DIGI.	Special Digivolve
+# 113 / 109 -> 75 / 72
+296	MUTANT DIGI.	Mutant Digivolve
+# 111 / 107 -> 73 / 70
+298	DE-ARMOR DIGI.	De-Armor Digivolve
+# 125 / 121 -> 87 / 84
+299	SPEED DIGI.	Speed Digivolve
+# 103 / 100 -> 65 / 63

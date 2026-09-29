@@ -103,6 +103,36 @@ void test_fit_name() {
     CHECK(f.text == "HerculesKabuterimon" && f.spacing == Spacing::Normal);
 }
 
+void test_fold_upper() {
+    CHECK(fold_upper("MasterTyrannomon") == "MASTERTYRANNOMON");
+    CHECK(fold_upper("Mega Def. Disk \x01\x08") == "MEGA DEF. DISK \x01\x08");
+    CHECK(fold_upper("") == "");
+    // Code arguments are left alone, even when they look like lowercase letters.
+    CHECK(fold_upper(std::string("a\x01" "b\x0C" "cd")) == std::string("A\x01" "b\x0C" "cD"));
+    // A code byte at the very end has no argument: nothing to skip.
+    CHECK(fold_upper(std::string("z\x0C")) == std::string("Z\x0C"));
+    // Capitals of the synthetic table: 8 px each with the gap.
+    CHECK(measure(table(), fold_upper("abc"), Spacing::Normal) == 24);
+}
+
+void test_place() {
+    // Fits from the caller's x (last ink column x + width - 2 <= ink_end): unchanged.
+    CHECK(place(72, 40, 56, 150) == 72);
+    CHECK(place(72, 80, 56, 150) == 72);  // ink 72 .. 150
+    // Wider: moved left just enough to end at ink_end.
+    CHECK(place(72, 81, 56, 150) == 71);
+    CHECK(place(72, 96, 56, 150) == 56);  // the whole area
+    // Wider than the area: from min_x (overruns; the fit chose it as best effort).
+    CHECK(place(72, 120, 56, 150) == 56);
+    // An empty name stays put.
+    CHECK(place(72, 0, 56, 150) == 72);
+    // The battle panel's two sides at rest (mini_text.cpp kSlots): P1 x 72 [56, 150], P2 x 175
+    // [167, 263]. A 96 px name fills P1 and moves P2 left by 6.
+    CHECK(place(72, 96, 72 - 16, 72 + 78) == 56);
+    CHECK(place(175, 96, 175 - 8, 175 + 88) == 169);
+    CHECK(place(175, 88, 175 - 8, 175 + 88) == 175);
+}
+
 void test_parse_short_names() {
     const auto m = parse_short_names(
         "# comment\n"
@@ -127,6 +157,8 @@ int main() {
     test_tight_widths();
     test_layout_positions();
     test_fit_name();
+    test_fold_upper();
+    test_place();
     test_parse_short_names();
     std::puts("mini_fit: ok");
     return 0;

@@ -1,8 +1,8 @@
 #pragma once
 // Layout of English in the JP mini font (8x7 cells), shared by mini_text.cpp and its unit test:
 // proportional glyph placement, the tight spacing used when a card name would overrun its slot,
-// the choice between the full name, the tight full name and a short name, and the short-name
-// table's file format. Pure logic on an ink table: no guest memory, no VRAM.
+// the choice between the full name, the tight full name and a short name, card names in
+// capitals and their place in a slot, and the short-name table's file format. Pure logic on an ink table: no guest memory, no VRAM.
 // docs/re/text-engine.md §7.10.
 
 #include <algorithm>
@@ -116,6 +116,32 @@ inline Fit fit_name(const InkTable& ink, const std::string& full, const std::str
         if (try_fit(short_name, Spacing::Normal, s) || try_fit(short_name, Spacing::Tight, s)) return s;
     }
     return f;
+}
+
+/// `s` with a..z folded to A..Z, code arguments (01 N icon, 0C N colour) left alone. Card names
+/// are drawn in capitals, as the US build did (its 4x5 micro font folds them): the mini font's
+/// capitals read well, its lowercase does not (a stray dot on 'a', 'g' like 's').
+inline std::string fold_upper(const std::string& s) {
+    std::string out = s;
+    for (size_t i = 0; i < out.size(); ++i) {
+        const char c = out[i];
+        if ((c == 0x01 || c == 0x0C) && i + 1 < out.size()) {
+            ++i;  // the code's argument byte
+            continue;
+        }
+        if (c >= 'a' && c <= 'z') out[i] = static_cast<char>(c - 'a' + 'A');
+    }
+    return out;
+}
+
+/// Where a name of pen advance `width` (as measure(): its last inked column is start + width - 2)
+/// starts in a slot whose ink may run from `min_x` to `ink_end`: at the caller's own `x` when it
+/// ends by `ink_end` there, else moved left just enough to end at `ink_end`, but never before
+/// `min_x` (a name wider than the slot starts at min_x and overruns: the fit chose it as best
+/// effort).
+inline int place(int x, int width, int min_x, int ink_end) {
+    if (width <= 0 || x + width - 2 <= ink_end) return x;
+    return std::max(min_x, std::min(x, ink_end - width + 2));
 }
 
 /// Parses the converter's short-name file (assets/<serial>/en_short_names.txt, written by

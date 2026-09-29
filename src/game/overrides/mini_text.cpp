@@ -9,10 +9,12 @@
 //     the result right after. The names are English now (US CARD2.CDD grafted), so they came out
 //     blank. An all-ASCII source is copied through (bounded to the 21-byte name slot; bytes below
 //     0x20, such as a long-name tag, are dropped); anything else takes the original.
-//     Name slots: each caller has a width (kSlots). A name wider than its slot is drawn in tight
-//     spacing (mini_fit.hpp), and one still too wide is replaced by its short name
+//     Name slots (kSlots): the name is folded to capitals (the mini font's lowercase reads badly;
+//     the US folded these names too). A name wider than its slot is drawn in tight spacing
+//     (mini_fit.hpp), and one still too wide is replaced by its short name
 //     (config/SLPS-03101/text/short-names.tsv -> assets/<serial>/en_short_names.txt). The
-//     spacing is handed to the draw that follows (g_pending), not written into the string.
+//     spacing, the slot's area (the name moves left when it would overrun) and a y offset are
+//     handed to the draw that follows (g_pending), not written into the string.
 //
 //   text_draw_mini (800288C8, a0 x, a1 y, a2 str, a3 clut, sp+16 rgb*, sp+20 ot). Its grey
 //     wrapper 80028898 calls it with a jal the recompiler routes here, so both are covered. The
@@ -29,15 +31,16 @@
 //         8-px cells made English 40-60% wider than the kana it replaces (":Cursor" 56 px in a
 //         ~52 px help panel, card names up to 20 letters = 160 px); proportional ink widths
 //         bring most of them back to the JP widths;
-//       - capitals only (a translated "FULL SET!", the JP disc's own "RANK UP!", "L1      "):
+//       - a card name fitted by sjis_to_mini (capitals): proportionally as above, at its place;
+//       - other capitals only (a translated "FULL SET!", the JP disc's "RANK UP!", "L1      "):
 //         the original on a guest-stack copy, keeping the fixed cells (padding by spaces
 //         depends on them).
 //   The US drew these strings in its 4x5 micro font (US 80027DE8, JP 80027EF4) with lowercase
 //   folded to capitals; the JP micro cells have no lowercase, and 4x5 capitals read worse than
-//   the 8x7 mini letters at the same width, so the mini font is kept.
+//   the 8x7 mini letters, so the mini font is kept (card names in its capitals, like the US).
 //
-// DCB_TRACE_TEXT=1 / hex logs each mini draw like the main renderer's trace ("[text] mini ...")
-// and each fitted card name ("[text] mini-name ...").
+// DCB_TRACE_TEXT=1 / hex logs each mini draw like the main renderer's trace ("[text] mini ..."),
+// each fitted card name ("[text] mini-name ...") and the measured ink table ("[text] mini ink").
 
 #include "gpu/gpu.hpp"
 #include "hw/mmio.hpp"
@@ -65,7 +68,7 @@ namespace {
 
 namespace mini = dcb::mini;
 
-constexpr int kA0 = 4, kA1 = 5, kA2 = 6, kA3 = 7, kV0 = 2, kSp = 29, kRa = 31;
+constexpr int kA0 = 4, kA1 = 5, kA2 = 6, kA3 = 7, kV0 = 2, kS5 = 21, kSp = 29, kRa = 31;
 constexpr uint32_t kMiniDraw = 0x800288C8u;
 constexpr uint32_t kToMini = 0x8002A37Cu;
 constexpr uint32_t kSysTimX = 0x801D9704u;  // SYSTEM.TIM VRAM x (u16, halfwords)
@@ -74,23 +77,41 @@ constexpr size_t kNameMax = 20;             // card name slot: 21 bytes with the
 constexpr int kCell = 7;                    // mini glyph sprite: 7x7 in an 8x7 cell
 
 /// Card-name slots, by the return address of the sjis_to_mini call (each draws the name right
-/// after): the widest pen advance (mini_fit measure(), the last glyph's gap included) that stays
-/// clear of what follows. Measured on headless snapshots (docs/re/text-engine.md §7.10).
+/// after). The name is drawn in capitals (mini::fold_upper); its ink may use the columns
+/// [x + min_dx, x + end_dx] of the draw's own x: a name that ends by x + end_dx keeps the
+/// original x, a wider one moves left (mini::place). Measured on headless snapshots
+/// (docs/re/text-engine.md §7.10).
+struct Area {
+    int min_dx, end_dx;  // first / last column the ink may use, from the caller's x
+    /// Widest pen advance (measure(): the last glyph's gap included) that fits from min_dx.
+    constexpr int budget() const { return end_dx - min_dx + 2; }
+};
 struct Slot {
     uint32_t ra;
-    int width;
+    Area area[2];  // by side: the battle panel's P1 / P2 (s5 at the call); else area[0]
+    bool sided;
+    int dy;  // y offset of the name's draw
     const char* what;
+    /// One budget for both sides, so a card shows the same text on either side.
+    constexpr int budget() const {
+        return sided ? std::min(area[0].budget(), area[1].budget()) : area[0].budget();
+    }
 };
 constexpr Slot kSlots[] = {
-    // Battle card panel (8003C200): name at panel x + 32, the field's dark ends 1 px before
-    // the DP box border (175 .. 263 at rest); ink up to 261 keeps 2 px clear.
-    {0x8003C208u, 88, "battle panel"},
-    // SUBSEG 801E6AC4 (Edit Partner, partner panel, 801E65E8): name at x 59, the panel's
-    // inside ends at 203. Every card name fits (the widest is 112).
-    {0x801E6ACCu, 144, "partner"},
+    // Battle card panel (8003C200): the name bar between the DP label and the DP box. The draw's
+    // x is panel x + 32 - 21 * side (s5, 0 = P1): P1 (left, blue) 72 at rest, the bar's fill
+    // 56 .. 150 (the DP label's separator at 55, the border 151 .. 153); P2 (right, orange) 175,
+    // the fill 167 .. 263 (the DP box border at 264). The ink may use the whole fill, whose own
+    // edge lines frame it: 96 / 98 px from the left end, the name chosen for 96. The fill is rows
+    // 93 .. 99 between borders at 92 and 100, the capitals 7 rows tall: y - 1 centres them (at
+    // the original y they sat on the bottom border).
+    {0x8003C208u, {{-16, 78}, {-8, 88}}, true, -1, "battle panel"},
+    // SUBSEG 801E6AC4 (Edit Partner, partner panel, 801E65E8): name at x 59 (y 49), nothing
+    // after it on its row up to the panel's inside end at 205 (border at 206).
+    {0x801E6ACCu, {{0, 146}, {0, 146}}, false, 0, "partner"},
     // SUBSEG 801E78A4 (Edit Partner, armor panel, 801E73BC): name at the panel's x + 3 = 217,
-    // the inside ends at 303; ink up to 301.
-    {0x801E78ACu, 86, "armor"},
+    // the panel's inside 212 .. 303 (borders at 211 and 304).
+    {0x801E78ACu, {{-5, 86}, {-5, 86}}, false, 0, "armor"},
 };
 
 std::string read_string(PsxContext& ctx, uint32_t addr) {
@@ -167,6 +188,15 @@ void load_ink(PsxContext& ctx) {
     }
     // SYSTEM.TIM not uploaded yet (the letters would be blank): measure again next time.
     g_ink_ready = inked > 40;
+    // DCB_TRACE_TEXT: the measured table, one "c:left,width,left_rows,right_rows" per glyph.
+    if (g_ink_ready && trace_on()) {
+        std::fprintf(stderr, "[text] mini ink");
+        for (int c = 0x21; c < 0x80; ++c) {
+            const mini::Ink& g = g_ink[static_cast<size_t>(c - 0x20)];
+            std::fprintf(stderr, " %02X:%d,%d,%02X,%02X", c, g.left, g.width, g.left_rows, g.right_rows);
+        }
+        std::fputc('\n', stderr);
+    }
 }
 
 /// The ink table in use: the measured one, or 7-px cells before SYSTEM.TIM is in VRAM.
@@ -196,11 +226,15 @@ const std::unordered_map<std::string, std::string>& short_names() {
     return names;
 }
 
-/// The fitted name sjis_to_mini wrote for the draw that follows: its buffer, text and spacing.
+/// The fitted name sjis_to_mini wrote for the draw that follows: its buffer, text, spacing,
+/// width, the slot area of its side and the y offset.
 struct Pending {
     uint32_t dst = 0;
     std::string text;
     mini::Spacing spacing = mini::Spacing::Normal;
+    int width = 0;
+    Area area{0, 0};
+    int dy = 0;
 };
 Pending g_pending;
 
@@ -306,8 +340,8 @@ extern "C" {
 
 // 800288C8: text_draw_mini(x, y, str, clut, rgb*, ot).
 void dcb_text_draw_mini(PsxContext* ctx) {
-    const int x = static_cast<int>(ctx->r[kA0]);
-    const int y = static_cast<int>(ctx->r[kA1]);
+    int x = static_cast<int>(ctx->r[kA0]);
+    int y = static_cast<int>(ctx->r[kA1]);
     const uint32_t str = ctx->r[kA2];
     const int clut = static_cast<int>(ctx->r[kA3]);
     const uint32_t sp = ctx->r[kSp];
@@ -318,7 +352,12 @@ void dcb_text_draw_mini(PsxContext* ctx) {
     // A card name fitted by sjis_to_mini just before (same buffer, same text): its spacing.
     mini::Spacing spacing = mini::Spacing::Normal;
     const bool fitted = g_pending.dst != 0 && g_pending.dst == str && g_pending.text == raw;
-    if (fitted) spacing = g_pending.spacing;
+    if (fitted) {  // a card name: its spacing and its place in the slot
+        spacing = g_pending.spacing;
+        const Area& a = g_pending.area;
+        x = mini::place(x, g_pending.width, x + a.min_dx, x + a.end_dx);
+        y += g_pending.dy;
+    }
     g_pending = {};
     std::string s;
     bool translated = !fitted && dcb::text_translate(*ctx, raw, s);
@@ -374,16 +413,19 @@ void dcb_sjis_to_mini(PsxContext* ctx) {
     for (const Slot& slot : kSlots) {
         if (slot.ra != ra) continue;
         load_ink(*ctx);
+        out = mini::fold_upper(out);
         const auto it = short_names().find(name);
-        const std::string short_mini = it == short_names().end() ? std::string() : ascii_to_mini(it->second);
-        const mini::Fit fit = mini::fit_name(ink(), out, short_mini, slot.width);
+        const std::string short_mini =
+            it == short_names().end() ? std::string() : mini::fold_upper(ascii_to_mini(it->second));
+        const mini::Fit fit = mini::fit_name(ink(), out, short_mini, slot.budget());
+        const int side = slot.sided ? static_cast<int>(ctx->r[kS5] & 1) : 0;
         if (trace_on())
-            std::fprintf(stderr, "[text] mini-name %s src=%08X \"%s\" -> \"%s\" %s w=%d (slot %d, full %d)\n",
-                         slot.what, src, shown(out).c_str(), shown(fit.text).c_str(),
-                         fit.spacing == mini::Spacing::Tight ? "tight" : "normal", fit.width, slot.width,
+            std::fprintf(stderr, "[text] mini-name %s side %d src=%08X \"%s\" -> \"%s\" %s w=%d (slot %d, full %d)\n",
+                         slot.what, side, src, shown(out).c_str(), shown(fit.text).c_str(),
+                         fit.spacing == mini::Spacing::Tight ? "tight" : "normal", fit.width, slot.budget(),
                          mini::measure(ink(), out, mini::Spacing::Normal));
         out = fit.text;
-        g_pending = {dst, out, fit.spacing};
+        g_pending = {dst, out, fit.spacing, fit.width, slot.area[side], slot.dy};
         break;
     }
     for (size_t i = 0; i < out.size(); ++i)

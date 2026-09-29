@@ -548,7 +548,8 @@ not (text.cpp calls `f_80029F70` directly), so they keep the JP art.
   ≥ 0x80 or `~`) → the original. A string with lowercase letters → **proportional**: one call of
   the original per glyph on a 2-byte guest-stack string, each glyph trimmed to its ink columns
   (measured from the SYSTEM.TIM mini cells in VRAM), 1 px gap, space 3 px, no space after an
-  icon; `01 N` icons through `dcb_text_icon`. Capitals only (the JP disc's "RANK UP!",
+  icon; `01 N` icons through `dcb_text_icon`. A card name fitted by `sjis_to_mini` (capitals,
+  below) is drawn the same way, at its place in the slot. Other capitals only (the JP disc's "RANK UP!",
   "L1      ", translated "FULL SET!") keep the fixed 8 px cells, since callers pad with spaces.
 - Why not the micro font: the US drew these in a 4×5 capital font (US `80027DE8`; JP has the same
   cells at `80027EF4`, no lowercase). The mini font already has full ASCII with lowercase; with
@@ -558,34 +559,51 @@ not (text.cpp calls `f_80029F70` directly), so they keep the JP art.
   edit's effect text at +52). In that budget the US "1stAttack" (56) and "Eat-up HP" (57) do not
   fit: `en-mini.tsv` shortens them ("1st Atk", "Eat HP"); "\x01\x08 Counter" is 51 with the
   icon. (H: measured)
-- **Card-name slots** (widths as the trace's `w=`, the pen advance with the last glyph's 1 px
-  gap; measured on headless snapshots, H: run):
+- **Card names in capitals.** The mini font's lowercase reads badly in a name ("MstrTyrannomon":
+  `a` has a stray dot, `g` looks like `s`); its capitals read well, and the US build folded
+  these names to capitals as well (4×5 micro font). `dcb_sjis_to_mini` folds `a`–`z` to `A`–`Z`
+  (`mini_fit.hpp`, `fold_upper`; code arguments `01 N` / `0C N` left alone) for the three
+  card-name callers only; other mini strings (support labels, hints) keep their case. Capitals
+  are 7 px wide (`I` 1), 7 rows tall, so a name costs about 8 px a letter: 12 letters in 96 px.
+- **Card-name slots** (the ink area from the draw's own x; budgets as the trace's `w=`, the pen
+  advance with the last glyph's 1 px gap; measured on headless snapshots, H: run):
 
-  | `sjis_to_mini` caller | screen | name x | slot | limit |
+  | `sjis_to_mini` caller | screen | name x | ink area | budget |
   |---|---|---|---|---|
-  | `8003C200` | battle card panel | panel + 32 (175 at rest) | 88 | the field ends at 263, the DP box border at 264; ink to 261 |
-  | SUBSEG `801E6AC4` (`801E65E8`) | Edit Partner, partner panel | 59 | 144 | panel inside ends at 203 |
-  | SUBSEG `801E78A4` (`801E73BC`) | Edit Partner, armor panel (a Digimon card; shown when partner record +770 ≠ 0) | panel + 3 = 217 | 86 | panel inside ends at 303 |
+  | `8003C200`, side 0 (s5) | battle card panel, P1 (left, blue bar) | panel + 32 = 72 at rest | x − 16 .. x + 78 = 56 .. 150: the bar's fill between the DP label's separator (55) and the border (151–153) | 96 |
+  | `8003C200`, side 1 | battle card panel, P2 (right, orange bar) | panel + 11 = 175 at rest | x − 8 .. x + 88 = 167 .. 263: the fill between the bar's left edge (164–166) and the DP box border (264) | 98 |
+  | SUBSEG `801E6AC4` (`801E65E8`) | Edit Partner, partner panel | 59 | x .. x + 146 = 59 .. 205 (border at 206) | 148 |
+  | SUBSEG `801E78A4` (`801E73BC`) | Edit Partner, armor panel (a Digimental armor, cards 172–190; shown when `game_data + 0x302` ≠ 0) | panel + 3 = 217 | x − 5 .. x + 86 = 212 .. 303 (borders at 211 and 304) | 93 |
 
-  At normal spacing 17 of the 301 US card names are wider than the battle slot, 24 than the
-  armor slot, none than the partner slot. `dcb_sjis_to_mini` knows the caller by its return
-  address and fits the name (`src/game/overrides/mini_fit.hpp`, `fit_name`): the full name if
-  it fits; else the full name in **tight spacing** (1 px between two glyphs only where their
-  facing ink columns share a row, else 0; 2 px between words), which takes 8 of the 17
-  (MetalSeadramon 89 → 85, PlatinumSukamon 89 → 86, Mega Rec. Floppy 91 → 85, Dark Lord's Cape
-  96 → 87, the three "Mega Def. Disk" 89 → 82, Cherrymon's Mist 90 → 86); else our **short
-  name** from `config/SLPS-03101/text/short-names.tsv` (card number, short name, full name as a
-  check; `tools/text/short_names.py` → `assets/<serial>/en_short_names.txt`, full → short), in
-  normal spacing, or tight when only that fits. The other 9: RealMetalGreymon → R.MetalGreymon,
-  MasterTyrannomon → MstrTyrannomon (tight), HerculesKabuterimon → HrcKabuterimon,
-  MegaKabuterimon → M.Kabuterimon, Mega Attack Chip → Mega Atk. Chip, Another Dimension →
-  Another Dim., Download / ArmorCrush / De-Armor Digivolve → … Digi. Dropping the gap
-  everywhere (0 px) would fit all but two, but merges letters ("rn" reads "m"). The spacing is
-  handed to the draw that follows (the same buffer and text), not written into the string. The
-  short names are used only there: the main font's card info and lists keep the US name. The
-  armor slot only shows Digimon, so the items over 86 px (Dark Lord's Cape, tight 87) never
-  land there. `DCB_TRACE_TEXT` logs each fit as `[text] mini-name <slot> src=… "full" ->
-  "drawn" normal|tight w=N`, and the draw as `mini tight w=N`.
+  The name's x is `panel x + 32 − 21·side` (`8003C200`), so the two sides differ: P1 starts
+  16 px after its DP label and had only 78 px before the bar's end (the old single 88 px slot,
+  measured on P2, overran it). **Placement** (`mini_fit.hpp`, `place`): a name that ends inside
+  the area from the original x stays there; a wider one moves left just enough to end at the
+  area's last column, down to its first. The battle bar's fill is rows 93 .. 99 between borders
+  at 92 and 100; at the original y the capitals (rows y .. y + 6) sat on the bottom border, so
+  the battle draws are moved up 1 (`dy` −1), which centres them. The Edit Partner panels keep
+  their y. The battle panel chooses the name for the narrower side (96) so a card reads the
+  same on either side, and places it per side.
+
+  `dcb_sjis_to_mini` knows the caller by its return address (and the battle side by s5) and fits
+  the name (`fit_name`): the full name if it fits; else the full name in **tight spacing** (1 px
+  between two glyphs only where their facing ink columns share a row, else 0; 2 px between
+  words); else our **short name** from `config/SLPS-03101/text/short-names.tsv` (card number,
+  short name in capitals, full name as a check; `tools/text/short_names.py` →
+  `assets/<serial>/en_short_names.txt`, full → short), in normal spacing, or tight when only
+  that fits. In capitals 53 of the 301 US names are wider than 96 px even tight (21 Digimon, 32
+  items / options), and each has a short name, e.g. MasterTyrannomon → M.TYRANNOMON,
+  HerculesKabuterimon → H.KABUTERIMON, MetalSeadramon / MegaSeadramon → MT.SEADRAMON /
+  MG.SEADRAMON, Machinedramon → MACHINDRAMON, Level Balancer → LV. BALANCER, Download Digivolve
+  → DOWNLOAD DIGI. (the full list with widths is the file). Names just under the budget fit
+  whole (MetalGreymon 94, SkullGreymon 95, MagnaAngemon 96). Every name fits Edit Partner
+  (HerculesKabuterimon 146 of 148; the armor cards up to Armadillomon 89 of 93), so the short
+  names only show in battle; the main font's card info and lists keep the US name. Dropping
+  the gap everywhere (0 px) would merge letters. The spacing, the side's area and `dy` are
+  handed to the draw that follows (the same buffer and text), not written into the string.
+  `DCB_TRACE_TEXT` logs each fit as `[text] mini-name <slot> side N src=… "FULL" -> "DRAWN"
+  normal|tight w=N (slot budget, full width)`, the draw as `mini prop|tight w=N` at the placed
+  x, y, and the measured ink table once as `[text] mini ink`.
 - Strings seen through the mini path (headless runs): the Deck Select HELP legend (SUBSEG
   1ac8.., catalog-subseg), the deck edit sort hint (SUBSEG 1c88), the support labels (EXE
   2320.., catalog-exe) in deck edit / card selection / partner / battle, battle card names.
