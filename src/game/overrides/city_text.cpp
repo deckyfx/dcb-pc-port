@@ -54,6 +54,30 @@ uint32_t slot_serial(PsxContext& ctx, uint32_t slot) {
 
 }  // namespace
 
+namespace {
+
+constexpr uint32_t kGameData = 0x80070C2Cu;  // -> game_data (+0 the player's name)
+
+/// `*h0` -> the player's name (game_data + 0, at most 12 bytes): the city builder's `h0` code
+/// (its jump table sends `h` to the name copy, 801E2A64); the US city lines write it `*h0`.
+std::string expand_player_name(PsxContext& ctx, const std::string& text) {
+    const size_t at = text.find("*h0");
+    if (at == std::string::npos) return text;
+    const std::string name = read_string(ctx, psx_read32(&ctx, kGameData), 12);
+    std::string out;
+    for (size_t i = 0; i < text.size(); ++i) {
+        if (text.compare(i, 3, "*h0") == 0) {
+            out += name;
+            i += 2;
+        } else {
+            out.push_back(text[i]);
+        }
+    }
+    return out;
+}
+
+}  // namespace
+
 extern "C" {
 
 // SAISEG 801E2978: city_msg_build(text) -> slot index, or -1 when no slot is free.
@@ -63,6 +87,7 @@ void dcb_city_msg_build(PsxContext* ctx) {
     const bool english = is_english(src);
     if (english) text = src;
     else if (!dcb::text_translate(*ctx, src, text)) return psx_call_original(ctx, kBuild);
+    text = expand_player_name(*ctx, text);
 
     ctx->r[kA0] = kSlots;
     o_SAISEG_801E293C(ctx);  // city_msg_slot_alloc: marks the slot in use, zeroes the shown count

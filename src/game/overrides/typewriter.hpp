@@ -40,6 +40,12 @@ inline size_t code_length(const std::string& s, size_t i) {
     return std::min<size_t>(3, s.size() - i);
 }
 
+/// Bytes of the character at s[i]: 2 for a Shift-JIS character (a JP player name inside an
+/// English line), else 1 - so a reveal never shows half a character.
+inline size_t char_length(const std::string& s, size_t i) {
+    return sjis_lead(static_cast<uint8_t>(s[i])) && i + 1 < s.size() ? 2 : 1;
+}
+
 /// How many characters of `s` show (control codes excluded).
 inline size_t visible_count(const std::string& s) {
     size_t n = 0;
@@ -49,7 +55,7 @@ inline size_t visible_count(const std::string& s) {
             i += code;
         } else {
             ++n;
-            ++i;
+            i += char_length(s, i);
         }
     }
     return n;
@@ -66,7 +72,7 @@ inline std::string prefix(const std::string& s, size_t visible) {
         }
         if (n == visible) break;
         ++n;
-        ++i;
+        i += char_length(s, i);
     }
     return s.substr(0, i);
 }
