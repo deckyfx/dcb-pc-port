@@ -10,8 +10,8 @@ namespace {
 
 const char* kMainItems[] = {"Resume",   "Save / Load state", "Settings", "Controls",
                             "Memory card", "Trainer (cheats, battle, memory search)", "Hotkeys", "About",
-                            "Quit to desktop"};
-constexpr int kMainCount = 9;
+                            "Reset game", "Quit to desktop"};
+constexpr int kMainCount = 10;
 
 const char* kSlotNames[4] = {"Slot 1", "Slot 2", "Slot 3", "Slot 4"};
 
@@ -44,6 +44,7 @@ void Menu::set_info(Page page, std::vector<std::string> lines) {
     case Page::About: info_about_ = std::move(lines); break;
     case Page::Hotkeys: info_hotkeys_ = std::move(lines); break;
     case Page::ConfirmQuit: break;
+    case Page::ConfirmReset: break;
     }
 }
 
@@ -57,6 +58,7 @@ int Menu::item_count() const {
     case Page::About: return 1;
     case Page::Hotkeys: return 1;      // read-only; any Enter goes back
     case Page::ConfirmQuit: return 2;  // Yes / No
+    case Page::ConfirmReset: return 2;  // Yes / No
     }
     return 1;
 }
@@ -73,7 +75,8 @@ Action Menu::activate(int item) {
         case 5: return Action::OpenTrainer;  // the host closes the menu and opens the trainer
         case 6: page_ = Page::Hotkeys; sel_ = 0; scroll_ = 0; return Action::OpenHotkeys;
         case 7: page_ = Page::About; sel_ = 0; scroll_ = 0; return Action::OpenAbout;
-        case 8: page_ = Page::ConfirmQuit; sel_ = 1; scroll_ = 0; return Action::None;
+        case 8: page_ = Page::ConfirmReset; sel_ = 1; scroll_ = 0; return Action::None;
+        case 9: page_ = Page::ConfirmQuit; sel_ = 1; scroll_ = 0; return Action::None;
         }
         break;
     case Page::States:
@@ -108,6 +111,7 @@ Action Menu::activate(int item) {
         }
         return item == static_cast<int>(cards_.size()) ? Action::BackupCard : Action::UseCard;
     case Page::ConfirmQuit: return item == 0 ? Action::Quit : Action::Resume;
+    case Page::ConfirmReset: return item == 0 ? Action::Reset : Action::Resume;
     }
     return Action::None;
 }
@@ -151,7 +155,7 @@ Action Menu::key(Key k) {
         return Action::None;
     case Key::Enter: return activate(sel_);
     case Key::Back:
-        if (page_ == Page::ConfirmQuit) return Action::Resume;
+        if (page_ == Page::ConfirmQuit || page_ == Page::ConfirmReset) return Action::Resume;
         if (page_ != Page::Main) {
             page_ = Page::Main;
             sel_ = 0;
@@ -259,6 +263,15 @@ void Menu::render_info(std::vector<Line>& out, const char* title) const {
         out.push_back({std::string(sel_ == 1 ? "> " : "  ") + "No, keep playing",
                        sel_ == 1 ? Style::Selected : Style::Good});
     }
+    if (page_ == Page::ConfirmReset) {
+        out.push_back({"Back to power-on; unsaved progress is lost.", Style::Dim});
+        out.push_back({"The memory card and save states stay.", Style::Dim});
+        out.push_back({"", Style::Normal});
+        out.push_back({std::string(sel_ == 0 ? "> " : "  ") + "Yes, reset",
+                       sel_ == 0 ? Style::Selected : Style::Error});
+        out.push_back({std::string(sel_ == 1 ? "> " : "  ") + "No, keep playing",
+                       sel_ == 1 ? Style::Selected : Style::Good});
+    }
     out.push_back({"", Style::Normal});
     out.push_back({"Enter=select  Esc=back", Style::Dim});
 }
@@ -277,6 +290,7 @@ std::vector<Line> Menu::render(int cols, int rows) const {
         else if (page_ == Page::About) title = "ABOUT";
         else if (page_ == Page::Hotkeys) title = "HOTKEYS";
         else if (page_ == Page::ConfirmQuit) title = "QUIT?";
+        else if (page_ == Page::ConfirmReset) title = "RESET GAME?";
         render_info(all, title);
         break;
     }

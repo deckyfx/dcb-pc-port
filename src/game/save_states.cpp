@@ -1,5 +1,7 @@
 #include "save_states.hpp"
 
+#include "overrides/movies.hpp"
+
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
@@ -55,9 +57,12 @@ SaveStates::SaveStates(const hle::Guest& guest, HostFrameState& frame_state, pla
                        platform::Platform& host)
     : guest_(guest), frame_state_(frame_state), input_log_(input_log), host_(host),
       save_at_(env_frames("DCB_STATE_SAVE_AT")), load_at_(env_frames("DCB_STATE_LOAD_AT")),
-      dump_at_(env_frames("DCB_STATE_DUMP_AT")) {
+      dump_at_(env_frames("DCB_STATE_DUMP_AT")), reset_at_(env_frames("DCB_RESET_AT")) {
     const std::vector<uint64_t> exit_at = env_frames("DCB_EXIT_AT");
     if (!exit_at.empty()) exit_at_ = exit_at.front();
+    power_on_error_ = save_to(power_on_);  // the game has not run a frame yet
+    if (!power_on_error_.empty()) std::fprintf(stderr, "[state] no power-on state (reset unavailable): %s\n",
+                                               power_on_error_.c_str());
     const std::vector<uint64_t> stress = env_frames("DCB_STATE_STRESS");
     if (!stress.empty() && stress.front() > 0) stress_every_ = stress.front();
 }
@@ -145,6 +150,25 @@ bool SaveStates::load(int slot) {
     return true;
 }
 
+bool SaveStates::reset() {
+    if (power_on_.empty()) {
+        notify("Reset unavailable: " + power_on_error_);
+        return false;
+    }
+    if (const std::string error = load_from(power_on_); !error.empty()) {
+        notify("Reset: " + error);
+        return false;
+    }
+    // A movie playing now belonged to the task the load just replaced (unlike a save state, a
+    // reset needs none of its host-side playback state): drop it, the game starts its own.
+    MovieHost& movie = movie_host();
+    movie.active = false;
+    movie.skip = false;
+    movie.index = -1;
+    notify("Game reset");
+    return true;
+}
+
 uint64_t SaveStates::digest() const {
     // CPU registers, guest time, RAM and scratchpad (the "CPU " chunk has no padding bytes), and
     // VRAM: what the game computed and what it shows. FNV-1a, 64-bit.
@@ -210,6 +234,7 @@ bool SaveStates::handle(uint32_t commands) {
     // Debug triggers: a save and a load at the same count happen in that order.
     if (take(save_at_, frames_)) save(slot_);
     if (take(load_at_, frames_)) loaded |= load(slot_);
+    if (take(reset_at_, frames_)) loaded |= reset();
     // Offline analysis: dump the slot bytes for tools/re/scan_stacks.py.
     if (take(dump_at_, frames_)) {
         if (const char* path = std::getenv("DCB_STATE_DUMP_PATH")) {

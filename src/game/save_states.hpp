@@ -4,6 +4,8 @@
 //
 //   DCB_STATE_SAVE_AT=<frame>[,<frame>...]   save to the selected slot once that many frames ran
 //   DCB_STATE_LOAD_AT=<frame>[,<frame>...]   load the selected slot at those frame counts
+//   DCB_RESET_AT=<frame>[,<frame>...]        reset to power-on (the menu's Reset game) at those
+//                                            frame counts
 //   DCB_EXIT_AT=<frame>                      quit cleanly once that many frames ran
 //   DCB_STATE_STRESS=<n>                     self-check: save, run n frames, fingerprint the
 //                                            machine, load, run them again, compare; repeat
@@ -60,6 +62,10 @@ public:
     /// Save into / load from slot `slot` (0-based). They report through the platform notice.
     bool save(int slot);
     bool load(int slot);
+    /// Back to power-on: loads the state captured when this object was made (right after
+    /// System::start, before the first frame). Save slots and the memory card are untouched; a
+    /// movie playing is dropped.
+    bool reset();
 
     /// Slot inspection for the native menu (thumbnails, timestamps).
     bool occupied(int slot) const;
@@ -87,9 +93,11 @@ private:
     platform::Platform& host_;
     std::array<std::vector<uint8_t>, kSlots> slots_;
     std::array<Thumbnail, kSlots> thumbs_;
+    std::vector<uint8_t> power_on_;  ///< the state before the first frame (reset())
+    std::string power_on_error_;     ///< why power_on_ could not be captured
     int slot_ = 0;
     uint64_t frames_ = 0;
-    std::vector<uint64_t> save_at_, load_at_, dump_at_;
+    std::vector<uint64_t> save_at_, load_at_, dump_at_, reset_at_;
     uint64_t exit_at_ = 0;
 
     // DCB_STATE_STRESS

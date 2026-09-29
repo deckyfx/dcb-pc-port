@@ -204,6 +204,9 @@ bool handle_menu_action(menu::Action action, platform::Platform& host, menu::Men
         return false;
     case menu::Action::OpenCards: refresh_cards(menu); return false;
     case menu::Action::Quit: host.request_quit(); return false;
+    case menu::Action::Reset:
+        menu.set_open(false);
+        return states.reset();  // also during a movie (SaveStates::reset drops it)
     case menu::Action::SaveSlot: {
         const int slot = menu.slot();
         states.select_slot(slot);
