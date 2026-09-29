@@ -24,10 +24,6 @@ gitignored assets/SLPS-03101/ (never into git):
   en_names.txt   those long names: "<11 letters>\t<tag>\t<full name>" per
                  line; the renderer (src/game/overrides/text.cpp) draws the
                  full name wherever the key shows up
-  en_short_names.txt
-                 "<full card name>\t<short name>": our short names for the
-                 mini font's narrow slots (config/SLPS-03101/text/
-                 short-names.tsv, tools/text/short_names.py)
 
 Usage: en_text.py --jp <extracted/SLPS-03101> --us <extracted/SLUS-01328>
                   --out <assets/SLPS-03101>
@@ -51,7 +47,6 @@ import msd as _msd  # noqa: E402  (tools/text/msd.py)
 import fixes as _fixes  # noqa: E402  (tools/text/fixes.py)
 import bigfont as _bigfont  # noqa: E402  (tools/text/bigfont.py)
 import scripts as _scripts  # noqa: E402  (tools/text/scripts.py)
-import short_names as _short_names  # noqa: E402  (tools/text/short_names.py)
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "assets"))
 import dcb_containers as _containers  # noqa: E402  (PAK reader/writer)
@@ -336,11 +331,6 @@ def main(argv=None) -> int:
     (out / "files" / "B" / "CARD2.CDD").write_bytes(grafted)
     print(f"cdd: {stats['names']} names, {stats['attacks']} attacks, "
           f"{stats['effects_fit']} effect lines, {len(stats['effects_long'])} overlong")
-    n_short, short_problems = _short_names.write(REPO / "config" / "SLPS-03101" / "text" / "short-names.tsv",
-                                                 us_cdd, out)
-    print(f"short names: {n_short} -> en_short_names.txt")
-    for line in short_problems:
-        print(f"  short names: {line}")
     diffs = []
     for c in (5, 13, 128):
         a = jp_cdd[8 + c * 0x134 + 0x8E]
@@ -412,7 +402,7 @@ def main(argv=None) -> int:
     print(f"catalog: {len(source)} strings, {len(en)} English -> text/source.tsv, text/en.tsv")
     for line in problems:
         print(f"  catalog: {line}")
-    return 1 if problems or short_problems else 0
+    return 1 if problems else 0
 
 
 if __name__ == "__main__":

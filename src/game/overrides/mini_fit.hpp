@@ -1,15 +1,15 @@
 #pragma once
-// Layout of English in the JP mini font (8x7 cells), shared by mini_text.cpp and its unit test:
-// proportional glyph placement, the tight spacing used when a card name would overrun its slot,
-// the choice between the full name, the tight full name and a short name, card names in
-// capitals and their place in a slot, and the short-name table's file format. Pure logic on an ink table: no guest memory, no VRAM.
+// Layout of English in the JP mini font (8x7 cells) and micro font (4x5 capitals), shared by
+// mini_text.cpp and its unit test: proportional mini glyph placement, the tight spacing used when
+// a card name would overrun its slot, card names in capitals and their place in a slot, and the
+// US micro layout (fixed 5 px cells, folded capitals, 5x5 icons). Pure logic: no guest memory,
+// no VRAM.
 // docs/re/text-engine.md §7.10.
 
 #include <algorithm>
 #include <array>
 #include <cstdint>
 #include <string>
-#include <unordered_map>
 
 namespace dcb::mini {
 
@@ -100,27 +100,17 @@ struct Fit {
     int width = 0;
 };
 
-/// The full name when it fits, else the full name in tight spacing, else the short name (if
-/// any; normal, then tight spacing), else the full name tight (still too wide: best effort).
-/// budget <= 0: no limit.
-inline Fit fit_name(const InkTable& ink, const std::string& full, const std::string& short_name, int budget) {
-    const auto try_fit = [&](const std::string& s, Spacing sp, Fit& out) {
-        const int w = measure(ink, s, sp);
-        out = {s, sp, w};
-        return budget <= 0 || w <= budget;
-    };
-    Fit f;
-    if (try_fit(full, Spacing::Normal, f) || try_fit(full, Spacing::Tight, f)) return f;
-    if (!short_name.empty()) {
-        Fit s;
-        if (try_fit(short_name, Spacing::Normal, s) || try_fit(short_name, Spacing::Tight, s)) return s;
-    }
-    return f;
+/// The name in normal spacing when it fits, else in tight spacing (also when that is still too
+/// wide: best effort). budget <= 0: no limit.
+inline Fit fit_name(const InkTable& ink, const std::string& name, int budget) {
+    const int w = measure(ink, name, Spacing::Normal);
+    if (budget <= 0 || w <= budget) return {name, Spacing::Normal, w};
+    return {name, Spacing::Tight, measure(ink, name, Spacing::Tight)};
 }
 
 /// `s` with a..z folded to A..Z, code arguments (01 N icon, 0C N colour) left alone. Card names
-/// are drawn in capitals, as the US build did (its 4x5 micro font folds them): the mini font's
-/// capitals read well, its lowercase does not (a stray dot on 'a', 'g' like 's').
+/// are drawn in capitals, as the US build did: the mini font's capitals read well, its lowercase
+/// does not (a stray dot on 'a', 'g' like 's').
 inline std::string fold_upper(const std::string& s) {
     std::string out = s;
     for (size_t i = 0; i < out.size(); ++i) {
@@ -144,25 +134,60 @@ inline int place(int x, int width, int min_x, int ink_end) {
     return std::max(min_x, std::min(x, ink_end - width + 2));
 }
 
-/// Parses the converter's short-name file (assets/<serial>/en_short_names.txt, written by
-/// tools/text/short_names.py): "<full name>\t<short name>" per line, '#' comments, blank lines
-/// ignored. The full name is the card name as stored in CARD2.CDD (US text, e.g. "Mega Def.
-/// Disk *b0"). Returns full -> short.
-inline std::unordered_map<std::string, std::string> parse_short_names(const std::string& text) {
-    std::unordered_map<std::string, std::string> out;
-    size_t pos = 0;
-    while (pos < text.size()) {
-        size_t end = text.find('\n', pos);
-        if (end == std::string::npos) end = text.size();
-        std::string line = text.substr(pos, end - pos);
-        pos = end + 1;
-        if (!line.empty() && line.back() == '\r') line.pop_back();
-        if (line.empty() || line[0] == '#') continue;
-        const size_t tab = line.find('\t');
-        if (tab == std::string::npos || tab == 0 || tab + 1 >= line.size()) continue;
-        out[line.substr(0, tab)] = line.substr(tab + 1);
+// ---- Micro font (4x5 capitals: JP 80027EF4, US 80027DE8) ---------------------------------
+// The US build draws the battle card panel's card names and support labels in this font. Fixed
+// cells: each glyph and each space advances 5 px (4 px glyph + 1 px gap), a newline 6 rows; the
+// US renderer folds a..z to A..Z and draws code 01 N as a 5x5 icon (mode 3 of its text_icon,
+// US-only art) that advances 6. The JP micro renderer has the same glyph cells (SYSTEM.TIM rows
+// 234..253, byte-identical in both discs) but no folding and no icon code, so the port lays the
+// string out here and draws glyph by glyph (docs/re/text-engine.md §7.10).
+
+constexpr int kMicroAdvance = 5;      // glyph and space
+constexpr int kMicroIconAdvance = 6;  // 01 N icon (5x5)
+constexpr int kMicroLineStep = 6;     // newline
+constexpr int kMicroIconSize = 5;
+
+/// Lays `s` out in the micro font from (x, y) as the US renderer does: a..z folded to capitals,
+/// 01 N icon, 0C N colour, 0A newline; a byte with no micro cell (outside 0x21..0x5F after the
+/// fold) advances like a space. Calls `emit(const Item&)` per glyph (folded code), icon and colour
+/// code; returns the widest line's pen advance (the last glyph's 1 px gap included, as the mini
+/// layout: the last inked column is x + width - 2).
+template <class Emit>
+int micro_layout(const std::string& s, int x, int y, Emit&& emit) {
+    int pen = x, width = 0;
+    for (size_t i = 0; i < s.size(); ++i) {
+        uint8_t c = static_cast<uint8_t>(s[i]);
+        if (c == 0x01 && i + 1 < s.size()) {
+            emit(Item{Item::Icon, static_cast<uint8_t>(s[++i]), pen, y});
+            pen += kMicroIconAdvance;
+        } else if (c == 0x0C && i + 1 < s.size()) {
+            emit(Item{Item::Colour, static_cast<uint8_t>(s[++i]), pen, y});
+        } else if (c == 0x0A) {
+            width = std::max(width, pen - x);
+            pen = x;
+            y += kMicroLineStep;
+        } else {
+            if (c >= 'a' && c <= 'z') c = static_cast<uint8_t>(c - 'a' + 'A');
+            if (c > 0x20 && c < 0x60) emit(Item{Item::Glyph, c, pen, y});
+            pen += kMicroAdvance;
+        }
     }
-    return out;
+    return std::max(width, pen - x);
+}
+
+/// Width of `s` in the micro font (see micro_layout).
+inline int micro_measure(const std::string& s) {
+    return micro_layout(s, 0, 0, [](const Item&) {});
+}
+
+/// Cell of micro icon `idx` (code 01 N: idx = N - 1) in the US SYSTEM.TIM, as US text_icon mode 3
+/// (80029A0C): u = 48 + (idx % 14) * 6, v = 160 + (idx / 14) * 6 (TIM rows; the port's private
+/// sheet holds the US rows 48..223).
+struct IconCell {
+    int u, v;
+};
+constexpr IconCell micro_icon_cell(int idx) {
+    return {48 + (idx % 14) * 6, 160 + (idx / 14) * 6};
 }
 
 }  // namespace dcb::mini

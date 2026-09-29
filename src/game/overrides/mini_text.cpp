@@ -9,12 +9,12 @@
 //     the result right after. The names are English now (US CARD2.CDD grafted), so they came out
 //     blank. An all-ASCII source is copied through (bounded to the 21-byte name slot; bytes below
 //     0x20, such as a long-name tag, are dropped); anything else takes the original.
-//     Name slots (kSlots): the name is folded to capitals (the mini font's lowercase reads badly;
-//     the US folded these names too). A name wider than its slot is drawn in tight spacing
-//     (mini_fit.hpp), and one still too wide is replaced by its short name
-//     (config/SLPS-03101/text/short-names.tsv -> assets/<serial>/en_short_names.txt). The
-//     spacing, the slot's area (the name moves left when it would overrun) and a y offset are
-//     handed to the draw that follows (g_pending), not written into the string.
+//     Name slots (kSlots): the name is folded to capitals. The battle card panel draws it in the
+//     4x5 micro font at the US position, like the US build (below); the Edit Partner panels keep
+//     the mini font (the US drew those in its 6x6 font, not micro), in tight spacing if a name
+//     would be wider than its slot. The font, the slot's area (the name moves left when it would
+//     overrun), the spacing and the offsets are handed to the draw that follows (g_pending), not
+//     written into the string.
 //
 //   text_draw_mini (800288C8, a0 x, a1 y, a2 str, a3 clut, sp+16 rgb*, sp+20 ot). Its grey
 //     wrapper 80028898 calls it with a jal the recompiler routes here, so both are covered. The
@@ -35,12 +35,18 @@
 //       - other capitals only (a translated "FULL SET!", the JP disc's "RANK UP!", "L1      "):
 //         the original on a guest-stack copy, keeping the fixed cells (padding by spaces
 //         depends on them).
-//   The US drew these strings in its 4x5 micro font (US 80027DE8, JP 80027EF4) with lowercase
-//   folded to capitals; the JP micro cells have no lowercase, and 4x5 capitals read worse than
-//   the 8x7 mini letters, so the mini font is kept (card names in its capitals, like the US).
 //
-// DCB_TRACE_TEXT=1 / hex logs each mini draw like the main renderer's trace ("[text] mini ..."),
-// each fitted card name ("[text] mini-name ...") and the measured ink table ("[text] mini ink").
+//   Micro font (4x5 capitals), as the US battle card panel: the US build draws the card name
+//   (US 800398A0, JP 8003C230) and the support label under the attack rows (US 80039994 /
+//   8003AA88, JP 8003C32C / 8003D43C) with its micro renderer (US 80027DB8 / 80027DE8, JP
+//   80027EC4 / 80027EF4) instead of the mini font. Those draws (known by the return address)
+//   are laid out by mini::micro_layout (folded capitals, 5 px cells, 5x5 icons) at the US
+//   position and drawn glyph by glyph with the JP micro renderer; an icon (01 N) is the JP
+//   text_icon's packet pointed at the US icon cell in the private sheet (US-only art).
+//
+// DCB_TRACE_TEXT=1 / hex logs each mini draw like the main renderer's trace ("[text] mini ...",
+// "micro" for the micro draws), each fitted card name ("[text] mini-name ...") and the measured
+// ink table ("[text] mini ink").
 
 #include "gpu/gpu.hpp"
 #include "hw/mmio.hpp"
@@ -58,10 +64,10 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
-#include <unordered_map>
 
 extern "C" {
 void dcb_text_icon(PsxContext* ctx);  // text_icon 80029F70 through its override (level_badges.cpp)
+void f_80027EF4(PsxContext* ctx);     // text_draw_micro(x, y, str, clut, rgb* @sp16, ot @sp20)
 }
 
 namespace {
@@ -70,7 +76,11 @@ namespace mini = dcb::mini;
 
 constexpr int kA0 = 4, kA1 = 5, kA2 = 6, kA3 = 7, kV0 = 2, kS5 = 21, kSp = 29, kRa = 31;
 constexpr uint32_t kMiniDraw = 0x800288C8u;
+constexpr uint32_t kMiniGreyRet = 0x800288B8u;  // return address of the grey wrapper's (80028898) call
 constexpr uint32_t kToMini = 0x8002A37Cu;
+constexpr uint32_t kTextPrim = 0x801D9714u;     // g_text_prim: next free text primitive
+constexpr uint32_t kPrimSize = 0x1C;            // DR_TPAGE (2 words) + SPRT (5 words)
+constexpr int kSheetFirstRow = 48;              // private sheet row 0 = TIM row 48 (text.cpp)
 constexpr uint32_t kSysTimX = 0x801D9704u;  // SYSTEM.TIM VRAM x (u16, halfwords)
 constexpr uint32_t kSysTimY = 0x801D9706u;  // SYSTEM.TIM VRAM y (u16)
 constexpr size_t kNameMax = 20;             // card name slot: 21 bytes with the NUL
@@ -78,11 +88,12 @@ constexpr int kCell = 7;                    // mini glyph sprite: 7x7 in an 8x7 
 
 /// Card-name slots, by the return address of the sjis_to_mini call (each draws the name right
 /// after). The name is drawn in capitals (mini::fold_upper); its ink may use the columns
-/// [x + min_dx, x + end_dx] of the draw's own x: a name that ends by x + end_dx keeps the
-/// original x, a wider one moves left (mini::place). Measured on headless snapshots
+/// [x + min_dx, x + end_dx] of the draw's x (the caller's x + dx): a name that ends by x + end_dx
+/// stays at x, a wider one moves left (mini::place). Measured on headless snapshots
 /// (docs/re/text-engine.md §7.10).
 struct Area {
-    int min_dx, end_dx;  // first / last column the ink may use, from the caller's x
+    int min_dx, end_dx;  // first / last column the ink may use, from the draw's x
+    int dx;              // the draw's x from the caller's x
     /// Widest pen advance (measure(): the last glyph's gap included) that fits from min_dx.
     constexpr int budget() const { return end_dx - min_dx + 2; }
 };
@@ -90,28 +101,40 @@ struct Slot {
     uint32_t ra;
     Area area[2];  // by side: the battle panel's P1 / P2 (s5 at the call); else area[0]
     bool sided;
-    int dy;  // y offset of the name's draw
+    bool micro;  // drawn in the micro font (else mini, proportional)
     const char* what;
-    /// One budget for both sides, so a card shows the same text on either side.
-    constexpr int budget() const {
-        return sided ? std::min(area[0].budget(), area[1].budget()) : area[0].budget();
-    }
 };
 constexpr Slot kSlots[] = {
-    // Battle card panel (8003C200): the name bar between the DP label and the DP box. The draw's
-    // x is panel x + 32 - 21 * side (s5, 0 = P1): P1 (left, blue) 72 at rest, the bar's fill
-    // 56 .. 150 (the DP label's separator at 55, the border 151 .. 153); P2 (right, orange) 175,
-    // the fill 167 .. 263 (the DP box border at 264). The ink may use the whole fill, whose own
-    // edge lines frame it: 96 / 98 px from the left end, the name chosen for 96. The fill is rows
-    // 93 .. 99 between borders at 92 and 100, the capitals 7 rows tall: y - 1 centres them (at
-    // the original y they sat on the bottom border).
-    {0x8003C208u, {{-16, 78}, {-8, 88}}, true, -1, "battle panel"},
+    // Battle card panel (8003C200): the name bar between the DP label and the DP box. The JP x is
+    // panel x + 32 - 21 * side (s5, 0 = P1), the US x (800398A0) panel x + 17 - 14 * side at the
+    // same y (panel y + 2), in the micro font: P1 (left, blue) 57 at rest, right after the DP
+    // label's separator (55), P2 (right, orange) 167, the first column of the bar's fill. The ink
+    // may use the bar's fill: P1 56 .. 150 (border 151 .. 153), P2 167 .. 263 (DP box border at
+    // 264): budgets 96 / 98; 19 capitals (HERCULESKABUTERIMON, the longest name) are 95, ink 94
+    // (57 .. 150 on P1), so every name keeps the US x (only Digimon reach this slot). The bar's fill
+    // is rows 93 .. 99, the micro capitals rows y .. y + 4 = 94 .. 98: centred.
+    {0x8003C208u, {{-1, 93, -15}, {0, 96, -8}}, true, true, "battle panel"},
     // SUBSEG 801E6AC4 (Edit Partner, partner panel, 801E65E8): name at x 59 (y 49), nothing
     // after it on its row up to the panel's inside end at 205 (border at 206).
-    {0x801E6ACCu, {{0, 146}, {0, 146}}, false, 0, "partner"},
+    {0x801E6ACCu, {{0, 146, 0}, {0, 146, 0}}, false, false, "partner"},
     // SUBSEG 801E78A4 (Edit Partner, armor panel, 801E73BC): name at the panel's x + 3 = 217,
     // the panel's inside 212 .. 303 (borders at 211 and 304).
-    {0x801E78ACu, {{-5, 86}, {-5, 86}}, false, 0, "armor"},
+    {0x801E78ACu, {{-5, 86, 0}, {-5, 86, 0}}, false, false, "armor"},
+};
+
+/// The support labels under the battle card panel's attack rows (the half-width label table
+/// 0x80071058 by card+0xE4), drawn in the micro font at the US position: by the caller's return
+/// address (through the grey wrapper for the first), x offset (+ step per side, s5) and y offset.
+struct MicroSite {
+    uint32_t ra;
+    int dx, dx_side, dy;
+    const char* what;
+};
+constexpr MicroSite kMicroSites[] = {
+    // 8003C32C (grey): JP panel x + 22 * side + 25, y + 50; US 80039994: x + 24 * side + 24, y + 51.
+    {0x8003C334u, -1, 2, 1, "battle panel label"},
+    // 8003D43C: JP x + 68, y + 63; US 8003AA88: x + 68, y + 64.
+    {0x8003D444u, 0, 0, 1, "battle label"},
 };
 
 std::string read_string(PsxContext& ctx, uint32_t addr) {
@@ -209,38 +232,23 @@ const mini::InkTable& ink() {
     return g_ink_ready ? g_ink : fallback;
 }
 
-// Short card names (assets/<serial>/en_short_names.txt, "full\tshort" lines, built by
-// tools/text/short_names.py from config/<serial>/text/short-names.tsv). Missing file: none.
-const std::unordered_map<std::string, std::string>& short_names() {
-    static const std::unordered_map<std::string, std::string> names = [] {
-        const std::string path = std::string("assets/") + DCB_GAME_ID + "/en_short_names.txt";
-        std::string text;
-        if (FILE* f = std::fopen(path.c_str(), "rb")) {
-            char buf[4096];
-            size_t n;
-            while ((n = std::fread(buf, 1, sizeof buf, f)) > 0) text.append(buf, n);
-            std::fclose(f);
-        }
-        return mini::parse_short_names(text);
-    }();
-    return names;
-}
-
-/// The fitted name sjis_to_mini wrote for the draw that follows: its buffer, text, spacing,
-/// width, the slot area of its side and the y offset.
+/// The fitted name sjis_to_mini wrote for the draw that follows: its buffer, text, font,
+/// spacing, width and the slot area of its side.
 struct Pending {
     uint32_t dst = 0;
     std::string text;
+    bool micro = false;
     mini::Spacing spacing = mini::Spacing::Normal;
     int width = 0;
-    Area area{0, 0};
-    int dy = 0;
+    Area area{0, 0, 0};
 };
 Pending g_pending;
 
-/// Calls the original mini draw with `s` copied, NUL-terminated, into a frame pushed on the guest
-/// stack (the rgb pointer and OT at +16/+20 as the JP convention wants).
-void call_mini(PsxContext& ctx, int x, int y, const std::string& s, int clut, uint32_t rgb, int ot) {
+/// Calls the original mini draw (or the micro draw, 80027EF4) with `s` copied, NUL-terminated,
+/// into a frame pushed on the guest stack (the rgb pointer and OT at +16/+20 as the JP convention
+/// wants).
+void call_mini(PsxContext& ctx, int x, int y, const std::string& s, int clut, uint32_t rgb, int ot,
+               bool micro = false) {
     const uint32_t len = static_cast<uint32_t>(s.size());
     const uint32_t sp = ctx.r[kSp];
     const uint32_t frame = sp - ((24 + len + 1 + 7) & ~7u);
@@ -254,7 +262,10 @@ void call_mini(PsxContext& ctx, int x, int y, const std::string& s, int clut, ui
     ctx.r[kA2] = str;
     ctx.r[kA3] = static_cast<uint32_t>(clut);
     ctx.r[kSp] = frame;
-    psx_call_original(&ctx, kMiniDraw);
+    if (micro)
+        f_80027EF4(&ctx);
+    else
+        psx_call_original(&ctx, kMiniDraw);
     ctx.r[kSp] = sp;
 }
 
@@ -287,6 +298,41 @@ int draw_proportional(PsxContext& ctx, int x, int y, const std::string& s, int c
                 break;
             case mini::Item::Icon:
                 mini_icon(ctx, it.x, it.y, it.code - 1, rgb, ot);
+                break;
+            case mini::Item::Colour:
+                clut = it.code;
+                break;
+        }
+    });
+}
+
+/// Micro icon (code 01 N, idx N - 1), as the US micro renderer: a 5x5 cell of US text_icon mode 3.
+/// The JP text_icon has no such mode; its mode 1 (the mini icons: 7x7, the same CLUT row) writes
+/// the packet, which is then pointed at the US cell in the private sheet (texpage word -> sheet
+/// marker, as level_badges.cpp does).
+void micro_icon(PsxContext& ctx, int x, int y, int idx, uint32_t rgb, int ot) {
+    const uint32_t p = psx_read32(&ctx, kTextPrim);
+    mini_icon(ctx, x, y, idx, rgb, ot);
+    if (psx_read32(&ctx, kTextPrim) != p + kPrimSize) return;  // pool full: nothing drawn
+    const mini::IconCell cell = mini::micro_icon_cell(idx);
+    const uint32_t tpage = psx_read32(&ctx, p + 0x04);
+    psx_write32(&ctx, p + 0x04, hle::Gpu::kSheetMarker | ((tpage >> 5) & 3u));  // keep the semi mode
+    psx_write8(&ctx, p + 0x14, static_cast<uint8_t>(cell.u));
+    psx_write8(&ctx, p + 0x15, static_cast<uint8_t>(cell.v - kSheetFirstRow));
+    psx_write16(&ctx, p + 0x18, mini::kMicroIconSize);
+    psx_write16(&ctx, p + 0x1A, mini::kMicroIconSize);
+}
+
+/// `s` in the micro font from (x, y), as the US micro renderer (mini::micro_layout): each glyph
+/// through the JP micro renderer, icons through micro_icon. Returns the width.
+int draw_micro(PsxContext& ctx, int x, int y, const std::string& s, int clut, uint32_t rgb, int ot) {
+    return mini::micro_layout(s, x, y, [&](const mini::Item& it) {
+        switch (it.kind) {
+            case mini::Item::Glyph:
+                call_mini(ctx, it.x, it.y, std::string(1, static_cast<char>(it.code)), clut, rgb, ot, true);
+                break;
+            case mini::Item::Icon:
+                micro_icon(ctx, it.x, it.y, it.code - 1, rgb, ot);
                 break;
             case mini::Item::Colour:
                 clut = it.code;
@@ -349,16 +395,24 @@ void dcb_text_draw_mini(PsxContext* ctx) {
     const int ot = static_cast<int>(psx_read32(ctx, sp + 20));
 
     const std::string raw = read_string(*ctx, str);
-    // A card name fitted by sjis_to_mini just before (same buffer, same text): its spacing.
+    // A card name fitted by sjis_to_mini just before (same buffer, same text): its font, spacing
+    // and place in the slot.
     mini::Spacing spacing = mini::Spacing::Normal;
     const bool fitted = g_pending.dst != 0 && g_pending.dst == str && g_pending.text == raw;
-    if (fitted) {  // a card name: its spacing and its place in the slot
+    const bool micro_name = fitted && g_pending.micro;
+    if (fitted) {
         spacing = g_pending.spacing;
         const Area& a = g_pending.area;
+        x += a.dx;
         x = mini::place(x, g_pending.width, x + a.min_dx, x + a.end_dx);
-        y += g_pending.dy;
     }
     g_pending = {};
+    // A support label the US draws in the micro font (the caller through the grey wrapper: its
+    // return address is in the wrapper's frame).
+    const uint32_t caller = ctx->r[kRa] == kMiniGreyRet ? psx_read32(ctx, sp + 24) : ctx->r[kRa];
+    const MicroSite* site = nullptr;
+    for (const MicroSite& m : kMicroSites)
+        if (m.ra == caller) site = &m;
     std::string s;
     bool translated = !fitted && dcb::text_translate(*ctx, raw, s);
     // The partner screen (SUBSEG 801E58F8) draws a support label in brackets, "(%s)": the
@@ -375,7 +429,14 @@ void dcb_text_draw_mini(PsxContext* ctx) {
         psx_call_original(ctx, kMiniDraw);
         return;
     }
-    if (has_lowercase(s) || fitted) {
+    if (micro_name || (site && translated)) {
+        if (site) {
+            x += site->dx + site->dx_side * static_cast<int>(ctx->r[kS5] & 1);
+            y += site->dy;
+        }
+        const int w = draw_micro(*ctx, x, y, s, clut, rgb, ot);
+        trace(*ctx, "mini", raw, translated, ("micro w=" + std::to_string(w)).c_str(), x, y, str);
+    } else if (has_lowercase(s) || fitted) {
         const int w = draw_proportional(*ctx, x, y, s, clut, rgb, ot, spacing);
         const std::string path =
             std::string(spacing == mini::Spacing::Tight ? "tight w=" : "prop w=") + std::to_string(w);
@@ -392,8 +453,8 @@ void dcb_text_draw_mini(PsxContext* ctx) {
 }
 
 // 8002A37C: sjis_to_mini(src, dst) -> output length. ASCII (the grafted English card names) is
-// copied through, bounded to the name slot and fitted to the caller's slot; Shift-JIS takes the
-// original.
+// copied through, bounded to the name slot, in capitals for the card-name slots; Shift-JIS takes
+// the original.
 void dcb_sjis_to_mini(PsxContext* ctx) {
     const uint32_t src = ctx->r[kA0], dst = ctx->r[kA1], ra = ctx->r[kRa];
     bool ascii = true;
@@ -412,20 +473,22 @@ void dcb_sjis_to_mini(PsxContext* ctx) {
     g_pending = {};
     for (const Slot& slot : kSlots) {
         if (slot.ra != ra) continue;
-        load_ink(*ctx);
         out = mini::fold_upper(out);
-        const auto it = short_names().find(name);
-        const std::string short_mini =
-            it == short_names().end() ? std::string() : mini::fold_upper(ascii_to_mini(it->second));
-        const mini::Fit fit = mini::fit_name(ink(), out, short_mini, slot.budget());
         const int side = slot.sided ? static_cast<int>(ctx->r[kS5] & 1) : 0;
+        const Area& area = slot.area[side];
+        mini::Fit fit{out, mini::Spacing::Normal, 0};
+        if (slot.micro) {
+            fit.width = mini::micro_measure(out);
+        } else {
+            load_ink(*ctx);
+            fit = mini::fit_name(ink(), out, area.budget());
+        }
         if (trace_on())
-            std::fprintf(stderr, "[text] mini-name %s side %d src=%08X \"%s\" -> \"%s\" %s w=%d (slot %d, full %d)\n",
-                         slot.what, side, src, shown(out).c_str(), shown(fit.text).c_str(),
-                         fit.spacing == mini::Spacing::Tight ? "tight" : "normal", fit.width, slot.budget(),
-                         mini::measure(ink(), out, mini::Spacing::Normal));
-        out = fit.text;
-        g_pending = {dst, out, fit.spacing, fit.width, slot.area[side], slot.dy};
+            std::fprintf(stderr, "[text] mini-name %s side %d src=%08X \"%s\" %s w=%d (slot %d)\n", slot.what, side,
+                         src, shown(out).c_str(),
+                         slot.micro ? "micro" : fit.spacing == mini::Spacing::Tight ? "tight" : "normal", fit.width,
+                         area.budget());
+        g_pending = {dst, out, slot.micro, fit.spacing, fit.width, area};
         break;
     }
     for (size_t i = 0; i < out.size(); ++i)

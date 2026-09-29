@@ -4,6 +4,7 @@
 # label start and the deck edit card info starts the effect text 52 px after it. The US drew
 # them in its 4x5 micro font; in the (proportional) mini font two US labels are too wide
 # (1stAttack 56 px, Eat-up HP 57 px), so they get shorter words. The full-width set
-# (EXE 239c..2458, main font, wider slot) keeps the US text.
+# (EXE 239c..2458, main font, wider slot) keeps the US text. The battle card panel draws these
+# labels in the micro font as the US does (mini_text.cpp), with the same English.
 EXE:2390	1st Atk
 EXE:2350	Eat HP

@@ -1,5 +1,5 @@
-// Mini-font layout (src/game/overrides/mini_fit.hpp): proportional widths, tight spacing, the
-// choice of full / tight / short card name for a slot, and the short-name file format.
+// Mini / micro font layout (src/game/overrides/mini_fit.hpp): proportional widths, tight
+// spacing, the fit of a card name in a slot, its place, and the US micro layout.
 
 #include "mini_fit.hpp"
 
@@ -81,25 +81,17 @@ void test_layout_positions() {
 void test_fit_name() {
     const InkTable t = table();
     // Fits: unchanged, normal.
-    Fit f = fit_name(t, "Agumon", "Agu", 88);
-    CHECK(f.text == "Agumon" && f.spacing == Spacing::Normal);
+    Fit f = fit_name(t, "Agumon", 88);
+    CHECK(f.text == "Agumon" && f.spacing == Spacing::Normal && f.width == measure(t, "Agumon", Spacing::Normal));
     // "roro": 24 normal, 22 tight (the r-o pairs lose their gap).
     CHECK(measure(t, "roro", Spacing::Normal) == 24 && measure(t, "roro", Spacing::Tight) == 22);
-    f = fit_name(t, "roro", "ab", 23);
+    f = fit_name(t, "roro", 23);
     CHECK(f.text == "roro" && f.spacing == Spacing::Tight && f.width == 22);
-    // Too wide even tight: the short name, normal spacing when it fits so.
-    f = fit_name(t, "roro", "ab", 20);
-    CHECK(f.text == "ab" && f.spacing == Spacing::Normal && f.width == 12);
-    // A short name that fits only tight.
-    f = fit_name(t, "rorororo", "roro", 23);
-    CHECK(f.text == "roro" && f.spacing == Spacing::Tight);
-    // Nothing fits: the full name, tight (best effort).
-    f = fit_name(t, "roro", "abcd", 20);
+    // Too wide even tight: tight anyway (best effort).
+    f = fit_name(t, "roro", 20);
     CHECK(f.text == "roro" && f.spacing == Spacing::Tight && f.width == 22);
-    f = fit_name(t, "roro", "", 20);
-    CHECK(f.text == "roro" && f.spacing == Spacing::Tight);
-    // No budget: always the full name.
-    f = fit_name(t, "HerculesKabuterimon", "HrcKabuterimon", 0);
+    // No budget: normal.
+    f = fit_name(t, "HerculesKabuterimon", 0);
     CHECK(f.text == "HerculesKabuterimon" && f.spacing == Spacing::Normal);
 }
 
@@ -113,6 +105,8 @@ void test_fold_upper() {
     CHECK(fold_upper(std::string("z\x0C")) == std::string("Z\x0C"));
     // Capitals of the synthetic table: 8 px each with the gap.
     CHECK(measure(table(), fold_upper("abc"), Spacing::Normal) == 24);
+    // An icon code (a US "*e1" in a card name, 01 0F) keeps its argument byte.
+    CHECK(fold_upper(std::string("Omnimon \x01\x0F")) == std::string("OMNIMON \x01\x0F"));
 }
 
 void test_place() {
@@ -126,28 +120,49 @@ void test_place() {
     CHECK(place(72, 120, 56, 150) == 56);
     // An empty name stays put.
     CHECK(place(72, 0, 56, 150) == 72);
-    // The battle panel's two sides at rest (mini_text.cpp kSlots): P1 x 72 [56, 150], P2 x 175
-    // [167, 263]. A 96 px name fills P1 and moves P2 left by 6.
-    CHECK(place(72, 96, 72 - 16, 72 + 78) == 56);
-    CHECK(place(175, 96, 175 - 8, 175 + 88) == 169);
-    CHECK(place(175, 88, 175 - 8, 175 + 88) == 175);
+    // The battle panel's two sides at rest in the micro font (mini_text.cpp kSlots): P1 x 57
+    // [56, 150], P2 x 167 [167, 263]. The longest name (19 capitals, 95) fits both in place.
+    CHECK(place(57, 95, 57 - 1, 57 + 93) == 57);
+    CHECK(place(167, 95, 167, 167 + 96) == 167);
+    // One letter more: P1 moves left by the one column it has; P2 has none to give.
+    CHECK(place(57, 100, 56, 150) == 56);
+    CHECK(place(167, 100, 167, 263) == 167);
 }
 
-void test_parse_short_names() {
-    const auto m = parse_short_names(
-        "# comment\n"
-        "HerculesKabuterimon\tHrcKabuterimon\r\n"
-        "\n"
-        "Mega Def. Disk *b0\tMega D.Disk *b0\n"
-        "no tab line\n"
-        "\tempty full\n"
-        "empty short\t\n"
-        "Last\tNo newline");
-    CHECK(m.size() == 3);
-    CHECK(m.at("HerculesKabuterimon") == "HrcKabuterimon");
-    CHECK(m.at("Mega Def. Disk *b0") == "Mega D.Disk *b0");
-    CHECK(m.at("Last") == "No newline");
-    CHECK(parse_short_names("").empty());
+void test_micro_layout() {
+    // Fixed 5 px cells, the last gap included: the last inked column is x + width - 2.
+    CHECK(micro_measure("") == 0);
+    CHECK(micro_measure("A") == 5);
+    CHECK(micro_measure("HerculesKabuterimon") == 95);  // 19 capitals: ink 94 columns
+    CHECK(micro_measure("A B") == 15);                   // a space is a cell too
+    CHECK(micro_measure("\x01\x08 to 0") == 6 + 5 * 5);  // icon 6, then " TO 0"
+    CHECK(micro_measure("\x0C\x03" "AB") == 10);         // a colour code has no width
+    CHECK(micro_measure("AB\nCDE") == 15);                // widest line
+
+    // Positions, the fold to capitals, codes.
+    std::vector<Item> items;
+    const int w = micro_layout(std::string("a\x01\x0F" "b\x0C\x05 c\nd"), 100, 50,
+                               [&](const Item& it) { items.push_back(it); });
+    CHECK(items.size() == 6);
+    CHECK(items[0].kind == Item::Glyph && items[0].code == 'A' && items[0].x == 100 && items[0].y == 50);
+    CHECK(items[1].kind == Item::Icon && items[1].code == 0x0F && items[1].x == 105);
+    CHECK(items[2].kind == Item::Glyph && items[2].code == 'B' && items[2].x == 111);
+    CHECK(items[3].kind == Item::Colour && items[3].code == 5);
+    CHECK(items[4].kind == Item::Glyph && items[4].code == 'C' && items[4].x == 121);  // after a space
+    CHECK(items[5].kind == Item::Glyph && items[5].code == 'D' && items[5].x == 100 && items[5].y == 56);
+    CHECK(w == 26);
+
+    // No micro cell (0x60 and up after the fold, e.g. '{'): a blank cell.
+    items.clear();
+    CHECK(micro_layout("{A", 0, 0, [&](const Item& it) { items.push_back(it); }) == 10);
+    CHECK(items.size() == 1 && items[0].code == 'A' && items[0].x == 5);
+}
+
+void test_micro_icon_cell() {
+    // US text_icon mode 3: 14 icons a row, 6 px apart, from (48, 160).
+    CHECK(micro_icon_cell(0).u == 48 && micro_icon_cell(0).v == 160);
+    CHECK(micro_icon_cell(7).u == 90 && micro_icon_cell(7).v == 160);   // 01 08: the b0 icon
+    CHECK(micro_icon_cell(14).u == 48 && micro_icon_cell(14).v == 166);  // 01 0F: Omnimon *e1
 }
 
 }  // namespace
@@ -159,7 +174,8 @@ int main() {
     test_fit_name();
     test_fold_upper();
     test_place();
-    test_parse_short_names();
+    test_micro_layout();
+    test_micro_icon_cell();
     std::puts("mini_fit: ok");
     return 0;
 }

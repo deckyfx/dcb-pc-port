@@ -111,6 +111,16 @@
    "source": "re",
    "note": "per-frame reset of the text primitive pointer (801D9714)"
   },
+  "0x80027EC4": {
+   "name": "text_draw_micro_grey",
+   "source": "re",
+   "note": "text_draw_micro with the grey rgb (80070A64); (x, y, str, clut, ot@sp16). US 80027DB8"
+  },
+  "0x80027EF4": {
+   "name": "text_draw_micro",
+   "source": "re",
+   "note": "4x5 capitals (x, y, str, clut, rgb*@sp16, ot@sp20): u = 64 + (c & 15) * 4, v = ((c - 32) >> 4) * 5 - 22 (SYSTEM.TIM rows 234..253), advance 5, 0A newline +6, 0C N clut; no lowercase fold, no icon code (US 80027DE8 has both)"
+  },
   "0x80028554": {
    "name": "text_draw_tiny",
    "source": "re",
