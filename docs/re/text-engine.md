@@ -516,13 +516,39 @@ not (text.cpp calls `f_80029F70` directly), so they keep the JP art.
 - Why not the micro font: the US drew these in a 4×5 capital font (US `80027DE8`; JP has the same
   cells at `80027EF4`, no lowercase). The mini font already has full ASCII with lowercase; with
   ink widths English fits the JP slots, and 7-px letters read better than 4×5 capitals.
-- Mini ink widths: capitals and digits 7, most lowercase 5, `i` 1, `l` 2. Slots: support label
-  ≈ 48 px (the specialty icon 49 px after it in the battle panel; deck edit's effect text at
-  +52). In that budget the US "1stAttack" (56) and "Eat-up HP" (57) do not fit: `en-mini.tsv`
-  shortens them ("1st Atk", "Eat HP"); "\x01\x08 Counter" is 51 with the icon. Battle card
-  names have ≈ 87 px before the DP box; 17 of the 293 US card/item names are wider
-  (HerculesKabuterimon 111, MasterTyrannomon 101, the "Mega Def. Disk" items ≈ 100) and run
-  into it. (H: measured)
+- Mini ink widths: capitals and digits 7, most lowercase 5 (`a`, `d`, `g` 6), `i` 1, `l` 2.
+  Slots: support label ≈ 48 px (the specialty icon 49 px after it in the battle panel; deck
+  edit's effect text at +52). In that budget the US "1stAttack" (56) and "Eat-up HP" (57) do not
+  fit: `en-mini.tsv` shortens them ("1st Atk", "Eat HP"); "\x01\x08 Counter" is 51 with the
+  icon. (H: measured)
+- **Card-name slots** (widths as the trace's `w=`, the pen advance with the last glyph's 1 px
+  gap; measured on headless snapshots, H: run):
+
+  | `sjis_to_mini` caller | screen | name x | slot | limit |
+  |---|---|---|---|---|
+  | `8003C200` | battle card panel | panel + 32 (175 at rest) | 88 | the field ends at 263, the DP box border at 264; ink to 261 |
+  | SUBSEG `801E6AC4` (`801E65E8`) | Edit Partner, partner panel | 59 | 144 | panel inside ends at 203 |
+  | SUBSEG `801E78A4` (`801E73BC`) | Edit Partner, armor panel (a Digimon card; shown when partner record +770 ≠ 0) | panel + 3 = 217 | 86 | panel inside ends at 303 |
+
+  At normal spacing 17 of the 301 US card names are wider than the battle slot, 24 than the
+  armor slot, none than the partner slot. `dcb_sjis_to_mini` knows the caller by its return
+  address and fits the name (`src/game/overrides/mini_fit.hpp`, `fit_name`): the full name if
+  it fits; else the full name in **tight spacing** (1 px between two glyphs only where their
+  facing ink columns share a row, else 0; 2 px between words), which takes 8 of the 17
+  (MetalSeadramon 89 → 85, PlatinumSukamon 89 → 86, Mega Rec. Floppy 91 → 85, Dark Lord's Cape
+  96 → 87, the three "Mega Def. Disk" 89 → 82, Cherrymon's Mist 90 → 86); else our **short
+  name** from `config/SLPS-03101/text/short-names.tsv` (card number, short name, full name as a
+  check; `tools/text/short_names.py` → `assets/<serial>/en_short_names.txt`, full → short), in
+  normal spacing, or tight when only that fits. The other 9: RealMetalGreymon → R.MetalGreymon,
+  MasterTyrannomon → MstrTyrannomon (tight), HerculesKabuterimon → HrcKabuterimon,
+  MegaKabuterimon → M.Kabuterimon, Mega Attack Chip → Mega Atk. Chip, Another Dimension →
+  Another Dim., Download / ArmorCrush / De-Armor Digivolve → … Digi. Dropping the gap
+  everywhere (0 px) would fit all but two, but merges letters ("rn" reads "m"). The spacing is
+  handed to the draw that follows (the same buffer and text), not written into the string. The
+  short names are used only there: the main font's card info and lists keep the US name. The
+  armor slot only shows Digimon, so the items over 86 px (Dark Lord's Cape, tight 87) never
+  land there. `DCB_TRACE_TEXT` logs each fit as `[text] mini-name <slot> src=… "full" ->
+  "drawn" normal|tight w=N`, and the draw as `mini tight w=N`.
 - Strings seen through the mini path (headless runs): the Deck Select HELP legend (SUBSEG
   1ac8.., catalog-subseg), the deck edit sort hint (SUBSEG 1c88), the support labels (EXE
   2320.., catalog-exe) in deck edit / card selection / partner / battle, battle card names.

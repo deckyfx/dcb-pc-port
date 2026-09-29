@@ -1,0 +1,33 @@
+# Short card names, our own English, used only where a card name is drawn in the mini font (8x7)
+# and does not fit its slot even in tight spacing: the battle card panel (88 px before the DP
+# box). Everywhere else, including the card info in the main font, the full US name stays.
+#
+# card number<TAB>short name<TAB>full US name (checked against the US CARD2.CDD, for review)
+#
+# tools/text/short_names.py writes assets/<serial>/en_short_names.txt (full<TAB>short) for
+# src/game/overrides/mini_text.cpp. Mini-font widths (px, normal / tight spacing) in the
+# comments; docs/re/text-engine.md §7.10.
+
+# Digimon
+6	R.MetalGreymon	RealMetalGreymon
+# 98 / 95 -> 84
+8	MstrTyrannomon	MasterTyrannomon
+# 102 / 98 -> 89 / 86
+74	HrcKabuterimon	HerculesKabuterimon
+# 112 / 107 -> 85
+79	M.Kabuterimon	MegaKabuterimon
+# 93 / 90 -> 75
+
+# Items
+198	Mega Atk. Chip	Mega Attack Chip
+# 95 / 89 -> 78
+212	Another Dim.	Another Dimension
+# 95 / 92 -> 65
+
+# Options (Digivolve cards)
+293	Download Digi.	Download Digivolve
+# 98 / 93 -> 73
+294	ArmorCrush Digi.	ArmorCrush Digivolve
+# 113 / 110 -> 88
+298	De-Armor Digi.	De-Armor Digivolve
+# 101 / 98 -> 76
