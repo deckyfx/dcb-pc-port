@@ -46,6 +46,7 @@ import catalog as _catalog  # noqa: E402  (tools/text/catalog.py)
 import msd as _msd  # noqa: E402  (tools/text/msd.py)
 import fixes as _fixes  # noqa: E402  (tools/text/fixes.py)
 import bigfont as _bigfont  # noqa: E402  (tools/text/bigfont.py)
+import scripts as _scripts  # noqa: E402  (tools/text/scripts.py)
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "assets"))
 import dcb_containers as _containers  # noqa: E402  (PAK reader/writer)
@@ -371,6 +372,10 @@ def main(argv=None) -> int:
         (out / "files" / "C" / name).write_bytes(pak)
         grafted_cities += 1
     print(f"city scripts: {grafted_cities}/12 AREAnn.PAK with the US script -> files/C/")
+
+    # 3b. tutorial + Fusion Shop scripts (tools/text/scripts.py): loose B/BETA.MSD, C/EVENT/UNIT0n.MSD
+    drvs = {"B": (jp_b, us_b), "C": (jp_c, us_c)}
+    _scripts.write_all(lambda d, p: drv_file(drvs[d][0], p), lambda d, p: drv_file(drvs[d][1], p), out)
 
     # 4. text catalog (config/SLPS-03101/text/catalog.txt): source.tsv + en.tsv
     jp_p = (jp_fs / "P.DRV").read_bytes()

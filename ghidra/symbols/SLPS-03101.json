@@ -31,6 +31,21 @@
    "source": "re",
    "note": "increments the u32 play-time counter at game_data + 0x24 every frame. Conf H"
   },
+  "0x80016D54": {
+   "name": "window_init",
+   "source": "re",
+   "note": "(win, rect*, -1, -1, 8, 21, 128, 8): sets up a framed window (used by the tutorial box with the arguments shown). Conf M"
+  },
+  "0x80017084": {
+   "name": "window_resize",
+   "source": "re",
+   "note": "(win, rect*): animates the window to rect; -1 shrinks it to nothing (close). Conf H"
+  },
+  "0x8001723C": {
+   "name": "window_draw",
+   "source": "re",
+   "note": "(win, draw_cb, ot) -> nonzero once the resize animation has ended: frame, title, then draw_cb(win, ot entry). Conf H"
+  },
   "0x80019FF0": {
    "name": "dialog_setup",
    "source": "re",
@@ -155,6 +170,11 @@
    "name": "kanji_font_load",
    "source": "re",
    "note": "loads KANJI0/1.FNT into RAM"
+  },
+  "0x8002DCD8": {
+   "name": "sound_se_play",
+   "source": "re",
+   "note": "(id): SsUtKeyOnV on the sound-effect voices (tutorial box: 0xA3 open, 0xA4 close). Conf H"
   },
   "0x8002FD64": {
    "name": "game_data_init",
@@ -294,7 +314,12 @@
   "0x80070C2C": {
    "name": "g_game_data",
    "source": "re",
-   "note": "game_data* (= 800DF1C4, save + 0x200; docs/re/save-data.md). Conf H | -> the two players' records, 10040 bytes each (+0 name; record 0 is the loaded save's, e.g. 800DF1C4). bigname_load reads the names from here. Conf M"
+   "note": "game_data* (= 800DF1C4, save + 0x200; docs/re/save-data.md). Conf H | -> the two players' records, 10040 bytes each (+0 name; record 0 is the loaded save's, e.g. 800DF1C4). bigname_load reads the names from here. Conf M | game_data* (= 800DF1C4, save + 0x200, docs/re/save-data.md); +0 player name (<= 12 bytes, the Fusion Shop h0 code). Conf H"
+  },
+  "0x80070C30": {
+   "name": "g_battle_opponent",
+   "source": "re",
+   "note": "opponent record* for the next battle: +81 name (copied into g_battle_players[1]+0x1CA), +4 u8 0 = the tutorial battle (battle set-up 80042800 loads B:\\BETA.MSD). Conf M"
   },
   "0x80070E70": {
    "name": "g_bigname_busy",
@@ -366,6 +391,12 @@
    "source": "re",
    "note": "battle_data* [2] (0 = you, 1 = opponent), 0x1E0 bytes each, e.g. 800E5FF8 / 800E61D8: +0x118 HP, +0x11A..+0x11E attacks, +0x120 DP, +0x178 points (u8, 3 wins), +0x179 deck (30 B), +0x1CA name (docs/re/battle.md). Conf H | battle_data* [2] (0 = you, 1 = opponent), 0x1E0 bytes each, e.g. 800E5FF8 / 800E61D8: +0x118 HP, +0x11A..+0x11E attacks, +0x114 s16 VS big-name width (vs_names_load), +0x120 DP, +0x178 points (u8, 3 wins), +0x179 deck (30 B), +0x1CA name (docs/re/battle.md). Conf H"
   },
+  "0x801E0DA0": {
+   "name": "s_tutorial_title",
+   "overlay": "KAWSEG",
+   "source": "re",
+   "note": "\"TUTORIAL\": title of the tutorial message window. Conf H"
+  },
   "0x801E0ED8": {
    "name": "g_partner_flags",
    "overlay": "SAISEG",
@@ -383,6 +414,12 @@
    "overlay": "EVOSEG",
    "source": "re",
    "note": "u8[20][4] {card A, card B, result, effect}: the special-fusion recipes fusion_roll checks first (either order). Conf M"
+  },
+  "0x801E1D90": {
+   "name": "s_unit_msd_path",
+   "overlay": "EVOSEG",
+   "source": "re",
+   "note": "\"C:\\EVENT\\unit0%d.MSD\". Conf H"
   },
   "0x801E28E4": {
    "name": "city_msg_clear",
@@ -460,13 +497,25 @@
    "name": "fusion_shop_host",
    "overlay": "EVOSEG",
    "source": "re",
-   "note": "runs the shop keeper's MSD script (C:\\EVENT\\UNIT0n.MSD) and serves its host commands (0x0A 15: second card picked, 19: fuse, ...). Conf M"
+   "note": "runs the shop keeper's MSD script (C:\\EVENT\\UNIT0n.MSD) and serves its host commands (0x0A 15: second card picked, 19: fuse, ...). Conf M | Fusion Shop MSD host: 0x0A cmd 0 unit_msg_build(reg 4) (-1: page full, state 1), cmd 11 page break (state 2), others: menus, sounds, sleeps. Conf H"
   },
   "0x801EB10C": {
    "name": "fusion_shop_step",
    "overlay": "EVOSEG",
    "source": "re",
    "note": "one host step of fusion_shop_host. Conf M"
+  },
+  "0x801EB200": {
+   "name": "unit_msd_load",
+   "overlay": "EVOSEG",
+   "source": "re",
+   "note": "(n): loads C:\\EVENT\\unit0%d.MSD and makes its VM. Conf H"
+  },
+  "0x801EB6D0": {
+   "name": "unit_msg_page_wait",
+   "overlay": "EVOSEG",
+   "source": "re",
+   "note": "while unit_msg_state is 1/2: on circle clears the page, re-adds the pending line (state 1), state = 0. Conf H"
   },
   "0x801EB8B8": {
    "name": "fusion_flags_load",
@@ -480,17 +529,71 @@
    "source": "re",
    "note": "ORs the shop script registers r20-r29 back into game_data + 0x2C when leaving. Conf M"
   },
+  "0x801EB980": {
+   "name": "unit_shop_main",
+   "overlay": "EVOSEG",
+   "source": "re",
+   "note": "Fusion Shop entry: loads the unit script (unit_msd_load), runs the message state and the shop menus each frame. Conf M"
+  },
+  "0x801EBEA0": {
+   "name": "unit_msg_clear",
+   "overlay": "EVOSEG",
+   "source": "re",
+   "note": "(lines): marks the 4 lines unused (+62 = 0). Conf H"
+  },
+  "0x801EBEC0": {
+   "name": "unit_msg_slot_alloc",
+   "overlay": "EVOSEG",
+   "source": "re",
+   "note": "(lines) -> first unused line, cleared and in use; shown (+60) = -1 on the first line (shown whole at once), else 0; 0 when all 4 are used. Conf H"
+  },
+  "0x801EBF4C": {
+   "name": "unit_msg_build",
+   "overlay": "EVOSEG",
+   "source": "re",
+   "note": "(text) -> line index or -1: writes w1, copies SJIS and bare a b c e s + digit, expands h0 (player name) h1 (fusion result card name) h2/h3 (masked), drops other bytes (all ASCII); a line of 60+ bytes is marked unused. Overridden by dcb_unit_msg_build. Conf H"
+  },
+  "0x801EC33C": {
+   "name": "unit_msg_reveal",
+   "overlay": "EVOSEG",
+   "source": "re",
+   "note": "(x, y, line, ot) -> 1 revealing / -1 shown: one SJIS character per call, text_draw_grey clut 7. Overridden by dcb_unit_msg_reveal. Conf H"
+  },
+  "0x801EC468": {
+   "name": "unit_msg_draw",
+   "overlay": "EVOSEG",
+   "source": "re",
+   "note": "(x, y, ot): reveals / draws the used lines 12 px apart, stopping at the first still revealing; 1 while busy. Conf H"
+  },
+  "0x801ED178": {
+   "name": "tutorial_msd_load",
+   "overlay": "KAWSEG",
+   "source": "re",
+   "note": "loads B:\\BETA.MSD and makes the tutorial MSD VM (*g_battle_state: +4 VM, +8 registers, +0x10 text pointer). Conf H"
+  },
+  "0x801ED2D8": {
+   "name": "tutorial_msg_draw_cb",
+   "overlay": "KAWSEG",
+   "source": "re",
+   "note": "(win): text_draw_grey(win x, y, 7, 1, ot, *(*g_battle_state + 0x10)). Conf H"
+  },
   "0x801ED334": {
    "name": "tutorial_msg_show",
    "overlay": "KAWSEG",
    "source": "re",
-   "note": "BETA.MSD message: p expansion into a 144-byte stack buffer + box"
+   "note": "BETA.MSD message: p expansion into a 144-byte stack buffer + box | (y, text): copies text into a 144-byte stack buffer turning every bare p into the player name (no length check), sizes the TUTORIAL window with text_measure, draws until circle. Overridden by dcb_tutorial_msg_show (English: *p). Conf H"
   },
   "0x801ED5A0": {
    "name": "fusion_check_full",
    "overlay": "EVOSEG",
    "source": "re",
    "note": "(result): script r11 = -1 when the result card is already owned 6 times (\"cannot hold more\"), 0 on a mutation. Conf M"
+  },
+  "0x801ED5A8": {
+   "name": "tutorial_script_step",
+   "overlay": "KAWSEG",
+   "source": "re",
+   "note": "tutorial MSD host: registers 4-7 = pad pressed (circle, square, triangle, cross); 0x0A cmd 0 tutorial_msg_show(reg 8, reg 0), cmd 3 copies reg 0 into a deck name, cmd 4 ends the step. Conf H"
   },
   "0x801ED668": {
    "name": "fusion_card_select",
@@ -552,6 +655,12 @@
    "source": "re",
    "note": "the partner choice screen: partner_give(0, the chosen offer), then partner_flag_set. Conf M"
   },
+  "0x801F7418": {
+   "name": "unit_card_ptrs",
+   "overlay": "EVOSEG",
+   "source": "re",
+   "note": "card record pointers of the fusion screen; [unit_result_card] + 3 is the name the h1 code shows. Conf M"
+  },
   "0x801F7600": {
    "name": "partner_gain_exp",
    "overlay": "KAWSEG",
@@ -569,6 +678,12 @@
    "overlay": "EVOSEG",
    "source": "re",
    "note": "the shop keeper script object {script, vm, regs}. Conf M"
+  },
+  "0x801F7CF0": {
+   "name": "unit_msg_lines",
+   "overlay": "EVOSEG",
+   "source": "re",
+   "note": "4 x 64-byte message lines: text, +60 s16 shown, +62 u8 in use, +63 s8 length. Conf H"
   },
   "0x801F7E80": {
    "name": "g_city_vm",
@@ -598,7 +713,13 @@
    "name": "g_fusion_result",
    "overlay": "EVOSEG",
    "source": "re",
-   "note": "s16: the card fusion_roll picked. Conf H"
+   "note": "s16: the card fusion_roll picked. Conf H | s16 index into unit_card_ptrs (the fusion result). Conf M"
+  },
+  "0x801F7FCB": {
+   "name": "unit_msg_state",
+   "overlay": "EVOSEG",
+   "source": "re",
+   "note": "s8: 0 run the script, 1 page full (re-add the line after circle), 2 page break (wait for circle), 4 shop menu. Conf M"
   },
   "0x801F7FD5": {
    "name": "g_fusion_kind",
@@ -617,6 +738,12 @@
    "overlay": "KAWSEG",
    "source": "re",
    "note": "4 x 32-byte slide-in records set by vs_names_load (the name picture moves in from -width). Conf M"
+  },
+  "0x801FF1A0": {
+   "name": "tutorial_msg_window",
+   "overlay": "KAWSEG",
+   "source": "re",
+   "note": "window struct of the tutorial box (+44 title char*, +56 u8). Conf H"
   },
   "0x801FF1E8": {
    "name": "g_vs_names_busy",

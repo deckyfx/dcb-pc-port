@@ -371,7 +371,7 @@ override would also have to fake the CD transfer. That is more code for the same
 | Mini cards, badges, card art with text, battle UI sheets, F backgrounds | **drop-in swap** | same geometry |
 | Opponent intro/win screens (MATCH/WIN) | drop-in, **maybe a 1-constant patch** | name plates are wider |
 | City scripts + city name plates (C AREAxx.PAK) | **drop-in swap** (medium) | TIS order question |
-| Tutorial and event scripts (BETA.MSD, UNIT0x.MSD) | **drop-in swap** (medium) | requires the US-style text renderer |
+| Tutorial and event scripts (BETA.MSD, UNIT0x.MSD) | **done** (US script + the JP button tests; host overrides) | [text-engine.md §7.11](re/text-engine.md#711-tutorial-and-fusion-shop-scripts-bbetamsd-ceventunit0nmsd) |
 | Movie | **drop-in swap** | identical layout |
 | SYSTEM.TIM (small font + icons) | **needs conversion or code override** | icon row moved |
 | Title screen | **needs conversion or code override** | different layout |
