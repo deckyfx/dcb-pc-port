@@ -48,7 +48,9 @@ if [[ -d "extracted/SLUS-01328" ]]; then
     ./build/linux-release/dcb_asset_ripper unpack "extracted/SLUS-01328" >/dev/null
     python3 tools/text/en_text.py --jp "extracted/SLPS-03101" --us extracted/SLUS-01328 \
         --out "$ASSETS" >/dev/null
-    python3 tools/assets/swap_us_images.py --apply >/dev/null
+    # The rip above rewrote the texture manifest (JP art only): put the US art back
+    # before packing. Its summary is shown so a failed swap is not missed.
+    python3 tools/assets/swap_us_images.py --apply 2>&1 | grep -E "^replaced|error" || true
 fi
 # Movies go into converted/ BEFORE the pack: the running game only reads
 # movie/movie<N>.mpg from the .pak (or a loose asset folder), never movie_src/.
@@ -83,6 +85,8 @@ for OS in linux windows; do
         if [[ -f "$ASSETS/$f" ]]; then cp "$ASSETS/$f" "$STAGE/$OS/assets/$SERIAL/"; fi
     done
     if [[ -d "$ASSETS/files" ]]; then cp -r "$ASSETS/files" "$STAGE/$OS/assets/$SERIAL/"; fi
+    # text/: the translation catalog (menus, dialogs); without it they stay Japanese.
+    if [[ -d "$ASSETS/text" ]]; then cp -r "$ASSETS/text" "$STAGE/$OS/assets/$SERIAL/"; fi
     cp "$STAGE/README.txt" "$STAGE/$OS/"
     # cheats/<serial>.txt bootstrap (the trainer saves back to it).
     mkdir -p "$STAGE/$OS/cheats"
