@@ -18,6 +18,9 @@ gitignored assets/SLPS-03101/ (never into git):
   text/source.tsv, text/en.tsv
                  the text catalog (config/SLPS-03101/text/catalog.txt): JP
                  templates the renderer matches, and their English
+  en_bigfont.bin, files/B/MATCH/NNN.ARC
+                 VS-screen big names: the US 16x32 font and the US opponent
+                 name pictures (tools/text/bigfont.py)
   en_names.txt   those long names: "<11 letters>\t<tag>\t<full name>" per
                  line; the renderer (src/game/overrides/text.cpp) draws the
                  full name wherever the key shows up
@@ -42,6 +45,7 @@ import drv_unpack as _drv  # noqa: E402
 import catalog as _catalog  # noqa: E402  (tools/text/catalog.py)
 import msd as _msd  # noqa: E402  (tools/text/msd.py)
 import fixes as _fixes  # noqa: E402  (tools/text/fixes.py)
+import bigfont as _bigfont  # noqa: E402  (tools/text/bigfont.py)
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "assets"))
 import dcb_containers as _containers  # noqa: E402  (PAK reader/writer)
@@ -316,6 +320,7 @@ def main(argv=None) -> int:
     font_blob = build_font(us_tim, us_text, 0x80010000)
     (out / "en_font.bin").write_bytes(font_blob)
     print(f"font: rows {FONT_FIRST_ROW}..{FONT_LAST_ROW}, widths {WIDTH_COUNT}B -> en_font.bin ({len(font_blob)} B)")
+    print(_bigfont.write_assets(jp_b, us_b, out))  # VS-screen big names (en_bigfont.bin, MATCH\*.ARC)
 
     # 2. card + deck graft
     report: list[str] = []

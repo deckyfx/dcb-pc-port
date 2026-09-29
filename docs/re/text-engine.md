@@ -181,7 +181,7 @@ The counts are static `jal` sites from the recompiled code.
 | Battle help line (bottom) | `FUN_80046a3c(brightness)` | draw at (80, 0xDB − slide) | pointer table `0x80070ed4`, special `0x80011a2c` | H |
 | Tutorial message | `FUN_KAWSEG__801ed334(y, str)` → callback `FUN_KAWSEG__801ed2d8` | measure + draw_grey, CLUT 7 | `B:\BETA.MSD` via the MSD VM, `p` expansion into a **144-byte stack buffer** | H |
 | Pause/options dialogs in battle | `FUN_KAWSEG__801fa768` | dialog `FUN_80019ff0` | KAWSEG `.rodata` (`0x801e2524`…) | H |
-| Big name (VS screen) | `FUN_80044684(name, row, ...)` task, spawned by `KAWSEG 801F0558` | per-char TIM → VRAM | player name | H (M for the spawner's arguments) |
+| Big name (VS screen) | `bigname_load` `80044684(name, row, parent)` task, spawned by `vs_names_load` (KAWSEG `801F04FC`) | per-char TIM → VRAM | player name (both names in a battle with a friend); the opponent's name is a picture in `B:\MATCH\NNN.ARC` | H (§7.11) |
 | System error screens | `FUN_8004c320`, `FUN_8004c410`, `FUN_8004c828` (table-dispatched) | measure, draw, 6×6 font | EXE `0x80012e90`… ("ＳＹＳＴＥＭ ＥＲＲＯＲ") | M |
 | Overlay menus (OPENSEG, SUBSEG, SAISEG, EVOSEG, ENDSEG) | 20 direct `FUN_8002ae00` sites, 80 `FUN_8002adc8` sites, 12 `FUN_8002b638` sites | draw / measure | overlay `.rodata`, often via pointer tables | H (counts) |
 
@@ -203,7 +203,7 @@ The counts are static `jal` sites from the recompiled code.
 | Main ASCII font | inside `B:\SYSTEM.TIM` (same TIM geometry as JP) | glyph `i = c − 0x20`: u = (i%16)·6 + (width[c] >> 4), v = 0x30 + (i/16)·12, sprite w = width[c] & 0xF (prop) or 6, h = 12 | H (disassembly of US `0x80028d48`) |
 | Width table | US EXE `0x8006df9c` indexed by `c − 0x20` (= `0x8006df7c` indexed by `c`); byte = `uoff << 4 | advance`. For example `' '` = `04` (advance 4), `'!'` = `13` (u+1, advance 3). | | H |
 | Icons | `SYSTEM.TIM`, row base v = 0x7F (JP 0x69) | | H (per HYBRID §4.3) |
-| Big name | `B:\FONT.ARC`, 64 TIMs of 16×32 indexed `c − 0x20`, max 12 chars (US `FUN_80041ca8`) | | M (per HYBRID §4.3) |
+| Big name | `B:\FONT.ARC` (20 848 B): 92 u32 offsets for `0x20`–`0x7B`, then 64 TIMs of 16×32 4 bpp (320 B each, one shared CLUT). Own glyphs: space, `-`, digits, A–Z, a–z; other codes point at the next glyph (`.` → `0`, `:` → `A`), `{` at the end of the file. Max 12 chars (US `FUN_80041ca8`) | | H (§7.11) |
 
 The US ASCII sheet overwrites the rows that JP uses for the mini-font kana (v ≈ 42–115). **Loading the
 US `SYSTEM.TIM` breaks the JP mini font's kana, and moves the icons.** (M)
@@ -372,6 +372,7 @@ line is ~100 px in the US font, over 160 px in JP letters, in a ~108 px box).
 | Card/deck text | **done** — the converter grafts US names/attack names/effect lines into `CARD2.CDD`, deck/owner names into `DECK2.DEK`; lines too long for the JP slot are listed in the local `en_text_report.txt`. DEK field layout measured from both dumps: deck JP 13 / US 19 B at +60, owner 21 B at JP +73 / US +79, 10-byte tail at JP +94 / US +100. |
 | English inside JP strings | **done** — the game appends `デック` to a deck name (`"%sデック"`, EXE `0x800114E0`; the US has `"%s Deck"`) and drops names into JP messages. Each string is copied to the host and cut into pieces: English runs (two letters in a row outside bare JP codes) go to the US port, the rest to the JP original on a NUL-terminated copy pushed on the guest stack. The format itself is patched to the US `"%s Deck"` when `en_font.bin` loads (stock bytes only), so JP-named decks read "… Deck" too; three more "%sデック" copies live in overlays (P.DRV), so a string ending in `デック` (no newline) also gets `" Deck"` (`"Deck"` alone on the name-entry screen), leaving the name before it as typed; `デック` right after an ASCII character in other strings also becomes `" Deck"`. |
 | Deck names longer than the 13-byte slot | **done** — 48 US names (e.g. `Mountain CrusherDX`, 18 letters). The slot holds the first 11 letters + a tag byte (1, 2… per shared prefix: `Mountain Crusher` and `Mountain CrusherDX` both start `Mountain Cr`); `en_names.txt` maps the key to the full name, which the renderer draws (and measures) wherever the key appears. Renderers not taken over yet show the 11 letters. |
+| VS-screen big names | **done** — §7.11. |
 | Battle banner / tutorial / slot expanders, the five extra renderers, EXE + MSD strings | not started (later milestones). |
 | Verification | headless runs with `DCB_TRACE_TEXT=1` + `DCB_SNAPSHOT`: an ASCII message (poked into the memory-card dialog source at OPENSEG `0x801E27F4`, draw buffer `0x800E5638`) renders through the US port, and a clean run of the same build renders the JP string through the fallback. |
 
@@ -432,7 +433,7 @@ slot, so save states keep their place). JP lines take the originals.
 
 Not covered yet: the other MSD scripts (tutorial `B:\BETA.MSD`, `C:\EVENT\UNIT0x.MSD`, E/F/C PAK
 scripts); the other renderers
-(the tiny font, the VS big names; the mini font is §7.10). `DCB_TRACE_TEXT=hex` logs each drawn string's bytes and
+(the tiny font; the mini font is §7.10, the VS big names §7.11). `DCB_TRACE_TEXT=hex` logs each drawn string's bytes and
 whether the catalog translates it (decode with cp932) — the way to find what is still Japanese.
 
 ### 7.9 Counts and units on the deck / card screens (SUBSEG)
@@ -504,6 +505,61 @@ not (text.cpp calls `f_80029F70` directly), so they keep the JP art.
   2320.., catalog-exe) in deck edit / card selection / partner / battle, battle card names.
   `DCB_TRACE_TEXT=1|hex` logs them as `[text] mini jp|prop w=N|fixed`.
 
+### 7.11 VS-screen big names
+
+Before a card battle the VS screen (`vs_screen`, KAWSEG `801F2B9C`) shows both names in 32-px
+letters. It spawns the task `vs_names_load` (KAWSEG `801F04FC`, a0 = mode, a1 = match number,
+a2 = the VS task) and keeps running; the drawer (`vs_screen_draw`, `801F35D8`) draws each name
+as one sprite from VRAM (704, 448) (row 0) / (704, 480) (row 1), CLUT (752, 471 / 472), width
+`battle_data+0x114`. (H: read in code, run headless)
+
+| Step (`vs_names_load`) | What it does |
+|---|---|
+| names | mode ≠ 0 (a city/arena opponent): row 0 only, the player. Mode 0 (battle with a friend): rows 0 and 1, and match = 999. For each: `task_spawn` of `bigname_load(*g_player_records + row·10040, row, self)`, then `task_sleep(0x7FFFFFFF)` until it wakes the parent. |
+| `bigname_load` (`80044684`) | `g_bigname_busy` = 1; for each 2-byte character (max 8): sprintf `B:\FONT\%04X.tim` (EXE `800117C0`), `task_spawn(file_load_task)`, sleep, `tim_upload(tim, 704 + i·8, 448 + row·32, 752, 471 + row)`, `DrawSync(0)`, `mem_free`; `g_bigname_busy` = 0; `task_wake(parent, leftover a1)`. |
+| opponent picture | sprintf `B:\MATCH\%3.3d.ARC` (KAWSEG `801E0E1C`), load it, `tim_upload(entry, -1, -1, -1, -1)` for **every** offset-table entry (the last one is the end of the file: ReadTIM fails and the previous TIM is uploaded again), sleeping `g_wait_frames` after each. The 14 TIMs are the portrait, frames, the 戦 勝 敗 record strip (464, 184/202), and last the opponent's name picture at (704, 480), CLUT (752, 472), JP 32 halfwords (128 px). |
+| widths | `battle_data[0]+0x114` = (strlen(`+0x1CA`)/2)·32; `battle_data[1]+0x114` = `g_tim_image.prect->w`·4 (mode ≠ 0) or the same formula (mode 0). |
+| end | four slide-in records at `g_vs_slide` (801FE788; the picture enters from −width), `task_sleep(10)`, `g_vs_names_busy` (801FF1E8) = 0, `task_wake(parent)`. |
+
+Name sources (run headless, Meramon in the Flame City Battle Café): `*g_player_records` = 800DF1C4
+(the loaded save's name, +0), `battle_data[0]+0x1CA` = 800E61C2 holds the same name (a battle
+copy); the opponent's `+0x1CA` (800E63A2; presumably its DEK owner name, not checked) is not used here: the VS screen shows the
+MATCH picture instead. **The player name is typed on the JP kana grid, so it is Shift-JIS**; an
+ASCII name only comes from outside (a US save, a cheat, a future English name entry).
+
+JP behaviour with an ASCII name: `%04X` of two ASCII bytes asks for files such as `FONT\4A6F.tim`
+that do not exist, the load task wakes with NULL and `tim_upload(NULL, …)` uploads garbage; an odd
+length pairs the last letter with the NUL and reads past it; the width formula drops the odd
+letter.
+
+**Port** (`src/game/overrides/bigname.cpp`, `tools/text/bigfont.py`):
+
+- `en_text.py` → `bigfont.write_assets` writes `en_bigfont.bin` (the US FONT.ARC repacked: "BGF1",
+  first 0x20, count 92, 4 halfwords × 32 rows, the CLUT, a has-glyph byte per code, 92 × 256 B of
+  pixels; a code whose TIM belongs to another code has no glyph) and `files/B/MATCH/NNN.ARC`: the
+  JP archive with only its last TIM (the name picture) taken from the US archive — "Meramon",
+  40–64 halfwords wide. 141 of 142 archives; `999.ARC` (mode 0) has no name picture and stays JP.
+  The rest of the US archive is not used (its record strip is blank and wider: the US draws those
+  words as text).
+- `dcb_bigname_load` (override of `80044684`): a name made only of 2-byte Shift-JIS characters
+  takes the original. Anything else is drawn with the US glyphs: ASCII as is, full-width
+  letters/digits/space in a mixed name mapped to ASCII, bytes < 0x20 (DEK tag bytes) dropped,
+  codes without a glyph drawn as a space, at most **12 characters** (the CLUTs at x 752 end the
+  strip, as in the US loader). Each glyph is a 320-byte TIM built on the task's stack and uploaded
+  with the game's `tim_upload(tim, 704 + i·4, 448 + row·32, 752, 471 + row)` + `DrawSync(0)`;
+  `g_bigname_busy` and `task_wake(parent, 1)` as the original. Without `en_bigfont.bin` an ASCII
+  name uploads nothing and gets width 0.
+- `dcb_vs_names_load` (override of KAWSEG `801F04FC`): the routine re-implemented step by step
+  (same spawns, stack arguments, sleeps, uploads, globals and slide-in records) with one change:
+  an ASCII name's width is 16 px per drawn character. A wrapper around the original cannot do it:
+  the VS screen draws concurrently and would use the JP width during the task's last 10 frames.
+- Verified headless (`DCB_TRACE_TEXT=1` logs `[bigname] ...`): Meramon's VS screen with the JP
+  save name ああああああ (original path, width 192, unchanged) and the US "Meramon" picture;
+  with a cheat writing the save name, "Decky" (odd length, width 80) and "Tai.Kamiya-20"
+  (`.` drawn as a space, cut at 12, width 192). Mode 0 (battle with a friend) not run.
+- Not done: the 戦 勝 敗 record strip on the VS screen (and the WIN archives' copy) is still JP
+  kanji; the US shows a blank strip and draws the words as text (US code not traced).
+
 ## 8. Proposed names
 
 For later import into Ghidra / `config/SLPS-03101/functions.json`. Not applied in the shared database.
@@ -544,7 +600,7 @@ For later import into Ghidra / `config/SLPS-03101/functions.json`. Not applied i
 | `80028524` | `text_draw_tiny_grey` | wrapper |
 | `80029010` | `text_draw_bigdigits` | 16×21 digits |
 | `8002a37c` | `sjis_to_mini` | SJIS → mini-font bytes |
-| `80044684` | `bigname_load_task` | per-character `FONT\%4.4X.tim` loader |
+| `80044684` | `bigname_load` | per-character `FONT\%4.4X.tim` loader (task; §7.11, in `ghidra/symbols`) |
 | `80019ff0` | `dialog_setup` | message/Yes-No dialog |
 | `8001a590` | `dialog_draw_cb` | dialog draw callback (no Ghidra function) |
 | `8001a284` | `dialog_run` | modal loop |

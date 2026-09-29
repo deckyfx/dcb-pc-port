@@ -21,6 +21,8 @@
     { "addr": "0x80029F70", "symbol": "dcb_text_icon", "why": "text icon: level badges 16-19 (JP III, A, IV, kan) drawn as the US R/A/C/U badges from the private sheet when the English assets are loaded (src/game/overrides/level_badges.cpp)" },
     { "addr": "0x800288C8", "symbol": "dcb_text_draw_mini", "why": "mini font draw (8x7; the grey wrapper 80028898 calls it): catalog translation, English drawn with proportional ink widths, JP to the original (src/game/overrides/mini_text.cpp)" },
     { "addr": "0x8002A37C", "symbol": "dcb_sjis_to_mini", "why": "sjis_to_mini: ASCII card names copied through (the original drops every ASCII letter), SJIS to the original" },
+    { "addr": "0x80044684", "symbol": "dcb_bigname_load", "why": "bigname_load (VS-screen big name, task): ASCII names drawn with the US 16x32 font from en_bigfont.bin (the JP loader asks for FONT\\%04X.tim files that do not exist); Shift-JIS to the original (src/game/overrides/bigname.cpp)" },
+    { "addr": "0x801F04FC", "overlay": "KAWSEG", "symbol": "dcb_vs_names_load", "why": "vs_names_load (VS screen, task): re-implemented so an ASCII name gets 16 px per character (the JP width (strlen/2)*32 drops odd letters); everything else as the original" },
     { "addr": "0x80059D30", "symbol": "dcb_cd_search_file", "why": "libcd CdSearchFile: answered from the disc's root directory without reading it through the drive (the movie player looks up DIGIMON.MOV)" }
   ]
 }

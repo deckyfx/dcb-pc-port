@@ -1,6 +1,26 @@
 {
  "program": "SLPS_031.01",
  "symbols": {
+  "0x800149E4": {
+   "name": "task_current_id",
+   "source": "re",
+   "note": "() -> id of the running task (block at *8007A5EC, +0x14). Conf H"
+  },
+  "0x800149FC": {
+   "name": "task_wake_raw",
+   "source": "re",
+   "note": "(id, value): if task id is alive and not the caller, +0x18 = value (task_sleep returns it) and +4 = 0 (frames left); -3 dead, -132 self. No interrupt guard. Conf H"
+  },
+  "0x80014AEC": {
+   "name": "task_spawn",
+   "source": "re",
+   "note": "(0, -1, 0, stack_size) with the entry at sp+16 and its arguments at sp+20..: starts a child task (callers pass 0x800). Conf M (arguments read from its callers)"
+  },
+  "0x80014B7C": {
+   "name": "task_wake",
+   "source": "re",
+   "note": "(id, value): task_wake_raw with interrupts off; how a child task hands its result to a parent sleeping in task_sleep(0x7FFFFFFF). Conf H"
+  },
   "0x80014D3C": {
    "name": "task_sleep",
    "source": "re",
@@ -20,6 +40,21 @@
    "name": "pad_update",
    "source": "re",
    "note": "once a frame: computes the pad words at *8008C420 (= 8008FEE8): +10 buttons pressed this frame (PS1 bits, active high; Start 0x0800, Cross 0x0040). Overridden by dcb_pad_update (title: any button counts as Start). Found with the write watch. Conf H"
+  },
+  "0x8001B0D4": {
+   "name": "mem_free",
+   "source": "re",
+   "note": "(p): frees a buffer from file_load_task. Conf M"
+  },
+  "0x8001B388": {
+   "name": "file_load_task",
+   "source": "re",
+   "note": "(path, parent) task: waits for g_file_load_busy, opens and reads the whole file into a new buffer, wakes parent with it (NULL when the file is missing). Conf H"
+  },
+  "0x8001B67C": {
+   "name": "tim_upload",
+   "source": "re",
+   "note": "(tim, x, y, clut_x, clut_y@sp16): OpenTIM/ReadTIM into g_tim_image, LoadImage of the pixels and the CLUT; -1 keeps the TIM's own position (clut_x -2: no CLUT). Conf H"
   },
   "0x80021198": {
    "name": "msd_vm_step",
@@ -151,6 +186,11 @@
    "source": "re",
    "note": "the same over the second 30-byte array at battle_data+0x197 (count from 80042B28); what that array is was not worked out. Conf M"
   },
+  "0x80044684": {
+   "name": "bigname_load",
+   "source": "re",
+   "note": "(name, row, parent) task: VS-screen big name, one B:\\FONT\\%04X.tim per 2-byte SJIS char (max 8) to VRAM (704 + i*8, 448 + row*32), CLUT (752, 471 + row); wakes parent. Overridden by dcb_bigname_load (ASCII names in the US 16x32 font, docs/re/text-engine.md 7.11). Conf H"
+  },
   "0x800466D0": {
    "name": "battle_banner_draw",
    "source": "re",
@@ -196,6 +236,31 @@
    "source": "re",
    "note": "(player, part): tests the same bit. Conf H"
   },
+  "0x800709BC": {
+   "name": "g_file_load_busy",
+   "source": "re",
+   "note": "1 while a file_load_task reads (the others wait g_wait_frames at a time). Conf H"
+  },
+  "0x80070C2C": {
+   "name": "g_player_records",
+   "source": "re",
+   "note": "-> the two players' records, 10040 bytes each (+0 name; record 0 is the loaded save's, e.g. 800DF1C4). bigname_load reads the names from here. Conf M"
+  },
+  "0x80070E70": {
+   "name": "g_bigname_busy",
+   "source": "re",
+   "note": "1 while bigname_load runs. Conf H"
+  },
+  "0x8007C0D0": {
+   "name": "g_wait_frames",
+   "source": "re",
+   "note": "frames to sleep between steps of loads/uploads (file_load_task, vs_names_load). Conf M"
+  },
+  "0x801D7430": {
+   "name": "g_tim_image",
+   "source": "re",
+   "note": "TIM_IMAGE of the last ReadTIM (tim_upload): +0 mode, +4 crect*, +8 caddr, +0xC prect*, +0x10 paddr. vs_names_load takes the opponent's name width from prect->w * 4. Conf H"
+  },
   "0x801D9704": {
    "name": "g_systim_x",
    "source": "re",
@@ -239,7 +304,7 @@
   "0x801DAF40": {
    "name": "g_battle_players",
    "source": "re",
-   "note": "battle_data* [2] (0 = you, 1 = opponent), 0x1E0 bytes each, e.g. 800E5FF8 / 800E61D8: +0x118 HP, +0x11A..+0x11E attacks, +0x120 DP, +0x178 points (u8, 3 wins), +0x179 deck (30 B), +0x1CA name (docs/re/battle.md). Conf H"
+   "note": "battle_data* [2] (0 = you, 1 = opponent), 0x1E0 bytes each, e.g. 800E5FF8 / 800E61D8: +0x118 HP, +0x11A..+0x11E attacks, +0x114 s16 VS big-name width (vs_names_load), +0x120 DP, +0x178 points (u8, 3 wins), +0x179 deck (30 B), +0x1CA name (docs/re/battle.md). Conf H"
   },
   "0x801E28E4": {
    "name": "city_msg_clear",
@@ -295,6 +360,24 @@
    "source": "re",
    "note": "(player): returns 0 unless the player's HP (battle_data+0x118) is 0; then the opponent scores: battle_state+0x81E = opponent, opponent's points (u8 battle_data+0x178) += 1 (at 801EFD5C). Called from battle_main's battle phase (8003AFA8, 8003B24C, 8003B31C, 8003B344). Conf H"
   },
+  "0x801F04FC": {
+   "name": "vs_names_load",
+   "overlay": "KAWSEG",
+   "source": "re",
+   "note": "(mode, match, parent) task: big names for the VS screen: bigname_load for the player (mode 0: both players), then B:\\MATCH\\%3.3d.ARC (999 for mode 0) uploaded TIM by TIM, the last being the opponent's name picture; widths to battle_data+0x114; slide-in records g_vs_slide; g_vs_names_busy. Overridden by dcb_vs_names_load. Conf H"
+  },
+  "0x801F2B9C": {
+   "name": "vs_screen",
+   "overlay": "KAWSEG",
+   "source": "re",
+   "note": "(mode, match): the VS screen before a card battle; spawns vs_names_load and runs on concurrently. Conf M"
+  },
+  "0x801F35D8": {
+   "name": "vs_screen_draw",
+   "overlay": "KAWSEG",
+   "source": "re",
+   "note": "VS screen drawer; each big name is one 32-px-high sprite from (704, 448/480), width battle_data+0x114. Conf M"
+  },
   "0x801F7600": {
    "name": "partner_gain_exp",
    "overlay": "KAWSEG",
@@ -312,6 +395,18 @@
    "overlay": "KAWSEG",
    "source": "re",
    "note": "after a battle: for 32 slots whose battle flag is set, u16 counter+1 at game_data + 0x818 + 2*i (capped at 999). Not the Digi parts; role not known (maybe wins per opponent). Conf M"
+  },
+  "0x801FE788": {
+   "name": "g_vs_slide",
+   "overlay": "KAWSEG",
+   "source": "re",
+   "note": "4 x 32-byte slide-in records set by vs_names_load (the name picture moves in from -width). Conf M"
+  },
+  "0x801FF1E8": {
+   "name": "g_vs_names_busy",
+   "overlay": "KAWSEG",
+   "source": "re",
+   "note": "1 while vs_names_load runs. Conf H"
   }
  }
 }
