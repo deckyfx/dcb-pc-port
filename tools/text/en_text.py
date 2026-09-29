@@ -9,6 +9,8 @@ gitignored assets/SLPS-03101/ (never into git):
   files/B/CARD2.CDD   JP file with US names, attack names, effect text
                  (effect lines re-slotted 21 -> 19 bytes; overlong lines
                  listed in en_text_report.txt for hand-shortening)
+  files/C/AREAnn.PAK  the 12 city PAKs with the US city script (MSD chunk);
+                 the image chunk stays JP
   files/B/DECK2.DEK   same graft for deck/owner names; a deck name too long
                  for its 13-byte slot is stored as 11 letters + a tag byte
   text/source.tsv, text/en.tsv
@@ -36,6 +38,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "disc"))
 import drv_unpack as _drv  # noqa: E402
 
 import catalog as _catalog  # noqa: E402  (tools/text/catalog.py)
+import msd as _msd  # noqa: E402  (tools/text/msd.py)
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "assets"))
+import dcb_containers as _containers  # noqa: E402  (PAK reader/writer)
 
 REPO = Path(__file__).resolve().parents[2]
 
@@ -186,6 +192,27 @@ def graft_dek(jp: bytes, us: bytes, report: list[str]) -> tuple[bytes, dict]:
     return bytes(out), stats
 
 
+def graft_city_script(jp_pak: bytes, us_pak: bytes) -> tuple[bytes | None, str]:
+    """The JP city PAK with the US city script (chunk kind 2) in place of the JP one.
+
+    Only when the two scripts are the same program apart from text (msd.same_program); the other
+    chunks (the kind-5 image set) stay JP. (None, reason) otherwise.
+    """
+    jp_chunks = _containers.read_pak(jp_pak)
+    us_scripts = {c.id: c.data for c in _containers.read_pak(us_pak) if c.kind == 2}
+    out = []
+    for c in jp_chunks:
+        if c.kind == 2:
+            if c.id not in us_scripts:
+                return None, f"no US script chunk {c.id:#x}"
+            ok, why = _msd.same_program(c.data, us_scripts[c.id])
+            if not ok:
+                return None, why
+            c = _containers.Chunk(c.kind, c.id, c.offset, us_scripts[c.id])
+        out.append(c)
+    return _containers.write_pak(out), ""
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     ap.add_argument("--jp", required=True, help="extracted/SLPS-03101")
@@ -241,7 +268,22 @@ def main(argv=None) -> int:
         "Balance bytes kept JP:\n" + "".join(f"  {line}\n" for line in diffs) + "\n")
     print(f"report: {len(report)} overlong strings -> en_text_report.txt")
 
-    # 3. text catalog (config/SLPS-03101/text/catalog.txt): source.tsv + en.tsv
+    # 3. city scripts: C:\AREAnn.PAK with the US script chunk (dialogue, city messages)
+    jp_c = (jp_fs / "C.DRV").read_bytes()
+    us_c = (us_fs / "C.DRV").read_bytes()
+    (out / "files" / "C").mkdir(parents=True, exist_ok=True)
+    grafted_cities = 0
+    for n in range(12):
+        name = f"AREA{n:02d}.PAK"
+        pak, why = graft_city_script(drv_file(jp_c, name), drv_file(us_c, name))
+        if pak is None:
+            print(f"city {name}: kept JP ({why})")
+            continue
+        (out / "files" / "C" / name).write_bytes(pak)
+        grafted_cities += 1
+    print(f"city scripts: {grafted_cities}/12 AREAnn.PAK with the US script -> files/C/")
+
+    # 4. text catalog (config/SLPS-03101/text/catalog.txt): source.tsv + en.tsv
     jp_p = (jp_fs / "P.DRV").read_bytes()
     us_p = (us_fs / "P.DRV").read_bytes()
     jp_exe = (Path(args.jp) / "exe" / "boot.exe").read_bytes()

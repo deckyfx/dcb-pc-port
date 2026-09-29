@@ -241,6 +241,36 @@
    "source": "re",
    "note": "battle_data* [2] (0 = you, 1 = opponent), 0x1E0 bytes each, e.g. 800E5FF8 / 800E61D8: +0x118 HP, +0x11A..+0x11E attacks, +0x120 DP, +0x178 points (u8, 3 wins), +0x179 deck (30 B), +0x1CA name (docs/re/battle.md). Conf H"
   },
+  "0x801E28E4": {
+   "name": "city_msg_clear",
+   "overlay": "SAISEG",
+   "source": "re",
+   "note": "(slots): frees the 3 line slots (+62 = -1) and clears 60 text bytes each. Conf H"
+  },
+  "0x801E293C": {
+   "name": "city_msg_slot_alloc",
+   "overlay": "SAISEG",
+   "source": "re",
+   "note": "(slots) -> the first free slot (+62 == -1), marked in use, shown count zeroed; 0 when all 3 are used. Conf H"
+  },
+  "0x801E2978": {
+   "name": "city_msg_build",
+   "overlay": "SAISEG",
+   "source": "re",
+   "note": "(text) -> line slot index or -1: claims a slot of g_city_msg_lines (city_msg_slot_alloc), writes 'w1', copies SJIS characters and bare JP codes a..s (jump table), drops other bytes (all ASCII); no length check. Overridden by dcb_city_msg_build. Conf H"
+  },
+  "0x801E2B94": {
+   "name": "city_msg_reveal",
+   "overlay": "SAISEG",
+   "source": "re",
+   "note": "(x, y, slot, ot) -> 1 revealing / -1 shown: typewriter, one SJIS character per call (ASCII bytes pass at once), draws with text_draw_grey clut 7. Overridden by dcb_city_msg_reveal. Conf H"
+  },
+  "0x801E2CC0": {
+   "name": "city_msg_draw",
+   "overlay": "SAISEG",
+   "source": "re",
+   "note": "(x, y, ot): reveals / draws the used line slots top to bottom (13 px apart), stopping at the first still revealing; returns 1 while busy. Conf H"
+  },
   "0x801ED334": {
    "name": "tutorial_msg_show",
    "overlay": "KAWSEG",
@@ -270,6 +300,12 @@
    "overlay": "KAWSEG",
    "source": "re",
    "note": "adds partner EXP (u16 game_data + 0x2FA) and raises the level (u8 game_data + 0x2F9) after a battle. Conf M"
+  },
+  "0x801F7E88": {
+   "name": "g_city_msg_lines",
+   "overlay": "SAISEG",
+   "source": "re",
+   "note": "3 x 64-byte message line slots: 60 text, +60 u16 shown, +62 s8 in use (-1 free), +63 s8 length. Conf H"
   },
   "0x801FCF78": {
    "name": "battle_counters_add",

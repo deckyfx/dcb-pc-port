@@ -413,8 +413,25 @@ Rules the mappers followed, worth keeping:
 - A `%s` the game fills keeps its (JP) value inside the English line; a title or deck name
   there stays JP until its own source is translated.
 
-Not covered yet: the script / dialogue text in C.DRV (e.g. the city menu prompt), which is also
-revealed a character at a time (a partial string matches no template); the other renderers
+### 7.8 City scripts (C:\AREAnn.PAK)
+
+Each city PAK has two chunks: kind 2 (id 0xC8+n) the city MSD script, kind 5 (id 0xFA0) the image
+set. The US scripts are the same program as the JP ones: walked record by record
+(`tools/text/msd.py`), they differ only in text records and the show-text commands (op 0x0A,
+cmd 4/5) around them, where the US re-flowed its dialogue. `en_text.py` checks that per city
+(`msd.same_program`) and writes `files/C/AREAnn.PAK` with the US script chunk (the image chunk
+stays JP).
+
+The JP city code cannot show those lines as is: `city_msg_build` (SAISEG 801E2978) copies a
+line into one of three 64-byte slots at `g_city_msg_lines` (801F7E88) keeping only Shift-JIS and
+bare JP codes (all ASCII is dropped) and without a length check (the US lines reach 67 bytes).
+`src/game/overrides/city_text.cpp` overrides it and `city_msg_reveal` (801E2B94): an English line
+(or a JP line the catalog translates) stays host-side, the slot holds a marker and a serial, and
+the reveal types two characters a frame through the text renderer (the shown count stays in the
+slot, so save states keep their place). JP lines take the originals.
+
+Not covered yet: the other MSD scripts (tutorial `B:\BETA.MSD`, `C:\EVENT\UNIT0x.MSD`, E/F/C PAK
+scripts); the other renderers
 (mini / tiny fonts, the VS big names). `DCB_TRACE_TEXT=hex` logs each drawn string's bytes and
 whether the catalog translates it (decode with cp932) — the way to find what is still Japanese.
 

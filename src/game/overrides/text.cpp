@@ -21,6 +21,7 @@
 
 #include "gpu/gpu.hpp"
 #include "hw/mmio.hpp"
+#include "text.hpp"
 #include "text_catalog.hpp"
 
 #include <psx/backtrace.hpp>
@@ -662,6 +663,10 @@ void dispatch(PsxContext* ctx, uint32_t jp_addr, bool draw, int x, int y, int cl
 }
 
 }  // namespace
+
+bool dcb::text_translate(PsxContext& ctx, const std::string& in, std::string& out) {
+    return load_font(ctx) && g_catalog.translate(in, out);
+}
 
 extern "C" {
 
