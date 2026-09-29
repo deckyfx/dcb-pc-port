@@ -375,6 +375,31 @@ line is ~100 px in the US font, over 160 px in JP letters, in a ~108 px box).
 | Battle banner / tutorial / slot expanders, the five extra renderers, EXE + MSD strings | not started (later milestones). |
 | Verification | headless runs with `DCB_TRACE_TEXT=1` + `DCB_SNAPSHOT`: an ASCII message (poked into the memory-card dialog source at OPENSEG `0x801E27F4`, draw buffer `0x800E5638`) renders through the US port, and a clean run of the same build renders the JP string through the fallback. |
 
+### 7.7 Text catalog (whole strings, any language)
+
+Strings the game draws whole (menus, dialogs, the save/load screens) are translated by template,
+not by patching the overlays: the renderer copies each string, and when it matches a catalog
+entry whole, draws the translation instead.
+
+- **`config/SLPS-03101/text/catalog.txt`** (in git, offsets only): `pair <id> <us id>` and
+  `run <id> <us id> <count>`, ids being `<file>:<offset>` in the JP / US disc (`EXE` = boot.exe,
+  `OPENSEG` = P.DRV OPENSEG.BIN, ...). A `run` pairs strings in a row by order, for blocks the
+  two versions keep in the same order (the 27 save/load messages, the 33 location names).
+- **`config/SLPS-03101/text/en.tsv`** (in git): English written for this port where the US has
+  none (`pair <id> -`), e.g. `%3dh %2dm` for the JP play time.
+- **`tools/text/en_text.py`** reads both dumps and writes `assets/SLPS-03101/text/source.tsv`
+  (the JP templates) and `en.tsv`.
+- **Templates:** printf placeholders the game fills (`%d`/`%3d` match padded numbers, `%s` any
+  run, `%%` a literal %); the slot digit the game writes over `S`/`E` after `スロット` (US: over
+  `*S`/`*E`) is `%c`. Captured values go into the translation's placeholders in order.
+- **Other languages:** a `<lang>.tsv` with the same ids next to `en.tsv`, picked with
+  `DCB_LANG=<lang>`. The US font has ASCII only, so accented letters need glyphs first.
+- **Runtime:** `text::Catalog` (`src/platform/text_catalog.*`, unit-tested), used by
+  `load_text` in `src/game/overrides/text.cpp` before the deck-name rules.
+
+First entries: Yes/No (EXE `828`/`830`), and the title overlay's save/load flow (messages,
+file panels, location names): 82 strings.
+
 ## 8. Proposed names
 
 For later import into Ghidra / `config/SLPS-03101/functions.json`. Not applied in the shared database.

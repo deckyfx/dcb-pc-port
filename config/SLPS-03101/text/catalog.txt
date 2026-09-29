@@ -1,0 +1,46 @@
+# Text catalog: which game strings the renderer translates, and where their US text is.
+# Only offsets live here (no game text): tools/text/en_text.py reads the strings from the
+# player's own JP and US dumps and writes assets/SLPS-03101/text/{source,en}.tsv.
+#
+# A string's id is <file>:<offset> in the JP disc (hex, file offsets):
+#   EXE      the boot executable (exe/boot.exe)
+#   <NAME>   an overlay in P.DRV (OPENSEG = P.DRV OPENSEG.BIN)
+#
+#   pair <id> <us id>          one string and its US counterpart (same naming, US disc)
+#   pair <id> -                no US text: the English comes from en.tsv next to this file
+#   run  <id> <us id> <count>  <count> strings in a row on both sides, paired in order
+#
+# Placeholders: the game fills printf formats (%d, %3d, %s) and writes the memory-card slot
+# digit over the S / E after スロット (the US writes it over *S / *E); both become %c.
+
+# Yes / No (every Yes/No choice)
+pair EXE:828       EXE:828
+pair EXE:830       EXE:82c
+
+# Save / load messages (OPENSEG, the title overlay): 27 in the same order on both discs
+run  OPENSEG:1604  OPENSEG:fd8    27
+
+# Location names (file info "current position"): 15 areas, 3 entrances, 15 arenas
+run  OPENSEG:13b8  OPENSEG:df4    33
+
+# File select panels
+pair OPENSEG:1df8  OPENSEG:17a4   # file is corrupted
+pair OPENSEG:1e10  OPENSEG:17b8   # NO DATA
+pair OPENSEG:1e20  OPENSEG:17c0   # player / slot
+pair OPENSEG:1e4c  OPENSEG:17e8   # name
+pair OPENSEG:1e54  OPENSEG:17f0   # playing time
+pair OPENSEG:1e60  -              # hours / minutes (the US shows h:mm:ss from other values)
+pair OPENSEG:1e70  -              # title categories: not in the US version
+pair OPENSEG:1e80  -
+pair OPENSEG:1e90  -
+pair OPENSEG:1ea0  OPENSEG:1810   # game completion
+pair OPENSEG:1ec0  OPENSEG:1830   # card collection
+pair OPENSEG:1ed0  OPENSEG:1840   # current position
+pair OPENSEG:1edc  OPENSEG:1854   # arena
+pair OPENSEG:1ee7  OPENSEG:185c   # save up to this point?
+pair OPENSEG:1fbc  OPENSEG:1914   # format slot 1?
+pair OPENSEG:1ff0  OPENSEG:1938   # overwrite file %d?
+pair OPENSEG:2030  OPENSEG:1964   # not enough free blocks
+pair OPENSEG:2070  OPENSEG:1998   # create a file?
+pair OPENSEG:20b8  OPENSEG:19cc   # file %d is corrupted
+pair OPENSEG:20dc  OPENSEG:19e4   # load file %d?

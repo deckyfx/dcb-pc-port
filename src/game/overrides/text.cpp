@@ -21,6 +21,7 @@
 
 #include "gpu/gpu.hpp"
 #include "hw/mmio.hpp"
+#include "text_catalog.hpp"
 
 #include <psx/backtrace.hpp>
 #include <psx/recomp.h>
@@ -79,6 +80,7 @@ void wr16(PsxContext& ctx, uint32_t a, uint16_t v) { psx_write16(&ctx, a, v); }
 void wr32(PsxContext& ctx, uint32_t a, uint32_t v) { psx_write32(&ctx, a, v); }
 
 void load_names();
+void load_catalog();
 
 /// The JP deck label format "%sデック" (EXE 800114E0, sprintf'd with the deck name) becomes the
 /// US "%s Deck", so every deck name, English or a JP name the player typed, reads "<name> Deck".
@@ -133,6 +135,7 @@ bool load_font(PsxContext& ctx) {
         units[i] = static_cast<uint16_t>(g_font_rows[i * 2] | (g_font_rows[i * 2 + 1] << 8));
     mmio->gpu().set_private_sheet(std::move(units), kSheetUnits, kFontRows);
     load_names();
+    load_catalog();
     return true;
 }
 
@@ -164,7 +167,20 @@ void load_names() {
     std::fclose(f);
 }
 
-/// A guest string copied to the host (NUL included) with the English expansions applied: long
+// The text catalog (assets/<serial>/text: source.tsv + <lang>.tsv, built by tools/text/en_text.py
+// from config/<serial>/text/catalog.txt): whole game strings by template, e.g. the load screen's
+// messages. DCB_LANG=<lang> picks the language file (default en).
+text::Catalog g_catalog;
+
+void load_catalog() {
+    const char* lang = std::getenv("DCB_LANG");
+    const std::string dir = std::string("assets/") + DCB_GAME_ID + "/text";
+    const size_t n = g_catalog.load(dir, lang && *lang ? lang : "en");
+    std::fprintf(stderr, "[text] catalog: %zu strings (%s/%s.tsv)\n", n, dir.c_str(), lang && *lang ? lang : "en");
+}
+
+/// A guest string copied to the host (NUL included) with the English expansions applied: a
+/// catalog translation of the whole string, long
 /// names (en_names.txt), and the "デック" deck label (at the end of a string, or after an English
 /// name) becomes " Deck" like the US "%s Deck".
 struct Text {
@@ -180,6 +196,7 @@ Text load_text(PsxContext& ctx, uint32_t str) {
         if (c == 0) break;
         s.push_back(static_cast<char>(c));
     }
+    if (std::string translated; g_catalog.translate(s, translated)) s = std::move(translated);
     for (const LongName& n : g_names)
         for (size_t p = s.find(n.key); p != std::string::npos; p = s.find(n.key, p + n.full.size()))
             s.replace(p, n.key.size(), n.full);
@@ -462,7 +479,10 @@ int run_string(PsxContext& ctx, int x, int y, int clut, int prop, uint32_t rgb, 
         // Glyph.
         if (draw) {
             if (prim_full(ctx)) break;
-            int u = ((it.ch - 0x20) % kFontCols) * kCellW + (g_widths[it.ch - 0x20] >> 4);
+            // Proportional: the glyph's own columns (offset in its cell, its width). Fixed (*s0):
+            // the whole 6-pixel cell, so a narrow glyph keeps its place in it and no neighbour's
+            // columns come along.
+            int u = ((it.ch - 0x20) % kFontCols) * kCellW + (cur.prop ? (g_widths[it.ch - 0x20] >> 4) : 0);
             int v = ((it.ch - 0x20) / kFontCols) * kCellH;  // sheet row 0 = font row 48
             int w = cur.prop ? (g_widths[it.ch - 0x20] & 0xF) : kCellW;
             emit_sprt(ctx, cur.x, cur.y, u, v, w, kCellH, rgb, cur.clut, ot);

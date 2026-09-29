@@ -11,6 +11,9 @@ gitignored assets/SLPS-03101/ (never into git):
                  listed in en_text_report.txt for hand-shortening)
   files/B/DECK2.DEK   same graft for deck/owner names; a deck name too long
                  for its 13-byte slot is stored as 11 letters + a tag byte
+  text/source.tsv, text/en.tsv
+                 the text catalog (config/SLPS-03101/text/catalog.txt): JP
+                 templates the renderer matches, and their English
   en_names.txt   those long names: "<11 letters>\t<tag>\t<full name>" per
                  line; the renderer (src/game/overrides/text.cpp) draws the
                  full name wherever the key shows up
@@ -31,6 +34,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "disc"))
 # --- container readers (reuse tools/disc/drv_unpack.py; TIM walk is local) ---
 
 import drv_unpack as _drv  # noqa: E402
+
+import catalog as _catalog  # noqa: E402  (tools/text/catalog.py)
+
+REPO = Path(__file__).resolve().parents[2]
 
 
 def drv_file(drv: bytes, want: str) -> bytes:
@@ -233,7 +240,25 @@ def main(argv=None) -> int:
         "".join(f"  {line}\n" for line in report) + "\n" +
         "Balance bytes kept JP:\n" + "".join(f"  {line}\n" for line in diffs) + "\n")
     print(f"report: {len(report)} overlong strings -> en_text_report.txt")
-    return 0
+
+    # 3. text catalog (config/SLPS-03101/text/catalog.txt): source.tsv + en.tsv
+    jp_p = (jp_fs / "P.DRV").read_bytes()
+    us_p = (us_fs / "P.DRV").read_bytes()
+    jp_exe = (Path(args.jp) / "exe" / "boot.exe").read_bytes()
+
+    def loader(exe: bytes, p_drv: bytes):
+        return lambda name: exe if name == "EXE" else drv_file(p_drv, name + ".BIN")
+
+    cat_dir = REPO / "config" / "SLPS-03101" / "text"
+    own = _catalog.read_own(cat_dir / "en.tsv")
+    source, en, problems = _catalog.build((cat_dir / "catalog.txt").read_text(encoding="utf-8"),
+                                          loader(jp_exe, jp_p), loader(us_exe, us_p), own)
+    _catalog.write_rows(out / "text" / "source.tsv", source)
+    _catalog.write_rows(out / "text" / "en.tsv", en, escaped=set(own))
+    print(f"catalog: {len(source)} strings, {len(en)} English -> text/source.tsv, text/en.tsv")
+    for line in problems:
+        print(f"  catalog: {line}")
+    return 1 if problems else 0
 
 
 if __name__ == "__main__":
