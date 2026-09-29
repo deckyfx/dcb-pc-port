@@ -284,7 +284,8 @@ void Trainer::general_char(char c) {
         const ToggleItem& t = toggles_.list()[i - presets];
         toggles_.set_enabled(i - presets, !t.enabled);
         dirty_ = true;
-        set_status(t.label + (t.enabled ? " on" : " off") + " (S saves)");
+        const std::string what = !t.enabled ? t.label + " off" : t.on_status.empty() ? t.label + " on" : t.on_status;
+        set_status(what + " (S saves)");
     } else {
         apply_partner(static_cast<int>(i - presets - toggles));
     }

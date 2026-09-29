@@ -271,7 +271,7 @@ a jewel (1 in 12 for a given one). The trainer's fusion toggles below change tha
 |---|---|---|
 | `fusion_mutate` "Fusion: every fusion mutates (special kept)" | `dcb_fusion_roll` overrides `fusion_roll` (`config/SLPS-03101/overrides.json`, overlay EVOSEG) and re-runs the original until it rolls a mutation; a special fusion is kept. With the Mutation Detector the keeper warns every time; answer yes. | H (run: mutations after 52-647 rolls) |
 | `fusion_jewel` "Fusion: mutations give a Digi-Jewel" | re-runs the roll until a mutation gives a Digi-Jewel the player does not have six of; alone it only changes fusions that mutated anyway, with `fusion_mutate` every fusion gives a jewel | H |
-| `digimentals` "All Digimentals (given at the city Menu)" | holds the 13 Digimental flag bits set (like a cheat, each frame, ORed into `+0x23EF`-`+0x23F1`); the next city **Menu** gives each owned partner its Digimentals | H (run) |
+| `digimentals` "All Digimentals (given at the next city Menu)" | holds the 13 Digimental flag bits set (like a cheat, each frame, ORed into `+0x23EF`-`+0x23F1`); the next city **Menu** gives each owned partner its Digimentals (`digimental_sync`; nothing is given before that, so switching it on shows "open the city Menu to get them" on the status line) | H (run) |
 
 Digimental caveat (M): scripts also read these flags for their own flow. CITY09's partner gift
 shows "you got the X card" and sets r317 only when the new partner's first Digimental flag is

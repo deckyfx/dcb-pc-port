@@ -9,9 +9,17 @@ paused while it is open; `F4` or `Esc` closes it, `Tab` switches between its pag
   - Presets: cheats built into the port for this game (all cards ×4, all 127 Digi parts). They
     cannot be edited; their on/off state is saved in the cheat file as `!preset <name> on|off`.
   - "Outside battle" toggles (saved as `!toggle` lines, as before when they were on the Battle
-    page): every Fusion Shop fusion mutates, mutations give a Digi-Jewel, and all Digimentals
-    (their flags, handed out at the next city Menu to the partners you have). Izzy's Mutation
-    Detector does not block mutations: the keeper only warns, and "yes" still fuses.
+    page): every Fusion Shop fusion mutates, mutations give a Digi-Jewel, and all Digimentals.
+    Izzy's Mutation Detector does not block mutations: the keeper only warns, and "yes" still
+    fuses.
+    "All Digimentals (given at the next city Menu)" sets the story flags only; the game itself
+    hands the armors out when a city **Menu** is opened (✕ on the city map, then Menu), as it
+    does for the ones you earn: each partner you have then gets its Digimentals (Veemon three,
+    the others two) and can arm them on the Partner screen. Until you open that Menu nothing
+    changes; the status line says so when you switch it on. A partner added later (in game or
+    with the partner rows below) gets its Digimentals at the next Menu too. Caveat: with it on,
+    Ken's partner gift in CITY09 skips its "you got the card" message and can be offered again
+    (it still gives the partner).
   - Partners 1-3: `Left`/`Right` pick a Digimon (Veemon, Hawkmon, Armadillomon, Gatomon,
     Patamon, Wormmon, or empty) for that slot, `Enter`/`Space` writes it; the row shows what the
     game has now. It is written once (not kept in the cheat file): save in game to keep it. A new

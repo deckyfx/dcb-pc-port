@@ -354,6 +354,13 @@ void test_game_toggles() {
     t.key(Key::Down);
     t.text(" ");  // digimentals off
     CHECK(!t.toggles().on(GameToggle::Digimentals));
+    CHECK(contains(t.render(kPanelCols, kPanelRows), "All Digimentals (given at the next city Menu) off (S saves)"));
+    // On again: the status line says where the game hands them out (and fits the panel).
+    t.text(" ");
+    CHECK(t.toggles().on(GameToggle::Digimentals));
+    CHECK(contains(t.render(kPanelCols, kPanelRows), "All Digimentals on: open the city Menu to get them (S saves)"));
+    check_fits(t, kPanelCols, kPanelRows);
+    t.text(" ");  // off again
     check_fits(t, kPanelCols, kPanelRows);
     check_fits(t, 20, 12);
     t.text("s");

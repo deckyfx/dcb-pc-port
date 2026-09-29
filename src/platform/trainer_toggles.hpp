@@ -19,7 +19,7 @@ namespace trainer {
 enum class GameToggle : uint8_t {
     FusionMutate,  ///< every card fusion mutates (special fusions are kept)
     FusionJewel,   ///< a mutation always gives a Digi-Jewel (cards 273-284)
-    Digimentals,   ///< the 13 Digimental city flags are held set
+    Digimentals,   ///< the 13 Digimental city flags are held set (handed out at the next city Menu)
 };
 
 struct ToggleItem {
@@ -27,6 +27,9 @@ struct ToggleItem {
     GameToggle kind = GameToggle::FusionMutate;
     bool enabled = false;
     std::string label;  ///< the panel text
+    /// The status line when it is switched on, when the label alone does not say what to do next
+    /// (empty: "<label> on").
+    std::string on_status;
 };
 
 class GameToggles {
