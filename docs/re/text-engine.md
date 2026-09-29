@@ -406,7 +406,20 @@ entry whole, draws the translation instead.
   template starting with `%s` does not take everything) and draws the same share of the English:
   k of n Japanese characters shown -> k/n of the English glyphs, so the English types along
   instead of the Japanese showing until the line completes. While the start could still be two
-  different messages it draws nothing. `DCB_TRACE_TEXT=hex` logs `catalog=prefix -> "..."`.
+  different messages it draws nothing. `DCB_TRACE_TEXT=hex` logs `catalog=prefix -> "..."`,
+  and `out=jp|en` + `outhex=` (what is drawn after every expansion: `out=jp` is Japanese on
+  screen, even for a line the catalog "translated").
+- **Templates with a literal start first** (`Catalog::lookup`, used by `load_text`): a whole
+  template that starts with a literal, else the start of one (typed out), else a whole
+  `%s...` template (`%sデック`, `%sの...`), else the start of one. A line typed out passes
+  through a whole `%sデック` for a frame: the partner select's deck descriptions reach
+  `ブイモンがパートナーのc5デック` before `c7です。...`, and were drawn for that frame as
+  "ブイモンがパートナーのc5 Deck" (Japanese flash, twice per description; also the starter-deck
+  line before it). `%s` captures also end on a character boundary: byte-wise, `ブイモ` (ends
+  `83 82`) "started" `%sの...` (`の` = `82 CC`) and drew nothing for that frame. (H: run
+  headless, new game → partner select, all three decks: no `out=jp` draws besides the typed
+  name and the kana grid.) Two messages that start alike (`パートナーカード...`, `この世界...`)
+  still draw nothing for the few characters they share.
 
 Coverage (1271 strings): Yes/No and the save/load flow (`catalog.txt`), the EXE (battle
 dialogs, banner, help lines, support effects, packs, rank titles: `catalog-exe.txt`), KAWSEG

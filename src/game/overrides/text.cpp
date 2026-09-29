@@ -199,8 +199,10 @@ Text load_text(PsxContext& ctx, uint32_t str) {
         s.push_back(static_cast<char>(c));
     }
     // A whole known string, or the start of one the game is typing out (the English is revealed
-    // in step with the Japanese instead of popping in when the line completes).
-    if (std::string translated; g_catalog.translate(s, translated) || g_catalog.translate_prefix(s, translated))
+    // in step with the Japanese instead of popping in when the line completes). lookup() puts the
+    // start of a known message before a whole "%sデック": typed out, a line reaches "...c5デック"
+    // for a frame, and must not show as "<Japanese> Deck".
+    if (std::string translated; g_catalog.lookup(s, translated))
         s = std::move(translated);
     for (const LongName& n : g_names)
         for (size_t p = s.find(n.key); p != std::string::npos; p = s.find(n.key, p + n.full.size()))
@@ -695,16 +697,30 @@ void trace_call(PsxContext& ctx, const char* fn, uint32_t str, int x, int y) {
     if (std::strcmp(std::getenv("DCB_TRACE_TEXT"), "hex") == 0) {
         std::string raw;
         for (uint32_t i = 0; i < 4096 && rd8(ctx, str + i); ++i) raw.push_back(static_cast<char>(rd8(ctx, str + i)));
-        std::string translated;
-        if (g_catalog.translate(raw, translated)) extra = " catalog=yes";
-        else if (g_catalog.translate_prefix(raw, translated)) extra = " catalog=prefix -> \"" + translated + "\"";
-        else extra = " catalog=no";
-        extra += " hex=";
-        static const char* kHex = "0123456789abcdef";
-        for (const char c : raw) {
-            extra += kHex[static_cast<uint8_t>(c) >> 4];
-            extra += kHex[static_cast<uint8_t>(c) & 15];
+        std::string translated, whole;
+        if (!g_catalog.lookup(raw, translated)) extra = " catalog=no";
+        else if (g_catalog.translate(raw, whole) && whole == translated) extra = " catalog=yes";
+        else {
+            for (size_t p = translated.find('\n'); p != std::string::npos; p = translated.find('\n', p + 2))
+                translated.replace(p, 1, "\\n");  // one log line per draw
+            extra = " catalog=prefix -> \"" + translated + "\"";
         }
+        static const char* kHex = "0123456789abcdef";
+        const auto hex = [&](const auto& bytes, size_t n) {
+            extra += '=';
+            for (size_t i = 0; i < n; ++i) {
+                extra += kHex[static_cast<uint8_t>(bytes[i]) >> 4];
+                extra += kHex[static_cast<uint8_t>(bytes[i]) & 15];
+            }
+        };
+        extra += " hex";
+        hex(raw, raw.size());
+        // What is drawn after every expansion (catalog, long names, deck label): "jp" when
+        // Shift-JIS is left in it, so a Japanese flash shows up even inside a translated line.
+        const Text drawn = load_text(ctx, str);
+        extra += is_ascii(drawn) ? " out=en" : " out=jp";
+        extra += " outhex";
+        hex(drawn.b, drawn.size());
     }
     std::fprintf(stderr, "[text] %s %s \"%s\" at (%d,%d) str=%08X%s%s\n", fn, ascii ? "ascii" : "sjis",
                  buf, x, y, str, extra.c_str(), psx::backtrace_string(&ctx).c_str());

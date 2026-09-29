@@ -29,6 +29,15 @@ std::map<std::string, std::string> read_tsv(const std::filesystem::path& path) {
 
 bool is_digit(char c) { return c >= '0' && c <= '9'; }
 
+bool sjis_lead(unsigned char c) { return (c >= 0x81 && c <= 0x9F) || (c >= 0xE0 && c <= 0xFC); }
+
+/// The index after the character at `i` (a Shift-JIS pair, or one byte). A %s capture ends on a
+/// character boundary: split inside a pair, its trail byte could pass for the lead byte of the
+/// literal after it (モ 83 82 + の 82 CC: "ブイモ" would "end" in "%sの").
+size_t next_char(std::string_view s, size_t i) {
+    return sjis_lead(static_cast<unsigned char>(s[i])) && i + 1 < s.size() ? i + 2 : i + 1;
+}
+
 }  // namespace
 
 std::string Catalog::unescape(std::string_view s) {
@@ -131,10 +140,11 @@ bool Catalog::match(const std::vector<Token>& tokens, size_t t, std::string_view
         return false;
     }
     case Token::Kind::Str:
-        for (size_t end = pos; end <= s.size(); ++end) {  // shortest first
+        for (size_t end = pos;; end = next_char(s, end)) {  // shortest first, whole characters
             captures.emplace_back(s.substr(pos, end - pos));
             if (match(tokens, t + 1, s, end, captures)) return true;
             captures.pop_back();
+            if (end >= s.size()) break;
         }
         return false;
     }
@@ -163,14 +173,17 @@ std::string Catalog::format(const std::vector<Token>& translation, const std::ve
     return out;
 }
 
-bool Catalog::translate(std::string_view drawn, std::string& out) const {
+bool Catalog::anchored(const Entry& e) {
+    return !e.source.empty() && e.source[0].kind == Token::Kind::Literal;
+}
+
+bool Catalog::whole(std::string_view drawn, std::string& out, bool literal_start) const {
     std::vector<std::string> captures;
     for (const Entry& e : entries_) {
+        if (anchored(e) != literal_start) continue;
         captures.clear();
         // Cheap reject: a template starting with a literal must share its first byte.
-        if (!e.source.empty() && e.source[0].kind == Token::Kind::Literal &&
-            (drawn.empty() || drawn[0] != e.source[0].text[0]))
-            continue;
+        if (literal_start && (drawn.empty() || drawn[0] != e.source[0].text[0])) continue;
         if (!match(e.source, 0, drawn, 0, captures)) continue;
         out = format(e.translation, captures);
         return true;
@@ -178,9 +191,20 @@ bool Catalog::translate(std::string_view drawn, std::string& out) const {
     return false;
 }
 
-namespace {
+bool Catalog::translate(std::string_view drawn, std::string& out) const {
+    return whole(drawn, out, true) || whole(drawn, out, false);
+}
 
-bool sjis_lead(unsigned char c) { return (c >= 0x81 && c <= 0x9F) || (c >= 0xE0 && c <= 0xFC); }
+bool Catalog::translate_prefix(std::string_view drawn, std::string& out) const {
+    return prefix(drawn, out, true) || prefix(drawn, out, false);
+}
+
+bool Catalog::lookup(std::string_view drawn, std::string& out) const {
+    return whole(drawn, out, true) || prefix(drawn, out, true) || whole(drawn, out, false) ||
+           prefix(drawn, out, false);
+}
+
+namespace {
 
 /// Shift-JIS characters in `s` (what the game's typewriter reveals one per step).
 size_t sjis_count(std::string_view s) {
@@ -257,7 +281,7 @@ bool Catalog::match_prefix(const std::vector<Token>& tokens, size_t t, std::stri
         return false;
     }
     case Token::Kind::Str:
-        for (size_t end = pos; end < s.size(); ++end) {  // leave something for a literal after it
+        for (size_t end = pos; end < s.size(); end = next_char(s, end)) {  // leave something for a literal after it
             captures.emplace_back(s.substr(pos, end - pos));
             if (match_prefix(tokens, t + 1, s, end, captures)) return true;
             captures.pop_back();
@@ -267,7 +291,7 @@ bool Catalog::match_prefix(const std::vector<Token>& tokens, size_t t, std::stri
     return false;
 }
 
-bool Catalog::translate_prefix(std::string_view drawn, std::string& out) const {
+bool Catalog::prefix(std::string_view drawn, std::string& out, bool literal_start) const {
     const size_t shown = sjis_count(drawn);
     if (shown == 0) return false;
     std::vector<std::string> captures;
@@ -275,8 +299,9 @@ bool Catalog::translate_prefix(std::string_view drawn, std::string& out) const {
     std::string english;
     size_t total = 0;
     for (const Entry& e : entries_) {
+        if (anchored(e) != literal_start) continue;
         captures.clear();
-        if (!e.source.empty() && e.source[0].kind == Token::Kind::Literal && drawn[0] != e.source[0].text[0]) continue;
+        if (literal_start && drawn[0] != e.source[0].text[0]) continue;
         if (!match_prefix(e.source, 0, drawn, 0, captures)) continue;
         std::string full;
         for (const Token& tok : e.source)
