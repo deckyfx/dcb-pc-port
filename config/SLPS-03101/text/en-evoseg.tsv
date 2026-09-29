@@ -1,0 +1,5 @@
+# English written for this port (not game text), EVOSEG: the US text with its bare "%" written
+# as "%%" so the template parser takes it as a literal. id<TAB>text.
+EVOSEG:190	Boost Battle Experience by 30%%.
+EVOSEG:1a4	Boost Battle Experience by 20%%.
+EVOSEG:1b8	Boost Battle Experience by 10%%.

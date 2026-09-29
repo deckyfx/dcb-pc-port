@@ -1,0 +1,79 @@
+# Text catalog, OPENSEG (title overlay): trade, new game / registration, partner and starter
+# select, name entry, battle-with-friend. Save/load and locations are in catalog.txt.
+# Format: see catalog.txt. The US file keeps these blocks in another order; paired by meaning.
+#
+# Button icons: the US moved "confirm" from b0 to b2 (and reordered the name-entry buttons).
+# The port runs the JP controls, so strings with a confirm/insert/delete icon get own English
+# (en-openseg.tsv) that keeps the JP icon.
+#
+# Not mapped: the name-entry kana tables (JP input), the card-repair count message (the game
+# writes digits over "??", so it can never match whole), strings the other catalogs already
+# have with the same JP text (name, card collection, cards, 2P battle record).
+
+# Trade
+pair OPENSEG:18    -              # cards you can still give (no US)
+run  OPENSEG:24    OPENSEG:18    12   # levels, specialties, number, 0-card trade
+pair OPENSEG:bc    -              # hold confirm to trade (JP button)
+run  OPENSEG:f8    OPENSEG:f0     3   # can't trade / can't give more / unidentified
+pair OPENSEG:180   -              # in stock (US merges it with the count)
+pair OPENSEG:188   -              # in a deck
+pair OPENSEG:194   OPENSEG:19c    # unidentified card
+pair OPENSEG:220   OPENSEG:22c    # quit trading?
+
+# New game: registration save, the guide's introduction
+pair OPENSEG:23c   OPENSEG:24c    # save your registration (the JP has 3 junk bytes before)
+run  OPENSEG:2bc   OPENSEG:2c8    5   # how the world works
+pair OPENSEG:4e0   -              # conversion cancelled (US says "failed")
+pair OPENSEG:52c   OPENSEG:4c4    # enjoy the game
+run  OPENSEG:568   OPENSEG:4e8    2   # polygon battle / sound settings prompts
+
+# Old-save conversion (JP only; the US left "ERROR!" stubs in their place)
+pair OPENSEG:604   -              # checking the memory card
+pair OPENSEG:62c   -
+pair OPENSEG:670   -
+pair OPENSEG:68c   -
+pair OPENSEG:6e8   -
+pair OPENSEG:6f8   OPENSEG:5cc    # learn about the game?
+pair OPENSEG:71c   -
+pair OPENSEG:73c   -
+pair OPENSEG:7a0   -
+pair OPENSEG:7fc   -
+
+# Registration, partner and starter decks
+run  OPENSEG:848   OPENSEG:624    6   # world intro .. the three starter decks
+pair OPENSEG:b04   -              # choose a partner (JP button)
+run  OPENSEG:b50   OPENSEG:8b4    5   # partner explanations .. welcome
+
+# Choices and settings
+run  OPENSEG:d58   OPENSEG:a7c    2   # view / don't view -> yes / no
+pair OPENSEG:d68   -              # conversion choices (no US)
+pair OPENSEG:d70   -
+pair OPENSEG:d78   -
+pair OPENSEG:d84   -
+pair OPENSEG:d90   -
+pair OPENSEG:d98   -
+run  OPENSEG:da4   OPENSEG:a94    3   # stereo / mono / sound settings
+pair OPENSEG:dcc   OPENSEG:abc    # polygon battle
+
+# Name entry
+pair OPENSEG:10a8  -              # input modes
+pair OPENSEG:10b4  -
+pair OPENSEG:10c0  -
+pair OPENSEG:10c8  OPENSEG:b24    # OK
+pair OPENSEG:10d0  -              # insert / OK / delete with the JP buttons
+pair OPENSEG:10d8  -
+pair OPENSEG:10e0  -
+run  OPENSEG:1108  OPENSEG:b70    2   # no name / name OK?
+
+# Starter select
+pair OPENSEG:115c  OPENSEG:bc0    # support effect
+pair OPENSEG:1198  OPENSEG:c00    # deck OK?
+
+# Battle with a friend
+run  OPENSEG:1230  OPENSEG:c98    2   # wins / losses
+pair OPENSEG:1258  OPENSEG:ccc    # cards possessed
+run  OPENSEG:126c  OPENSEG:cf4    2   # deck / unused deck
+run  OPENSEG:12ac  OPENSEG:d30    6   # trade errors, save result?, back to title?
+
+# Save: overwrite a file (the other save/load messages are in catalog.txt)
+pair OPENSEG:1f84  OPENSEG:18f0

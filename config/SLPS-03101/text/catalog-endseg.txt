@@ -1,0 +1,36 @@
+# Text catalog, ENDSEG (ending / records overlay). Format: see catalog.txt.
+#
+# Many records are drawn as a label plus separately drawn numbers in the JP, where the US
+# draws one combined line; only the labels are mapped. Not mapped: the rank line of the
+# specialty data (the JP draws the place number apart; no clean English), strings other
+# catalogs already have with the same JP text (wins, losses, cards possessed, cards).
+
+# Player titles (the "you are ..." line fills one in)
+run  ENDSEG:4      ENDSEG:4      36
+
+# Specialty names: the US shows the icons instead
+run  ENDSEG:2bc    ENDSEG:2d0     5
+
+# Bonus ("yaku") names
+run  ENDSEG:2e4    ENDSEG:2f8    32
+
+# Controls help
+pair ENDSEG:56c    ENDSEG:57c     # scroll
+pair ENDSEG:598    ENDSEG:5a0     # previous / next / quit
+
+# Records
+pair ENDSEG:5f4    ENDSEG:5f4     # cards you own
+pair ENDSEG:610    -              # max attack power (the US adds the value to the line)
+pair ENDSEG:634    ENDSEG:660     # received by trading
+run  ENDSEG:658    ENDSEG:688     5   # number, per-deck and per-COM records, bonus count
+pair ENDSEG:6a8    -              # times (the US merges it with the count)
+pair ENDSEG:6ac    ENDSEG:6f8     # trading info
+pair ENDSEG:6bc    ENDSEG:708     # cards given
+pair ENDSEG:6cc    ENDSEG:730     # cards received
+run  ENDSEG:6dc    ENDSEG:740     4   # fusion info and counts
+pair ENDSEG:718    ENDSEG:790     # attack usage rate
+pair ENDSEG:744    ENDSEG:7c0     # specialty data
+pair ENDSEG:768    ENDSEG:838     # all cards
+run  ENDSEG:774    ENDSEG:844     6   # battle results, saves, the three title kinds
+pair ENDSEG:7d0    ENDSEG:8ac     # you are "<title>"
+pair ENDSEG:7e4    -              # press confirm to quit (JP button)

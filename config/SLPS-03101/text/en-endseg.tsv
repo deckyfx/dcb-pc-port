@@ -1,0 +1,5 @@
+# English written for this port (not game text), ENDSEG: labels the US merges with their
+# values, and the quit prompt with the JP confirm button. id<TAB>text.
+ENDSEG:610	Max *b%d Attack Power
+ENDSEG:6a8	Times
+ENDSEG:7e4	Push *b0 Button to Quit

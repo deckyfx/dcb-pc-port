@@ -1,0 +1,21 @@
+# Text catalog, EVOSEG (card fusion / partner fusion overlay). Format: see catalog.txt.
+#
+# The 128 support-effect lines are in the same order on both discs. Three of them end in a
+# bare "%" in the US text, which the template parser would read as a placeholder: those get
+# own English with "%%" (en-evoseg.tsv). The attack icons (b0/b1/b2) mean the same attack on
+# both discs, so the US text is kept.
+
+# Support effects shown on the fusion screen
+run  EVOSEG:14c    EVOSEG:14c     2   # rare card chances
+pair EVOSEG:190    -              # battle experience +30/20/10 %
+pair EVOSEG:1a4    -
+pair EVOSEG:1b8    -
+run  EVOSEG:1cc    EVOSEG:1fc   123   # every other effect, through the HP bonuses
+
+# Fusion screen
+run  EVOSEG:1030   EVOSEG:1168   12   # fusable count, levels, specialties, number
+pair EVOSEG:10dc   EVOSEG:1234    # cards (the counter word; OPENSEG and ENDSEG use the same text)
+run  EVOSEG:10e0   EVOSEG:123c    8   # the two fusion modes and their help lines
+run  EVOSEG:1390   EVOSEG:14f0    2   # full set / received (English on both, US wording)
+run  EVOSEG:13a8   EVOSEG:1508    2   # fusion errors
+pair EVOSEG:13f0   EVOSEG:15a8    # digi-part obtained (the US variant with the same colour code)
