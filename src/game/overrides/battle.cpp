@@ -17,8 +17,11 @@
 
 #include <psx/recomp.h>
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <map>
 #include <string>
 #include <vector>
@@ -69,6 +72,25 @@ bool in_ram(uint32_t addr) { return addr >= 0x80000000u && addr < 0x80200000u - 
 
 uint32_t player_data(PsxContext& ctx, int player) {
     return psx_read32(&ctx, kPlayerTable + static_cast<uint32_t>(player) * 4u);
+}
+
+/// DCB_WATCH_BATTLE=1 (RE aid): when a battle starts, point the RAM write watch (DCB_WATCH) at
+/// both players' battle data and the battle state struct (pointer at 801DAF38), 4 KB each, so
+/// a played round logs which fields change and who writes them.
+void watch_battle(PsxContext& ctx) {
+    static const bool on = std::getenv("DCB_WATCH_BATTLE") != nullptr;
+    static uint32_t watched[3] = {0, 0, 0};
+    if (!on) return;
+    const uint32_t now[3] = {player_data(ctx, 0), player_data(ctx, 1), psx_read32(&ctx, 0x801DAF38u)};
+    if (now[0] == watched[0] && now[1] == watched[1] && now[2] == watched[2]) return;
+    char spec[96];
+    int n = 0;
+    for (const uint32_t a : now)
+        if (in_ram(a)) n += std::snprintf(spec + n, sizeof(spec) - static_cast<size_t>(n), "%s%08X+0x1000", n ? "," : "", a);
+    if (n == 0) return;
+    std::copy(std::begin(now), std::end(now), std::begin(watched));
+    psx_watch_configure(spec);
+    std::fprintf(stderr, "[watch] battle: P1 %08X, P2 %08X, state %08X -> %s\n", now[0], now[1], now[2], spec);
 }
 
 std::string apply(PsxContext& ctx, int player, const trainer::BattleActions& actions) {
@@ -131,6 +153,7 @@ extern "C" {
 // 80043B00: DP of player a0. While a hotkey locked it, the locked value, so the game's own
 // recalculation (stored at 80040F70) keeps it.
 void dcb_dp_calc(PsxContext* ctx) {
+    watch_battle(*ctx);
     const uint32_t player = ctx->r[kA0];
     if (player < g_locks.size()) {
         DpLock& lock = g_locks[player];
