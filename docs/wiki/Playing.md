@@ -5,9 +5,11 @@
 ## Settings
 
 `settings.ini` (display, audio, key/gamepad bindings, hotkeys) is looked up in this order:
-`DCB_SETTINGS`, the current directory, next to the executable, then the per-user file in home
-(`~/.config/dcb-pc-port/` or `%APPDATA%\dcb-pc-port\`), where it is created on first run if none
-exists. Keep one in the project root (gitignored) while developing.
+`DCB_SETTINGS`, the current directory, next to the executable, then the per-user file:
+`$XDG_CONFIG_HOME/dcb-pc-port/` when that variable is set to an absolute path, else
+`~/.config/dcb-pc-port/` (Linux, macOS), or `%APPDATA%\dcb-pc-port\` (Windows). It is created
+there on first run if none exists; with no usable per-user directory it falls back to the file next
+to the executable. Keep one in the project root (gitignored) while developing.
 
 It holds the initial window size, filtering, aspect, key/gamepad rebinding and volume. The window
 is resizable and the picture fits it; `F8` switches between fit and integer scaling.

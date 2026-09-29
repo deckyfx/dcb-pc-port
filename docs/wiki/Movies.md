@@ -4,8 +4,9 @@
 
 The game's three movies (`movie0` opening, `movie1` credits, `movie2` BANDAI logo) play natively
 when `movie/movie<N>.mpg` is in the asset pack or folder (see [Textures](Textures.md#replacement-textures)
-for where the pack is found): full resolution, their own audio, any key skips; without them the disc
-movie plays. With native movies the game reads nothing through the CD drive.
+for where the pack is found), at full resolution with their own audio; without them the disc movie
+plays. Any key or gamepad button skips a movie, except the window hotkeys (F1–F12 and the like). A native movie's
+MPEG is read from the asset pack or folder, not streamed through the CD drive.
 
 Files are MPEG-1 video + MP2 audio (decoded with [pl_mpeg](../../third_party/pl_mpeg)); MPEG-1 has
 no 15 fps mode, so use 30:
@@ -26,7 +27,8 @@ and `assets/converted/<serial>/movie/movie<N>.mpg` (MPEG-1 + MP2, 30 fps; 15 fps
 frame twice). The input defaults to a disc override in `assets/<serial>/disc/` (e.g. the US movie,
 see [Game Data](Game-Data.md#disc-file-overrides)), or else `extracted/<serial>/fs/`.
 
-Save states are refused while a native movie plays. `DCB_TRACE_MOVIE=1` prints, per second, host
-frames, movie audio samples and video frames (they should read ~60 / 44100 / the movie's fps).
+Save states are refused while a native movie plays. `DCB_TRACE_MOVIE=1` prints, once a second, the host
+frames and movie audio samples of that second (~60 / ~44100) and the video frames decoded so far
+(cumulative: it should grow by about the movie's fps each second).
 
 Without native movies the boot FMV is decoded from the disc stream (MDEC, 24-bit, XA-ADPCM audio).

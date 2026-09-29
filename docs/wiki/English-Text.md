@@ -29,7 +29,9 @@ It writes, into `assets/SLPS-03101/`:
 | `en_names.txt` | names too long for their JP slot, drawn in full by the renderer |
 | `en_text_report.txt` | lines too long for the JP slots |
 
-Nothing copyrighted is printed; only counts, offsets and the overlong list. The script's header
+Nothing copyrighted is printed: counts, offsets, the overlong list, and a few diagnostics in hex
+(the before/after bytes of each overlay change carried over from a community fix, and a handful of
+JP/US byte comparisons, e.g. the card balance bytes kept JP). The script's header
 ([tools/text/en_text.py](../../tools/text/en_text.py)) documents each output in detail.
 
 The files under `files/` are loose-file replacements picked up by the native file access (see
@@ -40,10 +42,12 @@ The files under `files/` are loose-file replacements picked up by the native fil
 - Without `en_font.bin` the game draws everything with the JP renderer; deleting `files/B/` brings
   the Japanese card and deck text back.
 - The font lives in a private texture sheet in the GPU, not in the game's VRAM.
-- The text catalog is listed under `config/SLPS-03101/text/` (ids and offsets only; the text comes
-  from the dumps; see [tools/text/catalog.py](../../tools/text/catalog.py)). `DCB_LANG=<lang>` picks `text/<lang>.tsv` (default `en`).
-- `DCB_TRACE_TEXT=1` logs the strings drawn by the text engine (`DCB_TRACE_TEXT=hex` adds their
-  raw bytes and whether the catalog translates them), which helps find what is still Japanese.
+- The text catalog is listed under `config/SLPS-03101/text/` (ids and offsets; the text comes
+  from the dumps, except the port's own English in `config/SLPS-03101/text/en*.tsv` for strings the
+  US version lacks or words differently, which the converter uses before the dump text; see
+  [tools/text/catalog.py](../../tools/text/catalog.py)). `DCB_LANG=<lang>` picks `text/<lang>.tsv` (default `en`).
+- `DCB_TRACE_TEXT=1` logs the text-engine calls, draw and measure (`DCB_TRACE_TEXT=hex` adds each
+  string's raw bytes and whether the catalog translates it), which helps find what is still Japanese.
 
 Notes: [docs/re/text-engine.md](../re/text-engine.md). Research and plan for the full English
 build: [HYBRID_EN_ASSETS.md](../HYBRID_EN_ASSETS.md).

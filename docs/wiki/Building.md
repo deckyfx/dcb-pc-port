@@ -67,7 +67,8 @@ cmake --preset windows-cross && cmake --build --preset windows-cross
 
 The recompiler reads `extracted/<serial>/exe/boot.exe` (written only by `extract_disc.py`, not by
 the native importer) and the committed `config/<serial>/` files, so a plain build from source needs
-steps 1, 4 and 6. Steps 2, 3 and 5 regenerate those config files and keep Ghidra in sync; see
+steps 1, 4 and 6. Step 3 regenerates `config/<serial>/overlays.json`; steps 2 and 5 import into and
+synchronize Ghidra; step 4 also writes `generated/<serial>/discovered.json`; see
 [Ghidra](Ghidra.md). Until the recompiler has run, the build links an empty function table. Running a
 built `dcb` only needs the game data, [imported](Game-Data.md) once.
 
