@@ -1,0 +1,92 @@
+# Text catalog, SUBSEG (P.DRV SUBSEG.BIN: deck name entry, Digi-Parts, card list, deck edit,
+# auto deck). Same format as catalog.txt: offsets only, the text comes from the player's JP and
+# US dumps. `pair <id> -` entries (and entries where the US text needs a fix) take their English
+# from en-subseg.tsv.
+#
+# Left out: file paths and printf-only strings, strings already in English on the JP disc
+# (NAME ENTRY, HELP, DECK NAME, BASE DECK LIST, PARTNER n, EQUIPMENT, ARMOR, CARD LIST, SORT MENU,
+# the L1/R1 page bars, CARD INFO., DECK n, SUM, AUTO DECK...), the kanji / kana / symbol grid of
+# the name entry (4..5b0: input table, not labels), the half-width partner names at 168e..16b8
+# (the US keeps them in Japanese too), the "%s" + deck label (handled by the deck-name rule), and
+# the lone "?" / dash filler strings.
+
+# Deck name entry
+pair SUBSEG:5e8   -              # input mode tabs (JP only): hiragana, katakana, letters,
+pair SUBSEG:5f4   -              # other, kanji 1-3
+pair SUBSEG:600   -
+pair SUBSEG:608   -
+pair SUBSEG:610   -
+pair SUBSEG:618   -
+pair SUBSEG:620   -
+pair SUBSEG:628   -              # confirm key
+pair SUBSEG:630   SUBSEG:30      # cancel key
+pair SUBSEG:63c   SUBSEG:40      # deck label
+pair SUBSEG:644   -              # button hints: insert / confirm / delete (US swaps the icons)
+pair SUBSEG:64c   -
+pair SUBSEG:654   -
+pair SUBSEG:67c   SUBSEG:88      # no deck name entered
+pair SUBSEG:6a0   SUBSEG:ac      # deck label (base deck list)
+pair SUBSEG:6a8   SUBSEG:b4      # usable
+pair SUBSEG:6b0   SUBSEG:bc      # not usable
+
+# Digi-Part effect descriptions: 128 in the same order (US side starts after a stray byte). The
+# three battle experience ones are in en-subseg.tsv (bare % in the US text), so the run is split.
+run  SUBSEG:6dc   SUBSEG:e8    2
+pair SUBSEG:720   -
+pair SUBSEG:734   -
+pair SUBSEG:748   -
+run  SUBSEG:75c   SUBSEG:198   123
+
+# Digi-Parts screen: support effect, no data, armor change hint, none, one-per-kind warning
+pair SUBSEG:1580  SUBSEG:10c8
+pair SUBSEG:158c  SUBSEG:10d8
+pair SUBSEG:159c  SUBSEG:10e0
+pair SUBSEG:15c0  SUBSEG:1108
+pair SUBSEG:1630  SUBSEG:117c
+
+# Card list: cards in stock, sort keys (newest, attacks, DP, HP, levels, specialties), number,
+# max usable: 20 in the same order after the first
+pair SUBSEG:16c0  SUBSEG:11fc
+run  SUBSEG:16cc  SUBSEG:120c  20
+pair SUBSEG:17cc  SUBSEG:1344    # level
+pair SUBSEG:17d4  SUBSEG:1348    # specialty column
+pair SUBSEG:17e8  SUBSEG:1360    # cards
+pair SUBSEG:17ec  SUBSEG:1368    # cards used
+
+# Card list hints and totals
+pair SUBSEG:19e8  -              # button hint: edit decks (US swaps the button icon)
+pair SUBSEG:19f8  SUBSEG:157c    # sort hint
+pair SUBSEG:1a04  -              # all kinds (the US splits it over two strings)
+pair SUBSEG:1a10  -              # total number of cards (same)
+pair SUBSEG:1a28  SUBSEG:15cc    # total
+pair SUBSEG:1a2c  -              # specialty names (the US left these in Japanese, shows icons)
+pair SUBSEG:1a34  -
+pair SUBSEG:1a3c  -
+pair SUBSEG:1a44  -
+pair SUBSEG:1a4c  -
+
+# Card info: wins, losses, support effect, option, partner, battles, no data
+run  SUBSEG:1a64  SUBSEG:161c  3
+pair SUBSEG:1a78  SUBSEG:1650
+pair SUBSEG:1a80  SUBSEG:165c
+pair SUBSEG:1ab4  SUBSEG:1688
+pair SUBSEG:1ab8  SUBSEG:1690
+
+# Deck menu key legend (half-width kana): cursor, edit, delete, copy, name, back
+run  SUBSEG:1ac8  SUBSEG:1698  6
+
+# Deck menu questions: create, delete, copy
+pair SUBSEG:1b20  SUBSEG:16f0
+run  SUBSEG:1b3c  SUBSEG:1714  2
+
+# Deck edit: not enough cards, no Digimon, update, quit; sort legend, disable / able
+run  SUBSEG:1bf8  SUBSEG:17dc  7
+pair SUBSEG:1ce0  SUBSEG:190c    # card selection
+
+# Auto deck
+pair SUBSEG:1d40  SUBSEG:196c    # title
+pair SUBSEG:1d50  SUBSEG:189c    # do not use
+pair SUBSEG:1d5c  SUBSEG:1978    # use
+pair SUBSEG:1d68  -              # type (the US has no such label)
+run  SUBSEG:1d70  SUBSEG:19b4  7 # offensive, defensive, option cards, many, few, create, cancel
+pair SUBSEG:1e08  SUBSEG:1a54    # choose from a base deck?

@@ -1,0 +1,10 @@
+# Text catalog, layout fixes (same format as catalog.txt). English that has to fit a JP slot:
+# the JP deck / card screens draw a number and then a one-kanji unit at a fixed x (14枚, 5戦 5勝 0敗),
+# or a kanji label in a column a few pixels wide. The US disc draws those units in a 4x5 capital
+# font (US 8002793C / 80027DB8, rows the JP SYSTEM.TIM and en_font.bin do not have) and at other
+# positions; the catalog cannot move a draw, so the English here is short forms measured against
+# the JP slots in the US font (docs/re/text-engine.md §7.9). Their text is in en-layout.tsv, which
+# also shortens strings listed in the other catalog files (an own-English entry wins over the US
+# pair; the catalog uses the entry with the lowest id when several have the same JP text).
+
+pair SUBSEG:1d24  -              # deck edit side panel: the total row label (16 px before the number)

@@ -24,6 +24,18 @@ to the end of every E PAK); among images of one shape, identical ones pair first
 file order. Entries whose layout differs (the title, the MATCH/WIN name plates) are listed and
 left alone. Images identical on both discs are skipped.
 
+TIS image lists (C.DRV: the city screens' AREAnn.PAK, WORLD.TIS, DECK.TIS, UNIT.TIS) are read
+straight from the disc instead, since the ripper lists only some copies of their TIMs, and not the
+same ones for both games; the US build stores them in another order, so they pair by shape too.
+Every AREAnn.PAK carries the same copy of the city menu art (menu buttons, city-name plates, area
+signs), so one manifest entry per image covers all twelve cities. KEEP_JP lists images left JP on
+purpose (the city HELP MENU plate: the US one names the US buttons). JP_DRAW_SCALE lists images the
+JP code draws at another scale than the US code (the city sub-menu labels: 68 texels on 64 pixels
+in JP, 1:1 in US); their US pixels are moved to the texels the JP draw shows. area_image_chunk()
+builds the same result as a new kind-5 chunk for a tool that rewrites C:\\AREAnn.PAK anyway.
+
+    tools/assets/swap_us_images.py --root DIR  # use DIR/assets and DIR/extracted (a scratch copy)
+
 One JP image can stand for several US ones (the same attack name in two PAKs, translated in one
 and left in Japanese in the other): the US copies identical to the JP data are dropped, then the
 entry the JP file is named after wins. A JP palette shared with regular-game images that are not
@@ -51,6 +63,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools" / "disc"))
+sys.path.insert(0, str(ROOT / "tools" / "assets"))
+import dcb_containers  # noqa: E402
 import drv_unpack  # noqa: E402
 
 JP, US = "SLPS-03101", "SLUS-01328"
@@ -62,6 +76,29 @@ DEFAULT_ENTRIES = [
     ("E.DRV", r"\d+\.PAK"),
     ("F.DRV", r"\d+\.PAK"),
 ]
+# TIS image lists, read from the disc rather than from the manifest (the ripper does not list every
+# copy of a TIM, and not the same ones for both games). The city screens: each AREAnn.PAK holds, as
+# chunk kind 5, a TIS with the city's backgrounds and a copy of the WORLD.TIS menu art (city-name
+# plates, menu buttons, area signs); the US build stores the same TIMs in another order. The card
+# menu (DECK.TIS) and the fusion and evolution screens (UNIT.TIS) are reordered the same way.
+TIS_ENTRIES = [
+    ("C.DRV", r"AREA\d\d\.PAK"),
+    ("C.DRV", r"OBJECT/(WORLD|DECK|UNIT)\.TIS"),
+]
+# Images kept JP although the US build redrew them: (DRV, VRAM image rect x, y, w, h) -> why.
+KEEP_JP = {
+    ("C.DRV", (808, 0, 22, 80)): "the city HELP MENU plate (the US one says X enters, this build enters with Circle)",
+}
+# Images the JP code draws at another scale than the US code: (DRV, VRAM image rect) -> (texels
+# the JP code reads per cell row, screen pixels it draws them on). The city sub-menu labels (Cards,
+# Partner, Save, ...; SAISEG builds the cell rect {792, n*16, w, 16}): JP w = 68, US w = 64, both
+# drawn 64 pixels wide, so JP skips texel columns 16, 33 and 50 of every label. The JP art has
+# 3-4 pixel wide strokes and loses nothing; the US strokes are 1-2 pixels with a one-pixel bright
+# core, and where the core falls on a skipped column the letter shows only its dark edge (most
+# visible on the highlighted label). The US columns are moved to the texels the JP code shows.
+JP_DRAW_SCALE = {
+    ("C.DRV", (792, 0, 16, 144)): (68, 64),
+}
 NEVER = re.compile(r"(^|/)SYSTEM\.TIM$")
 # Entries where a few images changed shape: swap the images whose shape still matches, keep the
 # rest JP. CBTL_SYS: one palette is uploaded as 32x1 in the US build instead of 16x2.
@@ -104,15 +141,60 @@ def read_tim(drv: bytes, off: int) -> Tim | None:
     return Tim(off, {0: 4, 1: 8, 2: 16, 3: 24}[flags & 3], (x, y, w, h), clut, drv[p + 12:p + ln], palette)
 
 
-def load_side(serial: str, manifest: dict | None = None) -> tuple[dict[str, bytes], dict[tuple[str, int], list[dict]]]:
+def prewarp_columns(pixels: bytes, bpp: int, width: int, read: int, shown: int) -> bytes:
+    """4-bit image rows laid out for a draw that reads `read` texels onto `shown` pixels, so screen
+    column i shows source column i. The GPU steps u by read/shown per pixel, so column i samples
+    texel floor(i * read / shown); source column i goes there. Texels no column samples repeat
+    their left neighbour (a finer sampler sees a wider column, not a hole). Only texels inside
+    `width` exist: the source columns that would land past it are dropped (with read > shown,
+    the rightmost width - ceil(width * shown / read) ones)."""
+    if bpp != 4 or width % 2 or len(pixels) % (width // 2):
+        raise ValueError("prewarp_columns takes 4-bit rows of an even width")
+    src_of = [-1] * width
+    for i in range(width):
+        t = i * read // shown
+        if t >= width:
+            break
+        src_of[t] = i
+    for t in range(1, width):
+        if src_of[t] < 0:
+            src_of[t] = src_of[t - 1]
+    stride, out = width // 2, bytearray()
+    for r in range(0, len(pixels), stride):
+        row = pixels[r:r + stride]
+        idx = [(row[x // 2] >> 4) if x & 1 else (row[x // 2] & 15) for x in range(width)]
+        new = [idx[s] for s in src_of]
+        out += bytes(new[x] | (new[x + 1] << 4) for x in range(0, width, 2))
+    return bytes(out)
+
+
+def with_pixels(tim: bytes, pixels: bytes) -> bytes:
+    """A TIM with its image block payload replaced by `pixels` (the same size)."""
+    t = read_tim(tim, 0)
+    if t is None or len(pixels) != len(t.pixels):
+        raise ValueError("not a TIM, or the new pixels are another size")
+    start = 8 + (struct.unpack_from("<I", tim, 8)[0] if t.clut else 0) + 12
+    return tim[:start] + pixels + tim[start + len(pixels):]
+
+
+def pixels_for_jp(drv_name: str, us: Tim) -> bytes:
+    """The US pixel data as the JP game should upload it (JP_DRAW_SCALE images pre-warped)."""
+    scale = JP_DRAW_SCALE.get((drv_name, us.image))
+    if scale is None:
+        return us.pixels
+    return prewarp_columns(us.pixels, us.bpp, us.image[2] * 16 // us.bpp, *scale)
+
+
+def load_side(serial: str, manifest: dict | None = None,
+              root: Path = ROOT) -> tuple[dict[str, bytes], dict[tuple[str, int], list[dict]]]:
     """DRV bytes by name, and manifest entries grouped by (drv, drv_offset)."""
     if manifest is None:
-        manifest = json.loads((ROOT / "assets" / "converted" / serial / "assets_manifest.json").read_text())
+        manifest = json.loads((root / "assets" / "converted" / serial / "assets_manifest.json").read_text())
     by_tim: dict[tuple[str, int], list[dict]] = defaultdict(list)
     for e in manifest["entries"]:
         if e.get("drv") and "drv_offset" in e:
             by_tim[(e["drv"], e["drv_offset"])].append(e)
-    drvs = {d: (ROOT / "extracted" / serial / "fs" / d).read_bytes() for d in {k[0] for k in by_tim}}
+    drvs = {d: (root / "extracted" / serial / "fs" / d).read_bytes() for d in {k[0] for k in by_tim}}
     return drvs, by_tim
 
 
@@ -138,6 +220,100 @@ def entry_tims(drv: bytes, toc: list, by_tim: dict, drv_name: str) -> dict[str, 
     for path in out:
         out[path].sort(key=lambda t: t[0].offset)
     return out
+
+
+def tis_offsets(data: bytes) -> list[int]:
+    """Byte offsets of the TIMs in a TIS: "Tp", u16 n, u32 word_offset[n], then the TIMs."""
+    if data[:2] != b"Tp":
+        raise ValueError("not a TIS")
+    n = struct.unpack_from("<H", data, 2)[0]
+    return [4 * w for w in struct.unpack_from(f"<{n}I", data, 4)]
+
+
+def write_tis(tims: list[bytes]) -> bytes:
+    """A TIS holding `tims` back to back, in that order (the inverse of dcb_containers.read_tis)."""
+    offs, pos = [], 4 + 4 * len(tims)
+    for t in tims:
+        if len(t) % 4:
+            raise ValueError("a TIS entry must be a whole number of words")
+        offs.append(pos // 4)
+        pos += len(t)
+    return b"Tp" + struct.pack(f"<H{len(tims)}I", len(tims), *offs) + b"".join(tims)
+
+
+def tis_start(data: bytes, path: str) -> int | None:
+    """Where the TIS starts inside a DRV entry: a .TIS file, or the kind-5 chunk of a PAK."""
+    if path.endswith(".TIS"):
+        return 0 if data[:2] == b"Tp" else None
+    if path.endswith(".PAK"):
+        for c in dcb_containers.read_pak(data):
+            if c.kind == 5 and c.data[:2] == b"Tp":
+                return c.offset + 8
+    return None
+
+
+def tis_entry_tims(drv: bytes, toc: list, rx: re.Pattern) -> dict[str, list[tuple[Tim, list[dict]]]]:
+    """For each DRV entry matching `rx` that holds a TIS: its TIMs in file order (no variants)."""
+    out: dict[str, list[tuple[Tim, list[dict]]]] = {}
+    for f in toc:
+        if not rx.search(f.path):
+            continue
+        data = drv[f.offset:f.offset + f.size]
+        base = tis_start(data, f.path)
+        if base is None:
+            continue
+        tims = (read_tim(drv, f.offset + base + o) for o in tis_offsets(data[base:]))
+        out[f.path] = [(t, []) for t in tims if t is not None]
+    return out
+
+
+def tis_entry(t: Tim, key: str, drv_name: str, path: str, entry_offset: int) -> dict:
+    """A manifest entry for a TIS TIM the ripper did not list, named the way the ripper names its
+    PNGs (C_OBJECT_UNIT_off0001268c_84x123.png); w and h in pixels."""
+    w = t.image[2] * 16 // t.bpp if t.bpp <= 16 else t.image[2] * 2 // 3
+    stem = re.sub(r"\W", "_", f"{drv_name[0]}_{path.rsplit('.', 1)[0]}").upper()
+    return {"img": key, "w": w, "h": t.image[3], "bpp": t.bpp,
+            "path": f"{stem}_off{t.offset - entry_offset:08x}_{w}x{t.image[3]}.png"}
+
+
+def graft_tis(jp: bytes, us: bytes, keep: frozenset = frozenset(), drv_name: str = "") -> tuple[bytes, int]:
+    """The JP TIS, in the JP order, with each TIM the US build redrew replaced by the US TIM at the
+    same place (depth, image rect, CLUT rect); image rects in `keep` stay JP, and the pixels of
+    `drv_name`'s JP_DRAW_SCALE images are pre-warped. Pairs like pair(). Returns (TIS bytes, TIMs
+    replaced); raises ValueError when the two hold different shapes."""
+    ja, ua = dcb_containers.read_tis(jp), dcb_containers.read_tis(us)
+
+    def side(blobs: list[bytes]) -> list[tuple[Tim, list[dict]]]:
+        out = []
+        for i, b in enumerate(blobs):
+            t = read_tim(b, 0)
+            if t is None:
+                raise ValueError(f"TIS entry {i} is not a TIM")
+            out.append((Tim(i, t.bpp, t.image, t.clut, t.pixels, t.palette), []))  # offset = index
+        return out
+
+    paired = pair(side(ja), side(ua))
+    if paired is None:
+        raise ValueError("the JP and US TIS hold different sets of images")
+    out, n = list(ja), 0
+    for (jt, _), (ut, _) in paired[0]:
+        if jt.image not in keep and ua[ut.offset] != ja[jt.offset]:
+            out[jt.offset] = with_pixels(ua[ut.offset], pixels_for_jp(drv_name, ut))
+            n += 1
+    return write_tis(out), n
+
+
+def area_image_chunk(jp_pak: bytes, us_pak: bytes) -> bytes:
+    """The kind-5 chunk data for a JP C:\\AREAnn.PAK showing the US city art: the JP TIS with the
+    US TIMs grafted in (KEEP_JP excepted). For a PAK writer that rebuilds the file anyway; the
+    manifest swap does the same through the texture replacer, for every copy of these TIMs."""
+    def tis(pak: bytes) -> bytes:
+        chunks = [c for c in dcb_containers.read_pak(pak) if c.kind == 5 and c.data[:2] == b"Tp"]
+        if len(chunks) != 1:
+            raise ValueError(f"expected one TIS chunk, found {len(chunks)}")
+        return chunks[0].data
+    keep = frozenset(rect for (drv, rect) in KEEP_JP if drv == "C.DRV")
+    return graft_tis(tis(jp_pak), tis(us_pak), keep, "C.DRV")[0]
 
 
 def shape_of(tim: Tim, var: list[dict]) -> tuple:
@@ -233,10 +409,13 @@ def main() -> int:
     ap.add_argument("--apply", action="store_true", help="write the US data and the manifest (default: dry run)")
     ap.add_argument("--restore", action="store_true", help="undo: the JP manifest as it was, no US data")
     ap.add_argument("--only", help="regex on 'DRV:entry path' to limit the run (e.g. 'B.DRV:M_CARD')")
+    ap.add_argument("--root", type=Path, default=ROOT,
+                    help="folder holding assets/ and extracted/ (default: the repository), e.g. a scratch copy")
     args = ap.parse_args()
 
-    jp_dir = ROOT / "assets" / "converted" / JP
-    backup = ROOT / "assets" / JP / "backup" / "us_images"
+    root = args.root.resolve()
+    jp_dir = root / "assets" / "converted" / JP
+    backup = root / "assets" / JP / "backup" / "us_images"
 
     if args.restore or args.apply:
         had, pngs = restore(jp_dir, backup)
@@ -246,8 +425,8 @@ def main() -> int:
             return 0
 
     jp_manifest = json.loads((jp_dir / "assets_manifest.json").read_text())
-    jp_drvs, jp_by = load_side(JP, jp_manifest)
-    us_drvs, us_by = load_side(US)
+    jp_drvs, jp_by = load_side(JP, jp_manifest, root)
+    us_drvs, us_by = load_side(US, root=root)
     only = re.compile(args.only) if args.only else None
     skipped, shared_entries = [], []
     images: dict[str, list[Candidate]] = defaultdict(list)   # JP image hash -> candidates
@@ -256,19 +435,31 @@ def main() -> int:
     palette_rect: dict[str, tuple[int, int]] = {}
     paired_palettes: set[str] = set()  # JP palettes of TIMs whose pair is planned
     hash_mismatch = 0
+    kept: dict[str, set[str]] = defaultdict(set)  # KEEP_JP reason -> JP image hashes
+
+    jp_by_hash: dict[str, list[dict]] = defaultdict(list)  # for TIS TIMs: JP manifest entries by hash
+    for e in jp_manifest["entries"]:
+        if e.get("drv"):
+            jp_by_hash[e["img"]].append(e)
 
     jp_only: set[tuple[str, int]] = set()  # JP TIMs in entries the US build does not have
-    for drv_name, pattern in DEFAULT_ENTRIES:
+    groups = [(d, p, False) for d, p in DEFAULT_ENTRIES] + [(d, p, True) for d, p in TIS_ENTRIES]
+    for drv_name, pattern, whole_tis in groups:
         rx = re.compile(pattern + "$")
         if drv_name not in jp_drvs or drv_name not in us_drvs:
             continue
         jp_toc, _ = drv_unpack.read_toc(jp_drvs[drv_name])
         us_toc, _ = drv_unpack.read_toc(us_drvs[drv_name])
-        jp_ents = entry_tims(jp_drvs[drv_name], jp_toc, jp_by, drv_name)
-        us_ents = entry_tims(us_drvs[drv_name], us_toc, us_by, drv_name)
-        for path, tims in jp_ents.items():
-            if path not in us_ents:
-                jp_only.update((drv_name, t.offset) for t, _ in tims)
+        jp_starts = {f.path: f.offset for f in jp_toc}
+        if whole_tis:
+            jp_ents = tis_entry_tims(jp_drvs[drv_name], jp_toc, rx)
+            us_ents = tis_entry_tims(us_drvs[drv_name], us_toc, rx)
+        else:
+            jp_ents = entry_tims(jp_drvs[drv_name], jp_toc, jp_by, drv_name)
+            us_ents = entry_tims(us_drvs[drv_name], us_toc, us_by, drv_name)
+            for path, tims in jp_ents.items():
+                if path not in us_ents:
+                    jp_only.update((drv_name, t.offset) for t, _ in tims)
         for path in sorted(jp_ents):
             label = f"{drv_name}:{path}"
             if not rx.search(path) or NEVER.search(path) or (only and not only.search(label)):
@@ -285,10 +476,17 @@ def main() -> int:
                 shared_entries.append(label)
             for (jt, jv), (ut, _) in pairs:
                 key = fnv1a64(jt.pixels)
+                why = KEEP_JP.get((drv_name, jt.image))
+                if why and ut.pixels != jt.pixels:
+                    kept[why].add(key)
+                    continue
+                if whole_tis:  # the replacer keys by hash: any entry of these pixels will do
+                    jv = (sorted(jp_by_hash.get(key, []), key=variant_index)
+                          or [tis_entry(jt, key, drv_name, path, jp_starts[path])])
                 if key != jv[0]["img"]:  # the ripper hashed another upload shape: leave it
                     hash_mismatch += 1
                     continue
-                images[key].append(Candidate(ut.pixels, jt.pixels, label))
+                images[key].append(Candidate(pixels_for_jp(drv_name, ut), jt.pixels, label))
                 image_meta[key] = jv[0]
                 if jt.palette:
                     pkey = fnv1a64(jt.palette)
@@ -381,6 +579,8 @@ def main() -> int:
     if palette_conflicts:
         print(f"{palette_conflicts} JP palettes stand for several US ones (the same bytes uploaded for "
               f"different images); each follows its picked image, so one of the others may show off-colour")
+    for why, keys in kept.items():
+        print(f"kept JP ({len(keys)} image{'s' if len(keys) > 1 else ''}): {why}")
     if hash_mismatch:
         print(f"{hash_mismatch} images skipped: the manifest hash is not over the TIM's pixels")
     if shared_entries:

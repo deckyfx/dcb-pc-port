@@ -7,7 +7,7 @@
 //
 // A template is literal bytes plus printf placeholders the game fills: %d (any width, e.g. %3d),
 // %c (one byte: the slot digit the game writes over a letter), %s (any run of bytes), %% (a
-// literal %). A drawn string that matches a source template whole is replaced by its
+// literal %; so is a % that starts no conversion, like the US "30%."). A drawn string that matches a source template whole is replaced by its
 // translation, the captured values put into the translation's placeholders in order.
 // Escapes in both files: \n line break, \t tab, \\ backslash. Lines starting with # are comments.
 //
@@ -23,8 +23,8 @@ namespace text {
 
 class Catalog {
 public:
-    /// Adds one entry (templates in raw bytes, already unescaped). False when a template is
-    /// malformed (a lone % at the end, an unknown conversion).
+    /// Adds one entry (templates in raw bytes, already unescaped). A % that starts no
+    /// conversion (%d %c %s %%) is a literal %.
     bool add(std::string id, std::string_view source, std::string_view translation);
     /// Loads <dir>/source.tsv and <dir>/<lang>.tsv; ids missing from either are skipped.
     /// Returns the number of entries added.

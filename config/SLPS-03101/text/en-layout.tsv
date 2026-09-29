@@ -1,0 +1,40 @@
+# English that fits the JP slots (see catalog-layout.txt). id<TAB>text. Widths in the US font:
+# the slot is from the JP draw x to the next draw (or the panel edge). Abbreviations: Cds (cards),
+# Btl. (battles), Opt. (option cards), Tot. (total), Atk. (attack).
+# Other shortenings: Newest (newly obtained), Cards Owned (cards in possession / in stock), Total
+# (total cards, en-subseg.tsv). *w-1 = 1 px less letter spacing.
+#
+# 枚 (the card counter after a number): 13-15 px in the deck edit side panel, the card list rows and
+# the deck select type rows. EVOSEG:10dc is the entry the catalog uses (lowest id with this text);
+# SUBSEG:17e8 is the same string.
+EVOSEG:10dc	*w-1Cds
+SUBSEG:17e8	*w-1Cds
+# Deck select, deck line: 戦 (battles) 24 px between the battle count and the win count.
+SUBSEG:1ab4	 Btl.
+# Deck select: ＯＰ (option cards) 28 px before its count ("Option Card" ran over it).
+SUBSEG:1a78	Opt.
+# Card list, card info: " 計" (total) 25 px before the total count.
+SUBSEG:1a28	 Tot.
+# Deck edit side panel: 計 (total) 16 px before the count.
+SUBSEG:1d24	*w-1Tot.
+# Sort menu (74 px from the entry's x to the panel clip): attack power, newest first.
+SUBSEG:16d8	*b2 Atk. Power
+SUBSEG:16e4	*b1 Atk. Power
+SUBSEG:16f0	*b0 Atk. Power
+SUBSEG:16cc	*g9 Newest
+# Card list sort menu: cards owned ("Cards in Possession." from OPENSEG:1258, the entry the
+# catalog uses, ran past the clip; the trade screen shows the same text).
+OPENSEG:1258	Cards Owned
+SUBSEG:16c0	Cards Owned
+# Levels spelled with the US level letters (R Rookie, C Champion, U Ultimate, A Armor): the icon
+# codes *e3/*e4/*e5 show the JP art (Ⅲ Ⅳ 完) in English strings. Same text in EVOSEG and OPENSEG.
+EVOSEG:1058	Level R
+EVOSEG:104c	Level C
+EVOSEG:1040	Level U
+OPENSEG:3c	Level R
+OPENSEG:30	Level C
+OPENSEG:24	Level U
+SUBSEG:1748	Level R
+SUBSEG:1730	Level C
+SUBSEG:1724	Level U
+SUBSEG:173c	Level A

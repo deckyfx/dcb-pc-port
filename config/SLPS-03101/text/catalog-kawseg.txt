@@ -1,0 +1,65 @@
+# Text catalog: KAWSEG, the card battle overlay (deck select, battle menus, results).
+# Only offsets live here (no game text): tools/text/en_text.py reads the strings from the
+# player's own JP and US dumps. Format: see catalog.txt.
+#
+# Ids are file offsets inside KAWSEG.BIN (P.DRV) on each disc. The US build moved most of
+# this .rodata, so the two offsets differ.
+
+# Deck select: "<name> deck", deck, unused deck, choose from list
+pair KAWSEG:2d8   KAWSEG:2d8
+run  KAWSEG:300   KAWSEG:328    3
+
+# Deck record: the JP draws "won" / "lost" as single glyphs after each count; the US draws
+# the whole line from one format string, so the English is our own (en-kawseg.tsv)
+pair KAWSEG:360   -
+pair KAWSEG:364   -
+
+# Arena deck restrictions, the tutorial's first-turn lines
+run  KAWSEG:3d0   KAWSEG:410    4
+
+# Option-card effect lines (the same order on both discs), then the experience screen title.
+# The US string starts after 3 stray bytes (4f5), at 4f8.
+run  KAWSEG:4bc   KAWSEG:4f8    2
+# experience +30/20/10 percent: the US text has a bare % sign, which a template must write
+# as %%, so the English is in en-kawseg.tsv (a run does not skip over those)
+pair KAWSEG:500   -
+pair KAWSEG:514   -
+pair KAWSEG:528   -
+run  KAWSEG:53c   KAWSEG:5a8    124
+
+# Experience / Digi-Parts screens
+pair KAWSEG:1378  KAWSEG:1504   # experience detail
+pair KAWSEG:1388  KAWSEG:1528   # experience from the opponent
+pair KAWSEG:13a0  KAWSEG:1550   # Digi-Parts earned
+pair KAWSEG:13bc  KAWSEG:1570   # none
+pair KAWSEG:13e0  KAWSEG:1594   # Digi-Parts list header (US wording differs)
+pair KAWSEG:13f4  KAWSEG:15a8   # number column
+run  KAWSEG:1414  KAWSEG:15cc   5   # support / option panels, card got, prize pack
+
+# Special-attack help: each effect is a title plus 1-3 lines, stored last line first.
+# Both builds start after a switch table (JP 150c, US 16cc).
+run  KAWSEG:150c  KAWSEG:16cc   6   # the three "button to 0" effects
+# Counters: the JP has 3 own lines per button; the US shares its middle line (1860)
+# between the three, so these are paired one by one, by line position.
+pair KAWSEG:15a8  KAWSEG:178c   # counter 1: line 3
+pair KAWSEG:15cc  KAWSEG:1860   #            line 2 (shared)
+pair KAWSEG:15f0  KAWSEG:17a0   #            line 1
+pair KAWSEG:1618  KAWSEG:17cc   #            title
+pair KAWSEG:1630  KAWSEG:17ec   # counter 2
+pair KAWSEG:1654  KAWSEG:1860
+pair KAWSEG:1678  KAWSEG:1800
+pair KAWSEG:16a0  KAWSEG:182c
+pair KAWSEG:16b8  KAWSEG:184c   # counter 3
+pair KAWSEG:16dc  KAWSEG:1860
+pair KAWSEG:1700  KAWSEG:1884
+# Counter 3 title, attribute x3 (both builds share the "x3" line), self-destruct, drain,
+# first strike, jamming, the help header, then the pause menu, sound options and the
+# quit / give-up questions: 40 in the same order
+run  KAWSEG:1728  KAWSEG:18b0   40
+
+# Result bonus names (32 in the same order)
+run  KAWSEG:1a94  KAWSEG:1c94   32
+
+# Not listed: the lucky-name list at 1cc4 (hiragana names compared with the player's name,
+# never drawn; the US has no such list), deck list headers and number formats (ASCII, the
+# same or reformatted in the US), file paths.

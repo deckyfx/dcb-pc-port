@@ -1,0 +1,14 @@
+# English written for this port, SAISEG (see catalog-saiseg.txt). id<TAB>text; \n is a line
+# break. Button hints keep the JP icon codes: the JP controls stay, the US swapped the icons.
+SAISEG:20c	*w1This shows how far you are in the game.\nCan you achieve 100%%?
+SAISEG:4f4	*b1:Player's Complete Stats
+SAISEG:b08	Hiragana
+SAISEG:b14	Katakana
+SAISEG:b20	ABC/123
+SAISEG:b28	OK
+SAISEG:b3c	*b1 Insert
+SAISEG:b44	*b0 OK
+SAISEG:b4c	*b2 Delete
+SAISEG:e34	Boost Battle Experience by 30%%.
+SAISEG:e48	Boost Battle Experience by 20%%.
+SAISEG:e5c	Boost Battle Experience by 10%%.

@@ -1,0 +1,14 @@
+# English written for this port (not game text), boot executable. id<TAB>text; \n is a line break.
+# Battle help lines: the US words, with the JP button icons (the US swapped confirm / cancel / back).
+EXE:215c	*b4Select *b2Return
+EXE:216c	*b4Select *b0OK *b1Cancel
+EXE:2188	*b4Select *b0OK *b1Cancel *b2Return
+EXE:21ac	*b4Select *b0OK *b2Return
+EXE:21c4	*b4Select *b0OK
+EXE:21ec	*b0OK *b2Change All Cards *b3View Cards
+# Battle titles: the top five follow the JP names (the US renamed and reordered them).
+EXE:1304	Battle God
+EXE:1310	Battle Emperor
+EXE:1320	Battle King
+EXE:132c	Battle Champion
+EXE:1340	Battle Master
