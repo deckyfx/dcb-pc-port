@@ -32,6 +32,11 @@ public:
 
     /// The translation of `drawn` when it matches a source template whole.
     bool translate(std::string_view drawn, std::string& out) const;
+    /// A message the game types out a character at a time: `drawn` is the start of a source
+    /// template (and not a whole one). `out` is the same share of the translation (by Shift-JIS
+    /// characters shown), or empty while the start could still be more than one message.
+    /// False when no template starts with it, or it holds no Shift-JIS character.
+    bool translate_prefix(std::string_view drawn, std::string& out) const;
     size_t size() const { return entries_.size(); }
 
     /// "\n" -> line break, "\t" -> tab, "\\" -> backslash (the files' escapes).
@@ -49,6 +54,10 @@ private:
     static bool parse(std::string_view tmpl, std::vector<Token>& out);
     static bool match(const std::vector<Token>& tokens, size_t t, std::string_view s, size_t pos,
                       std::vector<std::string>& captures);
+    /// Like match, but `s` may end anywhere inside the template (true only if it does).
+    static bool match_prefix(const std::vector<Token>& tokens, size_t t, std::string_view s, size_t pos,
+                             std::vector<std::string>& captures);
+    static std::string format(const std::vector<Token>& translation, const std::vector<std::string>& captures);
 
     std::vector<Entry> entries_;
 };

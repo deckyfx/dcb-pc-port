@@ -72,12 +72,34 @@ void test_escapes_and_load() {
     fs::remove_all(dir);
 }
 
+void test_prefix_while_typing() {
+    text::Catalog c;
+    // "c2" + 4 SJIS characters, then "!" ; English "*c2Welcome*c7!" (8 glyphs)
+    const std::string jp = "c2\x83\x66\x83\x57\x83\x5E\x83\x8B!";
+    CHECK(c.add("w", jp, "*c2Welcome*c7!"));
+    CHECK(c.add("x", "\x82\xA0\x82\xA2", "Yes"));
+    CHECK(c.add("y", "\x82\xA0\x82\xA4", "No"));
+    std::string out;
+    CHECK(!c.translate_prefix(jp, out) || out.size() > 0);            // whole string: translate() handles it
+    CHECK(c.translate_prefix("c2\x83\x66", out) && out == "*c2We");   // 1 of 4 -> 2 of 8 glyphs
+    CHECK(c.translate_prefix("c2\x83\x66\x83\x57\x83\x5E\x83\x8B", out) && out == "*c2Welcome*c7!");  // all 4 shown: all 8
+    CHECK(c.translate_prefix("\x82\xA0", out) && out.empty());        // could be either: nothing yet
+    CHECK(!c.translate_prefix("c2", out));                            // no SJIS character shown
+    CHECK(!c.translate_prefix("\x83\x41", out));                      // starts nothing we know
+    CHECK(c.add("deck", "%s\x83\x66\x83\x62\x83\x4E", "%s Deck"));
+    // "c2デ" could now be a deck name + デック too: nothing until the next character decides
+    CHECK(c.translate_prefix("c2\x83\x66", out) && out.empty());
+    CHECK(c.translate_prefix("c2\x83\x66\x83\x57", out) && out == "*c2Welc");  // 2 of 4 -> 4 of 8
+    CHECK(!c.translate_prefix("New Power\x83\x66\x83\x62\x83\x4E", out));  // a whole %s template
+}
+
 }  // namespace
 
 int main() {
     test_literal_and_placeholders();
     test_lone_percent_is_literal();
     test_escapes_and_load();
+    test_prefix_while_typing();
     std::printf("text_catalog: ok\n");
     return 0;
 }

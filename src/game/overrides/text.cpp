@@ -198,7 +198,10 @@ Text load_text(PsxContext& ctx, uint32_t str) {
         if (c == 0) break;
         s.push_back(static_cast<char>(c));
     }
-    if (std::string translated; g_catalog.translate(s, translated)) s = std::move(translated);
+    // A whole known string, or the start of one the game is typing out (the English is revealed
+    // in step with the Japanese instead of popping in when the line completes).
+    if (std::string translated; g_catalog.translate(s, translated) || g_catalog.translate_prefix(s, translated))
+        s = std::move(translated);
     for (const LongName& n : g_names)
         for (size_t p = s.find(n.key); p != std::string::npos; p = s.find(n.key, p + n.full.size()))
             s.replace(p, n.key.size(), n.full);
@@ -693,7 +696,10 @@ void trace_call(PsxContext& ctx, const char* fn, uint32_t str, int x, int y) {
         std::string raw;
         for (uint32_t i = 0; i < 4096 && rd8(ctx, str + i); ++i) raw.push_back(static_cast<char>(rd8(ctx, str + i)));
         std::string translated;
-        extra = g_catalog.translate(raw, translated) ? " catalog=yes hex=" : " catalog=no hex=";
+        if (g_catalog.translate(raw, translated)) extra = " catalog=yes";
+        else if (g_catalog.translate_prefix(raw, translated)) extra = " catalog=prefix -> \"" + translated + "\"";
+        else extra = " catalog=no";
+        extra += " hex=";
         static const char* kHex = "0123456789abcdef";
         for (const char c : raw) {
             extra += kHex[static_cast<uint8_t>(c) >> 4];

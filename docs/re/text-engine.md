@@ -400,6 +400,13 @@ entry whole, draws the translation instead.
   `DCB_LANG=<lang>`. The US font has ASCII only, so accented letters need glyphs first.
 - **Runtime:** `text::Catalog` (`src/platform/text_catalog.*`, unit-tested), used by
   `load_text` in `src/game/overrides/text.cpp` before the deck-name rules.
+- **Typed-out messages:** many message windows reveal a line a Shift-JIS character per frame
+  (the new-game guide, for one), drawing each partial string. `translate_prefix` matches a
+  partial string against the start of a template (it must end inside a literal part, so a
+  template starting with `%s` does not take everything) and draws the same share of the English:
+  k of n Japanese characters shown -> k/n of the English glyphs, so the English types along
+  instead of the Japanese showing until the line completes. While the start could still be two
+  different messages it draws nothing. `DCB_TRACE_TEXT=hex` logs `catalog=prefix -> "..."`.
 
 Coverage (1271 strings): Yes/No and the save/load flow (`catalog.txt`), the EXE (battle
 dialogs, banner, help lines, support effects, packs, rank titles: `catalog-exe.txt`), KAWSEG
