@@ -435,6 +435,42 @@ scripts); the other renderers
 (mini / tiny fonts, the VS big names). `DCB_TRACE_TEXT=hex` logs each drawn string's bytes and
 whether the catalog translates it (decode with cp932) — the way to find what is still Japanese.
 
+### 7.9 Counts and units on the deck / card screens (SUBSEG)
+
+The JP screens draw a count with the 6×11 digit font (`80028C84`, `sprintf "%2d"/"%3d"/"%4d"`)
+and then a one-kanji unit with the main renderer at a fixed x: 枚 (cards), 戦 勝 敗 (battles,
+wins, losses), 計 (total). The US build moved those draws and drew the units in a **4×5 capital
+font** that the JP build does not have: US `8002790C` (grey wrapper of `8002793C`) and
+`80027DB8`, SPRT 4×5, advance 4, lower case folded to upper, u = (c & 15)·4 (+64 for
+`80027DB8`), v = 5·((c − 0x20) >> 4) − 22 in the SYSTEM.TIM page (TIM rows ≈ 234–253, outside
+`en_font.bin`). The counts use the main font with `*s0` (fixed 6 px). US overlay base: SUBSEG
+loads at **`0x801DDF38`** in the US build (not `0x801E0B30`; the US EXE is smaller), so US
+string `SUBSEG:x` is at `0x801DDF38 + x`. (H, US disassembly)
+
+| Screen (JP function) | JP draws (x from the panel origin x0) | US draws (function) |
+|---|---|---|
+| Deck select, deck line (`801EEBC4`) | `%4d` +106, 戦 +132, `%3d` +156, 勝 +176, `%3d` +200, 敗 +220 | `*s0%3d` +98, tiny "Battles" +118, `*s0%3d` +149, tiny "Wins" +169, `*s0%3d` +189, tiny "Losses" +209, all tiny at y+7 (US `801EB3EC`–`801EB500`) |
+| Deck select, type rows (6 columns, step 59, second row +13) | type label +0, `%2d` +28, 枚 +44 | `*a0`… icon +0, `*s0%2d` +16, tiny "Cards" (`80027DB8`) +32; the option column: "Option Card" +0, count +58, "Cards" +74 |
+| Deck select, partner | label +138, `%2d` +205, 枚 +221 | "Partner" +160, `*s0%2d` +193, "Cards" +209 |
+| Deck select, level row | Ｌｖ +0, level icon +16, `%2d` +36, 枚 +52; next level +84, +85 | "Lv" +0, icon +12, `*s0%2d` +30, "Cards" +46; next +81, +82 |
+| Deck edit side panel (`801F32BC`, x0 = 10) | icon +0, `%2d` +16, 枚 +31; total row 計 +0 | icon +0, `%2d` +21, tiny "Cards" +35 (y+6); total row tiny "Total" +0 (US `801EF900`–`801EFC44`); the partner page draws "Pa" (main font) |
+| Card list rows / card info / top line | 枚 at 291 (rows); ` 計` +84 before a `%4d`; 総枚数 at 242 before the total | "Total Number" / "of Cards" in two lines, `*s0%4d` |
+| Sort menu | one string per entry, clipped at about 74 px from the entry's x | same strings ("*b2 Attack Power", "Level *e3" …) — the US menu is wider |
+
+The port keeps the JP positions and fits the English with short forms (`catalog-layout.txt`,
+`en-layout.tsv`): 枚 → `Cds` (with `*w-1`, 13 px: the deck edit panel, the card list rows and
+the deck select columns leave 13–15 px), 戦 → `Btl.`, ＯＰ → `Opt.`, 計 → `Tot.`, 総枚数 →
+`Total`, 攻撃力 → `Atk. Power`, 最新入手 → `Newest`, 所持枚数 → `Cards Owned`; the sort
+menu's levels are spelled `Level R` / `C` / `U` / `A`. A JP string with several catalog entries
+takes the entry with the lowest id (`std::map` order of the ids), so a change goes on that id.
+
+**Level badges.** Icons 16–19 (mode 0) are the level badges: JP Ⅲ, A, Ⅳ, 完; the US grid (v base
+0x7F) has R, A, C, U there. Those US rows are inside the private sheet (TIM rows 48–223), so
+`dcb_text_icon` (`src/game/overrides/level_badges.cpp`, override of `80029F70`) lets the game
+emit the icon and points the packet at the sheet (texpage word → sheet marker, v → US row). Every
+game draw of a level badge goes through `80029F70`; the `*e` codes inside English strings do
+not (text.cpp calls `f_80029F70` directly), so they keep the JP art.
+
 ## 8. Proposed names
 
 For later import into Ghidra / `config/SLPS-03101/functions.json`. Not applied in the shared database.
