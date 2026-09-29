@@ -477,8 +477,8 @@ whether the catalog translates it (decode with cp932) — the way to find what i
 
 Japanese that is not text (no text-engine call; found with `DCB_TRACE_PRIMS=1` + `DCB_LOG_TEX=1`):
 the battle phase banner's 準備 / 進化 / 戦闘 (B:\CBTL_SYS.ARC TIM #17 @0x11240, 44×72 4 bpp at
-VRAM (948, 304), CLUT (816, 497); the US TIM reads Prep / Digi-volve / Battle, but the HD pack's
-`B_CBTL_SYS_off00011240_44x72_pal0.png` replaces it with the JP art), and the world map's HELP MENU
+VRAM (948, 304), CLUT (816, 497); the US TIM reads Prep / Digi-volve / Battle: now swapped by
+`tools/assets/swap_us_images.py`, its 32×1 US palette sent up as the JP 16×2), and the world map's HELP MENU
 plate (移動 / 入る / メニュー: a TIM of the C:\area01.pak image chunk, HD key
 `C_OBJECT_WORLD_off0000b51c`, 88×80 4 bpp at (808, 0), CLUT (528, 242), replaced by
 `C_OBJECT_WORLD_off0000b51c_88x80.png`).

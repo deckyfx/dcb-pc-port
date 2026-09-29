@@ -37,7 +37,9 @@ build enters with circle and opens the menu with X; the JP circle icon goes in, 
 moves down). NARROW cuts a wider US image to the JP width (the VS record strip: blank in the US
 build, the port draws the words, src/game/overrides/vs_record.cpp). JP_DRAW_SCALE lists images the
 JP code draws at another scale than the US code (the city sub-menu labels: 68 texels on 64 pixels
-in JP, 1:1 in US); their US pixels are moved to the texels the JP draw shows. area_image_chunk()
+in JP, 1:1 in US); their US pixels are moved to the texels the JP draw shows. A US palette that is
+the JP one uploaded in another w x h (the battle phase banner: JP 16x2, US 32x1, the same colours)
+is reshaped to the JP upload (reshaped()) and pairs like any other. area_image_chunk()
 builds the same result as a new kind-5 chunk for a tool that rewrites C:\\AREAnn.PAK anyway.
 
     tools/assets/swap_us_images.py --root DIR  # use DIR/assets and DIR/extracted (a scratch copy)
@@ -126,9 +128,10 @@ JP_DRAW_SCALE = {
 }
 NEVER = re.compile(r"(^|/)SYSTEM\.TIM$")
 # Entries where a few images changed shape: swap the images whose shape still matches, keep the
-# rest JP. CBTL_SYS: one palette is uploaded as 32x1 in the US build instead of 16x2. MATCH: the
-# opponent's name picture is wider in the US build (tools/text/bigfont.py grafts it).
-PARTIAL = re.compile(r"^B\.DRV:(CBTL_SYS\.ARC|(MATCH|WIN)/\d+\.ARC)$")
+# rest JP. MATCH: the opponent's name picture is wider in the US build (tools/text/bigfont.py grafts
+# it). (CBTL_SYS's phase banner palette, uploaded 32x1 in the US build instead of 16x2, is the same
+# 32 colours: reshaped() pairs it whole.)
+PARTIAL = re.compile(r"^B\.DRV:(MATCH|WIN)/\d+\.ARC$")
 # US images that are a wider copy of a JP image with a plain inside: (DRV, JP image rect) ->
 # (US image rect, texels kept from the US right edge). The US columns are cut to the JP width: the
 # left part, then the right edge. The VS / result screen record strip: JP 136 px with the kanji for
@@ -228,6 +231,43 @@ def narrowed(drv_name: str, tims: list[tuple[Tim, list[dict]]]) -> list[tuple[Ti
             jp, right = wider[t.image]
             px = narrow_columns(t.pixels, t.bpp, t.image[2] * 16 // t.bpp, jp[2] * 16 // t.bpp, right)
             t = Tim(t.offset, t.bpp, jp, t.clut, px, t.palette)
+        out.append((t, v))
+    return out
+
+
+def is_palette_reshape(jp: Tim, us: Tim) -> bool:
+    """True when the US TIM's palette is the JP one uploaded in another rect shape: the same
+    depth, image rect and CLUT corner, the same number of entries in a different w x h, and every
+    entry the same colour (the semi-transparency bit may differ). Only then can the US palette go
+    up in the JP shape without moving a colour."""
+    if (jp.clut is None or us.clut is None or jp.bpp != us.bpp or jp.image != us.image
+            or jp.clut[:2] != us.clut[:2] or jp.clut[2:] == us.clut[2:]
+            or jp.clut[2] * jp.clut[3] != us.clut[2] * us.clut[3]
+            or len(jp.palette) != len(us.palette) or len(jp.palette) != 2 * jp.clut[2] * jp.clut[3]):
+        return False
+    n = len(jp.palette) // 2
+    return all((a ^ b) & 0x7FFF == 0 for a, b in zip(struct.unpack(f"<{n}H", jp.palette),
+                                                      struct.unpack(f"<{n}H", us.palette)))
+
+
+def reshaped(jp_tims: list[tuple[Tim, list[dict]]], us_tims: list[tuple[Tim, list[dict]]]
+             ) -> list[tuple[Tim, list[dict]]]:
+    """US TIMs whose palette is a JP palette uploaded in another shape (is_palette_reshape) as
+    the JP-shaped TIM they stand for, so they pair with it: CLUT rect and palette variants as JP
+    has them, US palette data as it is (the entries in upload order are the same, so the JP rows
+    take the US colours row for row). Other TIMs as they are. CBTL_SYS's phase banner: JP 16x2,
+    US 32x1 at (816, 497), the same 32 colours."""
+    by_image: dict[tuple, list[tuple[Tim, list[dict]]]] = defaultdict(list)
+    for t, v in jp_tims:
+        by_image[(t.bpp, t.image)].append((t, v))
+    out = []
+    for t, v in us_tims:
+        jp = by_image.get((t.bpp, t.image), [])
+        if len(jp) == 1 and is_palette_reshape(jp[0][0], t):
+            jt, jv = jp[0]
+            t = Tim(t.offset, t.bpp, t.image, jt.clut, t.pixels, t.palette)
+            if v:  # TIS / ARC images read from the disc carry no variants on either side
+                v = [dict(v[0], w=e["w"], h=e["h"]) for e in jv]
         out.append((t, v))
     return out
 
@@ -630,7 +670,7 @@ def main() -> int:
             if path not in us_ents:
                 skipped.append((label, "no US entry"))
                 continue
-            paired = pair(jp_ents[path], narrowed(drv_name, us_ents[path]),
+            paired = pair(jp_ents[path], reshaped(jp_ents[path], narrowed(drv_name, us_ents[path])),
                           partial=bool(PARTIAL.search(label)))
             if paired is None:
                 skipped.append((label, "layout differs"))

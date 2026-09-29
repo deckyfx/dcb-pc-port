@@ -69,7 +69,7 @@ for attacks the US build named differently, which one it picked. `SYSTEM.TIM` is
 JP text engine draws its font from it). The opponent name pictures on the VS screen are left to
 `tools/text/bigfont.py`, which grafts them into the MATCH archives.
 
-Three images need more than a swap:
+A few images need more than a swap:
 
 - **City HELP MENU plate** (also on the world map): the US plate says ✕ Enter / △ Menu, this build
   keeps the JP controls (○ enters, ✕ opens the menu). The tool builds it from both dumps: the US
@@ -79,6 +79,10 @@ Three images need more than a swap:
   blank and wider. The tool cuts the US strip to the JP width, and the game draws "Btl.", "W" and
   "L" where the kanji were (only when the strip in video memory is the blank one).
 - **1st / 2nd turn cards, portraits, WIN / LOSS banners** (MATCH and WIN archives): plain swaps.
+- **Battle phase banner** (Prep / Digi-volve / Battle, `B:\CBTL_SYS.ARC`): the US file uploads its
+  palette as one 32-colour row, the JP one as two 16-colour rows (the game draws the banner with
+  the first row and its fading trail with the second). The colours are the same, so the tool
+  sends the US palette up in the JP shape and swaps the image.
 
 | Option | Effect |
 |---|---|

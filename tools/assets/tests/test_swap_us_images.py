@@ -53,7 +53,7 @@ class PairTest(unittest.TestCase):
         self.assertIsNone(swap.pair([item(0, b"j", "jp")], [item(0, b"u", "us", clut=(640, 80, 32, 1))]))
 
     def test_partial_keeps_matching_shapes_only(self):
-        # CBTL_SYS: one palette changed shape; the rest still swaps.
+        # One palette changed shape (and is not a reshape of the same colours); the rest still swaps.
         jp = [item(0, b"j1", "jp_1"), item(1, b"j2", "jp_2", clut=(816, 497, 16, 2))]
         us = [item(0, b"u1", "us_1"), item(1, b"u2", "us_2", clut=(816, 497, 32, 1))]
         pairs, _ = swap.pair(jp, us, partial=True)
@@ -357,8 +357,63 @@ class MatchArchiveTest(unittest.TestCase):
     def test_match_archives_swap_partially(self):
         self.assertTrue(swap.PARTIAL.search("B.DRV:MATCH/004.ARC"))
         self.assertTrue(swap.PARTIAL.search("B.DRV:WIN/141.ARC"))
-        self.assertTrue(swap.PARTIAL.search("B.DRV:CBTL_SYS.ARC"))
+        self.assertFalse(swap.PARTIAL.search("B.DRV:CBTL_SYS.ARC"))  # pairs whole (reshaped)
         self.assertFalse(swap.PARTIAL.search("B.DRV:M_CARD.ARC"))
+
+
+class PaletteReshapeTest(unittest.TestCase):
+    """CBTL_SYS's phase banner: the JP palette is uploaded 16x2, the US one 32x1, same colours."""
+    BANNER = (948, 304, 11, 72)
+    ROW0 = [0x0000, 0xB58D, 0x0000, 0x8C63, 0x9084, 0x8C63, 0x94A5, 0x4E53] * 2
+    ROW1 = [0x0000, 0xB58D, 0x0000, 0x8C63, 0x9084, 0x8C63, 0x94A5, 0xCE53] * 2
+
+    def banner(self, clut, entries, pixels=b"jp"):
+        return swap.Tim(0, 4, self.BANNER, clut, pixels, struct.pack(f"<{len(entries)}H", *entries))
+
+    def variants(self, n):
+        return [{"img": "", "path": f"banner_pal{i}.png", "w": 44, "h": 72} for i in range(n)]
+
+    def test_same_colours_in_another_shape(self):
+        jp = self.banner((816, 497, 16, 2), self.ROW0 + self.ROW1)
+        # The US build clears the semi-transparency bit of two row-0 colours: still a reshape.
+        us_row0 = [c & 0x7FFF if i in (3, 4) else c for i, c in enumerate(self.ROW0)]
+        us = self.banner((816, 497, 32, 1), us_row0 + self.ROW1, b"en")
+        self.assertTrue(swap.is_palette_reshape(jp, us))
+
+    def test_other_colours_are_not_a_reshape(self):
+        jp = self.banner((816, 497, 16, 2), self.ROW0 + self.ROW1)
+        recoloured = self.ROW0[:7] + [0x7FFF] + self.ROW0[8:] + self.ROW1  # one colour redrawn
+        self.assertFalse(swap.is_palette_reshape(jp, self.banner((816, 497, 32, 1), recoloured)))
+
+    def test_other_corner_size_or_image_is_not_a_reshape(self):
+        jp = self.banner((816, 497, 16, 2), self.ROW0 + self.ROW1)
+        both = self.ROW0 + self.ROW1
+        self.assertFalse(swap.is_palette_reshape(jp, self.banner((832, 497, 32, 1), both)))    # moved
+        self.assertFalse(swap.is_palette_reshape(jp, self.banner((816, 497, 16, 2), both)))    # same shape
+        self.assertFalse(swap.is_palette_reshape(jp, self.banner((816, 497, 48, 1), both * 2)))  # more entries
+        other = swap.Tim(0, 4, (948, 256, 12, 48), (816, 497, 32, 1), b"en", jp.palette)
+        self.assertFalse(swap.is_palette_reshape(jp, other))
+
+    def test_reshaped_us_banner_pairs_with_the_jp_one(self):
+        both = self.ROW0 + self.ROW1
+        jp = [(self.banner((816, 497, 16, 2), both), self.variants(2)),
+              (swap.Tim(1, 4, (948, 256, 12, 48), (816, 497, 16, 2), b"p", b""), self.variants(2))]
+        us_banner = self.banner((816, 497, 32, 1), both, b"en")
+        us = [(us_banner, self.variants(1)), (jp[1][0], self.variants(2))]
+        self.assertIsNone(swap.pair(jp, us))  # as the US disc has it: another layout
+        out = swap.reshaped(jp, us)
+        self.assertEqual(out[0][0].clut, (816, 497, 16, 2))
+        self.assertEqual((out[0][0].pixels, out[0][0].palette), (b"en", us_banner.palette))  # US data kept
+        self.assertEqual(len(out[0][1]), 2)
+        self.assertIs(out[1][0], us[1][0])  # the other TIM as it was
+        pairs, _ = swap.pair(jp, out)
+        self.assertEqual(len(pairs), 2)
+
+    def test_disc_read_images_without_variants(self):
+        both = self.ROW0 + self.ROW1
+        jp = [(self.banner((816, 497, 16, 2), both), [])]
+        out = swap.reshaped(jp, [(self.banner((816, 497, 32, 1), both, b"en"), [])])
+        self.assertEqual((out[0][0].clut, out[0][1]), ((816, 497, 16, 2), []))
 
 
 if __name__ == "__main__":
