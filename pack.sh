@@ -69,8 +69,8 @@ $SERIAL.pak holds textures/sound compiled from the player's own dumps.
 Cheats live in cheats/<serial>.txt (F4 in game); saves in saves/<serial>/.
 Settings (window size, keys, gamepad, volume) are written to settings.ini on first run.
 EOF
-cp "$ASSETS/$SERIAL.pak" "$STAGE/linux/" "$STAGE/windows/"
-cp build/linux-release/dcb "$STAGE/linux/"
+cp "$ASSETS/$SERIAL.pak" "$STAGE/linux/"
+cp "$ASSETS/$SERIAL.pak" "$STAGE/windows/"
 cp build/windows-cross/dcb.exe "$STAGE/windows/"
 
 LINUX_ZIP="$OUTDIR/dcb-pc-v$VERSION-linux.zip"
