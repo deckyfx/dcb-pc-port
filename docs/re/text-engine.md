@@ -381,11 +381,11 @@ Strings the game draws whole (menus, dialogs, the save/load screens) are transla
 not by patching the overlays: the renderer copies each string, and when it matches a catalog
 entry whole, draws the translation instead.
 
-- **`config/SLPS-03101/text/catalog.txt`** (in git, offsets only): `pair <id> <us id>` and
+- **`config/SLPS-03101/text/catalog*.txt`** (in git, offsets only; one file per area, all read): `pair <id> <us id>` and
   `run <id> <us id> <count>`, ids being `<file>:<offset>` in the JP / US disc (`EXE` = boot.exe,
   `OPENSEG` = P.DRV OPENSEG.BIN, ...). A `run` pairs strings in a row by order, for blocks the
   two versions keep in the same order (the 27 save/load messages, the 33 location names).
-- **`config/SLPS-03101/text/en.tsv`** (in git): English written for this port where the US has
+- **`config/SLPS-03101/text/en*.tsv`** (in git): English written for this port where the US has
   none (`pair <id> -`), e.g. `%3dh %2dm` for the JP play time.
 - **`tools/text/en_text.py`** reads both dumps and writes `assets/SLPS-03101/text/source.tsv`
   (the JP templates) and `en.tsv`.

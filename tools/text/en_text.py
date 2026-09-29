@@ -249,10 +249,18 @@ def main(argv=None) -> int:
     def loader(exe: bytes, p_drv: bytes):
         return lambda name: exe if name == "EXE" else drv_file(p_drv, name + ".BIN")
 
+    # Every catalog*.txt / en*.tsv in the folder (one file per area keeps edits apart).
     cat_dir = REPO / "config" / "SLPS-03101" / "text"
-    own = _catalog.read_own(cat_dir / "en.tsv")
-    source, en, problems = _catalog.build((cat_dir / "catalog.txt").read_text(encoding="utf-8"),
-                                          loader(jp_exe, jp_p), loader(us_exe, us_p), own)
+    own: dict[str, bytes] = {}
+    for f in sorted(cat_dir.glob("en*.tsv")):
+        own.update(_catalog.read_own(f))
+    catalog_text = "".join(f.read_text(encoding="utf-8") + "\n" for f in sorted(cat_dir.glob("catalog*.txt")))
+    source, en, problems = _catalog.build(catalog_text, loader(jp_exe, jp_p), loader(us_exe, us_p), own)
+    seen: set[str] = set()
+    for ident, _ in source:
+        if ident in seen:
+            problems.append(f"{ident}: listed twice")
+        seen.add(ident)
     _catalog.write_rows(out / "text" / "source.tsv", source)
     _catalog.write_rows(out / "text" / "en.tsv", en, escaped=set(own))
     print(f"catalog: {len(source)} strings, {len(en)} English -> text/source.tsv, text/en.tsv")
