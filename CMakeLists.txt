@@ -61,6 +61,18 @@ file(GLOB DCB_PATCH_SOURCES CONFIGURE_DEPENDS src/patch/*.cpp)
 add_library(dcb_patch STATIC ${DCB_PATCH_SOURCES})
 target_include_directories(dcb_patch PUBLIC src)
 target_link_libraries(dcb_patch PUBLIC dcb_vfs PRIVATE dcb::warnings)
+# The text catalog (config/SLPS-03101/text) built into the program: the public build ships no
+# config/. The files stay the source of truth; cmake/EmbedFiles.cmake turns them into C++.
+file(GLOB DCB_PATCH_TEXT_CONFIG CONFIGURE_DEPENDS
+     config/SLPS-03101/text/catalog*.txt config/SLPS-03101/text/en*.tsv)
+set(DCB_PATCH_TEXT_EMBED ${CMAKE_CURRENT_BINARY_DIR}/generated/patch_text_config.cpp)
+string(REPLACE ";" "|" DCB_PATCH_TEXT_FILES "${DCB_PATCH_TEXT_CONFIG}")
+add_custom_command(OUTPUT ${DCB_PATCH_TEXT_EMBED}
+    COMMAND ${CMAKE_COMMAND} -DOUT=${DCB_PATCH_TEXT_EMBED} -DFILES=${DCB_PATCH_TEXT_FILES}
+            -DNAMESPACE=patch::embedded -DFUNCTION=text_config -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/EmbedFiles.cmake
+    DEPENDS ${DCB_PATCH_TEXT_CONFIG} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/EmbedFiles.cmake
+    COMMENT "Embedding the text catalog" VERBATIM)
+target_sources(dcb_patch PRIVATE ${DCB_PATCH_TEXT_EMBED})
 
 # ---------------------------------------------------------------------------
 # psx_hle — native replacements: BIOS call tables, Psy-Q libraries,
