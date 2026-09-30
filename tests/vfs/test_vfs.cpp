@@ -10,6 +10,7 @@
 #include "vfs/hash.hpp"
 #include "vfs/image.hpp"
 #include "vfs/pak.hpp"
+#include "vfs/payload.hpp"
 #include "vfs/tim.hpp"
 #include "vfs/toc.hpp"
 #include "vfs/vab.hpp"
@@ -238,6 +239,134 @@ void test_pak_roundtrip() {
     CHECK(r.read("empty.bin", out) && out.empty());
     CHECK(!r.read("missing", out));
     CHECK(!r.open(dir / "nope.pak"));
+}
+
+// --- single-file payload -------------------------------------------------------
+
+void put_file(const fs::path& path, const std::string& text) {
+    fs::create_directories(path.parent_path());
+    FILE* f = std::fopen(path.string().c_str(), "wb");
+    CHECK(f);
+    std::fwrite(text.data(), 1, text.size(), f);
+    std::fclose(f);
+}
+
+std::string get_file(const fs::path& path) {
+    FILE* f = std::fopen(path.string().c_str(), "rb");
+    if (!f) return "<missing>";
+    std::string text;
+    char buf[256];
+    size_t n = 0;
+    while ((n = std::fread(buf, 1, sizeof buf, f)) > 0) text.append(buf, n);
+    std::fclose(f);
+    return text;
+}
+
+/// A "program" with `files` (name -> text) appended; one streamed (add_file), the rest in memory.
+void make_program(const fs::path& out, const fs::path& program,
+                  const std::vector<std::pair<std::string, std::string>>& files, const fs::path& staging) {
+    vfs::PakWriter w;
+    for (const auto& [name, text] : files) {
+        if (name == "assets/dump/big.bin") {
+            put_file(staging / "big.bin", text);
+            CHECK(w.add_file(name, staging / "big.bin"));
+        } else {
+            CHECK(w.add(name, reinterpret_cast<const uint8_t*>(text.data()), text.size()));
+        }
+    }
+    std::string error;
+    fs::create_directories(out.parent_path());
+    CHECK(vfs::write_payload_program(out, program, w, error));
+}
+
+void test_payload() {
+    const fs::path dir = scratch_dir();
+    const fs::path program = dir / "plain";
+    put_file(program, "\x7F" "ELF not really a program");
+    const std::string big(3 << 20, 'x');  // several streaming chunks
+    std::vector<std::pair<std::string, std::string>> v1 = {
+        {"README.txt", "v1"}, {"assets/SLPS-03101.pak", "pak"}, {"assets/dump/big.bin", big},
+        {"assets/old.txt", "only in v1"}, {"cheats/SLPS-03101.txt", "template"}};
+    const fs::path app = dir / "app" / "dcb";
+    make_program(app, program, v1, dir);
+
+    // The program bytes are untouched at the front; the trailer points at a readable archive.
+    CHECK(get_file(app).rfind(get_file(program), 0) == 0);
+    CHECK(!vfs::find_payload(program));
+    const std::optional<vfs::PayloadTrailer> t = vfs::find_payload(app);
+    CHECK(t && t->offset == get_file(program).size());
+    vfs::PakReader embedded;
+    CHECK(embedded.open(app, t->offset, t->size));
+    std::vector<uint8_t> out;
+    CHECK(embedded.read("README.txt", out) && std::string(out.begin(), out.end()) == "v1");
+
+    // A plain binary: nothing happens.
+    CHECK(vfs::unpack_payload(program, dir / "plain_dest").status == vfs::PayloadStatus::None);
+    CHECK(!fs::exists(dir / "plain_dest"));
+
+    // First start: everything unpacked, progress reaches the total.
+    const fs::path home = app.parent_path();
+    uint64_t last_done = 0, last_total = 1;
+    vfs::PayloadResult r = vfs::unpack_payload(app, home, [&](uint64_t d, uint64_t n) {
+        last_done = d;
+        last_total = n;
+    });
+    CHECK(r.status == vfs::PayloadStatus::Unpacked && r.files == 5 && r.error.empty());
+    CHECK(last_done == last_total && last_total == 2 + 3 + big.size() + 10 + 8);
+    CHECK(get_file(home / "assets" / "dump" / "big.bin") == big);
+    CHECK(get_file(home / "cheats" / "SLPS-03101.txt") == "template");
+    CHECK(get_file(home / vfs::kPayloadStamp).rfind(vfs::to_hex16(t->id) + "\n", 0) == 0);
+
+    // Second start: nothing to do.
+    CHECK(vfs::check_payload(app, home) == vfs::PayloadStatus::UpToDate);
+    CHECK(vfs::unpack_payload(app, home).status == vfs::PayloadStatus::UpToDate);
+
+    // An update: new files replace the old, files it dropped go, the player's cheats stay.
+    put_file(home / "cheats" / "SLPS-03101.txt", "my cheats");
+    std::vector<std::pair<std::string, std::string>> v2 = {
+        {"README.txt", "v2"}, {"assets/SLPS-03101.pak", "pak2"}, {"cheats/SLPS-03101.txt", "template2"}};
+    make_program(app, program, v2, dir);
+    CHECK(vfs::find_payload(app)->id != t->id);
+    r = vfs::unpack_payload(app, home);
+    CHECK(r.status == vfs::PayloadStatus::Unpacked && r.files == 2 && r.kept == 1 && r.removed == 2);
+    CHECK(get_file(home / "README.txt") == "v2");
+    CHECK(!fs::exists(home / "assets" / "old.txt"));
+    CHECK(get_file(home / "cheats" / "SLPS-03101.txt") == "my cheats");
+    CHECK(vfs::check_payload(app, home) == vfs::PayloadStatus::UpToDate);
+
+    // An interrupted unpack (stamp not finished) is redone.
+    put_file(home / vfs::kPayloadStamp, "unpacking\nREADME.txt\n");
+    CHECK(vfs::unpack_payload(app, home).status == vfs::PayloadStatus::Unpacked);
+
+    // assets/ that no payload made (a zip install, a dev tree) is left alone.
+    const fs::path other = dir / "other";
+    put_file(other / "assets" / "mine.txt", "hands off");
+    fs::copy_file(app, other / "dcb2");
+    CHECK(vfs::unpack_payload(other / "dcb2", other).status == vfs::PayloadStatus::NotOurs);
+    CHECK(!fs::exists(other / "README.txt"));
+
+    // A damaged trailer is no payload; a damaged archive fails with a reason.
+    std::string bytes = get_file(app);
+    put_file(dir / "cut", bytes.substr(0, bytes.size() - 1));
+    CHECK(!vfs::find_payload(dir / "cut"));
+    bytes[bytes.size() - vfs::kPayloadTrailerSize - 1] ^= 1;  // the last data byte: a hash mismatch
+    put_file(dir / "bad" / "dcb", bytes);
+    CHECK(vfs::unpack_payload(dir / "bad" / "dcb", dir / "bad").status == vfs::PayloadStatus::Failed);
+
+#if !defined(_WIN32)
+    // An unwritable folder fails with a clear reason (root ignores permissions: skip then).
+    const fs::path locked = dir / "locked";
+    fs::create_directories(locked);
+    fs::copy_file(app, locked / "dcb");
+    fs::permissions(locked, fs::perms::owner_read | fs::perms::owner_exec);
+    if (FILE* probe = std::fopen((locked / "probe").string().c_str(), "wb")) {
+        std::fclose(probe);
+    } else {
+        r = vfs::unpack_payload(locked / "dcb", locked);
+        CHECK(r.status == vfs::PayloadStatus::Failed && r.error.find("cannot write") != std::string::npos);
+    }
+    fs::permissions(locked, fs::perms::owner_all);
+#endif
 }
 
 void test_vfs_mounts() {
@@ -826,6 +955,7 @@ constexpr Case kCases[] = {
     {"tim_scan", test_tim_scan},
     {"fnv", test_fnv},
     {"pak_roundtrip", test_pak_roundtrip},
+    {"payload", test_payload},
     {"vfs_mounts", test_vfs_mounts},
     {"hd_replace", test_hd_replace},
     {"hd_identity_stp", test_hd_identity_stp},

@@ -148,26 +148,6 @@ std::filesystem::path env_path(const char* name) {
 #endif
 }
 
-std::filesystem::path executable_dir() {
-    std::error_code ec;
-#if defined(_WIN32)
-    std::wstring buf(MAX_PATH, L'\0');
-    for (;;) {
-        const DWORD n = GetModuleFileNameW(nullptr, buf.data(), static_cast<DWORD>(buf.size()));
-        if (n == 0) break;
-        if (n < buf.size()) {
-            buf.resize(n);
-            return std::filesystem::path(buf).parent_path();
-        }
-        buf.resize(buf.size() * 2);
-    }
-#else
-    const std::filesystem::path self = std::filesystem::read_symlink("/proc/self/exe", ec);
-    if (!ec) return self.parent_path();
-#endif
-    return std::filesystem::current_path(ec);
-}
-
 }  // namespace
 
 // ---------------------------------------------------------------------------------------------
@@ -466,12 +446,33 @@ std::filesystem::path resolve_settings_path(const SettingsLocations& where,
     return base / kSettingsAppDir / kSettingsFileName;
 }
 
+std::filesystem::path executable_path() {
+#if defined(_WIN32)
+    std::wstring buf(MAX_PATH, L'\0');
+    for (;;) {
+        const DWORD n = GetModuleFileNameW(nullptr, buf.data(), static_cast<DWORD>(buf.size()));
+        if (n == 0) break;
+        if (n < buf.size()) {
+            buf.resize(n);
+            return std::filesystem::path(buf);
+        }
+        buf.resize(buf.size() * 2);
+    }
+#else
+    std::error_code ec;
+    std::filesystem::path self = std::filesystem::read_symlink("/proc/self/exe", ec);
+    if (!ec) return self;
+#endif
+    return {};
+}
+
 SettingsLocations current_settings_locations() {
     SettingsLocations where;
     where.override_path = env_path("DCB_SETTINGS");
     std::error_code ec;
     where.cwd = std::filesystem::current_path(ec);
-    where.exe_dir = executable_dir();
+    const std::filesystem::path self = executable_path();
+    where.exe_dir = self.empty() ? where.cwd : self.parent_path();
 #if defined(_WIN32)
     where.windows = true;
     where.appdata = env_path("APPDATA");

@@ -4,6 +4,8 @@
 // down again before the game's own window (sdl3.cpp) is created.
 //
 // DCB_IMPORT_IMAGE=<path> skips the explanation and the file dialog (automated tests of the flow).
+//
+// Also the progress window of the single-file build's first start (unpack_bundled_assets).
 
 #if defined(DCB_HAS_SDL3)
 
@@ -271,6 +273,63 @@ private:
 
 fs::path sdl3_first_run(const std::string& serial, const fs::path& dest_root) {
     return FirstRun(serial, dest_root).run();
+}
+
+bool sdl3_progress_window(const char* caption,
+                          const std::function<void(const std::function<void(uint64_t, uint64_t)>&)>& job) {
+    if (!SDL_Init(SDL_INIT_VIDEO)) {
+        SDL_Log("dcb: no display for a progress window (%s)", SDL_GetError());
+        return false;
+    }
+    SDL_Window* window = nullptr;
+    SDL_Renderer* renderer = nullptr;
+    if (!SDL_CreateWindowAndRenderer("Digital Card Arena PC port", kWidth, kHeight / 2, 0, &window, &renderer)) {
+        SDL_Log("dcb: cannot create a progress window: %s", SDL_GetError());
+        SDL_Quit();
+        return false;
+    }
+    SDL_SetRenderScale(renderer, kScale, kScale);
+    SDL_SetRenderVSync(renderer, 1);
+    std::atomic<uint64_t> done{0}, total{0};
+    std::atomic<bool> finished{false};
+    std::thread worker([&] {
+        job([&](uint64_t d, uint64_t t) {
+            done = d;
+            total = t;
+        });
+        finished = true;
+    });
+    while (!finished) {
+        SDL_Event ev;
+        while (SDL_PollEvent(&ev)) {}  // closing is ignored: the unpack has to finish
+        const uint64_t t = total, d = done;
+        const int pct = t ? static_cast<int>(d * 100 / t) : 0;
+        SDL_SetRenderDrawColor(renderer, 16, 20, 36, 255);
+        SDL_RenderClear(renderer);
+        SDL_SetRenderDrawColor(renderer, 230, 230, 230, 255);
+        char line[96];
+        std::snprintf(line, sizeof line, "%s %d%%", caption, pct);
+        SDL_RenderDebugText(renderer, 16.0f, 24.0f, line);
+        // Bar: 288 x 10 logical pixels, as in the import.
+        const SDL_FRect frame = {16.0f, 40.0f, 288.0f, 10.0f};
+        SDL_RenderRect(renderer, &frame);
+        SDL_SetRenderDrawColor(renderer, 90, 170, 255, 255);
+        const SDL_FRect bar = {18.0f, 42.0f, 284.0f * static_cast<float>(pct) / 100.0f, 6.0f};
+        SDL_RenderFillRect(renderer, &bar);
+        SDL_SetRenderDrawColor(renderer, 200, 200, 200, 255);
+        SDL_RenderDebugText(renderer, 16.0f, 60.0f, "First start only.");
+        SDL_RenderPresent(renderer);
+        SDL_Delay(10);
+    }
+    worker.join();
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+    return true;
+}
+
+bool sdl3_error_box(const char* title, const std::string& text) {
+    return SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, title, text.c_str(), nullptr);
 }
 
 }  // namespace platform

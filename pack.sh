@@ -2,19 +2,23 @@
 # Package a release: build Linux + Windows binaries and zip per-OS, self-contained bundles
 # (binary + everything under assets/) from the player's own dumps.
 #
-#   ./pack.sh [-s SERIAL] [-o OUTDIR] [-r]
+#   ./pack.sh [-s SERIAL] [-o OUTDIR] [-r] [-1]
 #
 #   (default)  ship the assets you run with: assets/<serial>.pak and the loose files in
 #              assets/<serial>/, exactly as ./dcb.sh uses them. Nothing is regenerated.
 #   -r         rebuild them first from the dumps (rip, custom art, English data, US art swap,
 #              movies, pack) in build/pack-work/ and ship those. Your assets/ is never
 #              written: a rebuild that goes wrong cannot break the working copy.
+#   -1         single files instead of zips: the binary with the bundle appended (see below).
 #
 # Needs the player's own dumps (the JP one at assets/dump/<serial>/ or extracted/<serial>/;
 # -r also the US one for the English data). Nothing copyrighted ships in the repo; the zips
 # are for the player's own machines. Produces, in OUTDIR (default dist/):
 #   dcb-pc-v<version>-linux.zip     dcb (linux-release) + assets/ + cheats/ + README
 #   dcb-pc-v<version>-windows.zip   dcb.exe (windows-cross) + the same payload
+# or, with -1 (dcb_asset_ripper embed; src/vfs/payload.hpp), one program each that unpacks the
+# same bundle next to itself on its first start:
+#   dcb-pc-v<version>-linux         dcb-pc-v<version>-windows.exe
 # Bundle layout, all the game reads (found next to the binary, whatever the working dir):
 #   assets/<serial>.pak          textures, sound effects, movies
 #   assets/<serial>/             English data: fonts, names, text/ catalog, files/
@@ -28,12 +32,14 @@ SERIAL="SLPS-03101"
 US_SERIAL="SLUS-01328"
 OUTDIR="dist"
 REBUILD=0
-while getopts "s:o:rh" opt; do
+ONEFILE=0
+while getopts "s:o:r1h" opt; do
     case "$opt" in
         s) SERIAL="$OPTARG" ;;
         o) OUTDIR="$OPTARG" ;;
         r) REBUILD=1 ;;
-        *) sed -n '2,23p' "$0"; exit 2 ;;
+        1) ONEFILE=1 ;;
+        *) sed -n '2,27p' "$0"; exit 2 ;;
     esac
 done
 
@@ -50,7 +56,9 @@ dump_dir() {
 VERSION="$(grep -m1 -A2 '^project(' CMakeLists.txt | grep -o '[0-9][0-9.]*' | head -1)"
 [[ -n "$VERSION" ]] || { echo "error: cannot read project VERSION from CMakeLists.txt" >&2; exit 1; }
 JP_DUMP="$(dump_dir "$SERIAL" layout.txt)" || { echo "error: import the $SERIAL dump first (dcb --import)" >&2; exit 1; }
-command -v zip >/dev/null || { echo "error: zip is not installed" >&2; exit 1; }
+if (( ! ONEFILE )); then
+    command -v zip >/dev/null || { echo "error: zip is not installed" >&2; exit 1; }
+fi
 ASSETS="assets/$SERIAL"
 if (( ! REBUILD )) && [[ ! -f "assets/$SERIAL.pak" ]]; then
     echo "error: no assets/$SERIAL.pak to ship; run with -r to build one" >&2
@@ -66,6 +74,7 @@ cmake --build --preset linux-release --target dcb dcb_asset_ripper 2>&1 | tail -
 echo "-- build: windows-cross"
 cmake --preset windows-cross -DDCB_GAME_ID="$SERIAL" >/dev/null
 cmake --build --preset windows-cross --target dcb 2>&1 | tail -1
+RIPPER="$PWD/build/linux-release/dcb_asset_ripper"
 
 # SRC_PAK / SRC_ASSETS: what gets shipped.
 SRC_PAK="assets/$SERIAL.pak"
@@ -84,7 +93,6 @@ if (( REBUILD )); then
         if [[ -d "$ASSETS/$d" ]]; then cp -r "$ASSETS/$d" "$WORK/assets/$SERIAL/"; fi
     done
     if [[ -d "$ASSETS/disc" ]]; then ln -s "$PWD/$ASSETS/disc" "$WORK/assets/$SERIAL/disc"; fi
-    RIPPER="$PWD/build/linux-release/dcb_asset_ripper"
     CONVERTED="$WORK/assets/converted/$SERIAL"
 
     echo "-- assets (rebuild in $WORK): rip + custom art + English data + movies + pack"
@@ -130,7 +138,8 @@ Digimon Digital Card Battle PC v$VERSION ($SERIAL)
 =================================================
 
 Run dcb (Linux) or dcb.exe (Windows). No BIOS, disc, or import step needed:
-everything the game reads is in assets/ next to the program:
+everything the game reads is in assets/ next to the program (the single-file
+download unpacks it there on its first start):
 
   assets/$SERIAL.pak       textures, sound effects, movies
   assets/$SERIAL/          English data (fonts, names, text catalog, files)
@@ -164,6 +173,16 @@ for OS in linux windows; do
         cp docs/cheats.example.txt "$STAGE/$OS/cheats/$SERIAL.txt"
     fi
 done
+if (( ONEFILE )); then
+    # The bundle tree (assets/, cheats/, README.txt) appended to each binary.
+    LINUX_ONE="$OUTDIR/dcb-pc-v$VERSION-linux"
+    WIN_ONE="$OUTDIR/dcb-pc-v$VERSION-windows.exe"
+    "$RIPPER" embed build/linux-release/dcb "$STAGE/linux" "$LINUX_ONE"
+    "$RIPPER" embed build/windows-cross/dcb.exe "$STAGE/windows" "$WIN_ONE"
+    ls -la "$LINUX_ONE" "$WIN_ONE"
+    echo "== packed v$VERSION (single file) =="
+    exit 0
+fi
 cp build/linux-release/dcb "$STAGE/linux/"
 cp build/windows-cross/dcb.exe "$STAGE/windows/"
 

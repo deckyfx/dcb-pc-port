@@ -3,6 +3,7 @@
 //   dcb_asset_ripper unpack <extracted/serial|drv-dir|drv-file> -o <out-dir> [--lba-map manifest.json]
 //   dcb_asset_ripper pack <asset-dir> <out.pak>
 //   dcb_asset_ripper sfx [raw-dir|file.bin] [-o out] [--game ID]
+//   dcb_asset_ripper embed <program> <bundle-dir> <out-program>
 //
 // `unpack` reads every *.DRV in the input (plus P.DRV overlays), parses the 32-byte
 // container table-of-contents (magic + u32 sector + u32 size + u32 timestamp +
@@ -17,12 +18,16 @@
 // `pack` bundles a directory of processed (e.g. AI-upscaled) PNGs into one
 // hash-checked .pak for runtime mounting via DCB_HD_PACK.
 //
+// `embed` makes the single-file build (vfs/payload.hpp): <program> with every file under
+// <bundle-dir> appended as a .pak plus the trailer the game looks for at startup.
+//
 // Needs the player's own dump; writes nothing copyrighted into the repo.
 // Default output roots (overridable with -o) are the gitignored assets/raw and
 // assets/converted directories.
 
 #include "vfs/hash.hpp"
 #include "vfs/pak.hpp"
+#include "vfs/payload.hpp"
 #include "vfs/tim.hpp"
 #include "vfs/toc.hpp"
 #include "vfs/vab.hpp"
@@ -684,16 +689,55 @@ int cmd_pack(int argc, char** argv) {
     return 0;
 }
 
+int cmd_embed(int argc, char** argv) {
+    if (argc != 3) {
+        std::fprintf(stderr, "usage: dcb_asset_ripper embed <program> <bundle-dir> <out-program>\n");
+        return 1;
+    }
+    const fs::path program = argv[0], root = argv[1], out = argv[2];
+    // Sorted, so the same tree always gives the same archive and content id.
+    std::vector<std::pair<std::string, fs::path>> files;
+    std::error_code ec;
+    for (const auto& e : fs::recursive_directory_iterator(root, ec)) {
+        if (!e.is_regular_file()) continue;
+        const fs::path rel = fs::relative(e.path(), root, ec);
+        if (!ec) files.emplace_back(rel.generic_string(), e.path());
+    }
+    if (ec || files.empty()) {
+        std::fprintf(stderr, "[embed] nothing to bundle in %s\n", root.string().c_str());
+        return 1;
+    }
+    std::sort(files.begin(), files.end());
+    vfs::PakWriter pak;
+    for (const auto& [name, path] : files) {
+        if (!pak.add_file(name, path)) {
+            std::fprintf(stderr, "[embed] %s\n", pak.error().c_str());
+            return 1;
+        }
+    }
+    std::string error;
+    if (!vfs::write_payload_program(out, program, pak, error)) {
+        std::fprintf(stderr, "[embed] %s\n", error.c_str());
+        return 1;
+    }
+    fs::permissions(out, fs::status(program, ec).permissions(), ec);  // keep it executable
+    std::printf("[embed] %s: %zu files, %llu MB, payload id %s\n", out.string().c_str(), pak.file_count(),
+                static_cast<unsigned long long>(pak.byte_size() >> 20), vfs::to_hex16(pak.content_id()).c_str());
+    return 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
     if (argc >= 2 && std::strcmp(argv[1], "unpack") == 0) return cmd_unpack(argc - 2, argv + 2);
     if (argc >= 2 && std::strcmp(argv[1], "pack") == 0) return cmd_pack(argc - 2, argv + 2);
     if (argc >= 2 && std::strcmp(argv[1], "sfx") == 0) return cmd_sfx(argc - 2, argv + 2);
+    if (argc >= 2 && std::strcmp(argv[1], "embed") == 0) return cmd_embed(argc - 2, argv + 2);
     std::fprintf(stderr,
                  "dcb_asset_ripper — offline PSX asset pipeline\n"
                  "  unpack <extracted/serial|drv-dir|file.DRV> [-o out] [--lba-map manifest.json]\n"
                  "  pack <asset-dir> <out.pak>\n"
-                 "  sfx [raw-dir|file.bin] [-o out] [--game ID]\n");
+                 "  sfx [raw-dir|file.bin] [-o out] [--game ID]\n"
+                 "  embed <program> <bundle-dir> <out-program>\n");
     return 1;
 }

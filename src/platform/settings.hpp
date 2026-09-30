@@ -208,7 +208,11 @@ struct SettingsLocations {
 std::filesystem::path resolve_settings_path(const SettingsLocations& where,
                                             const std::function<bool(const std::filesystem::path&)>& exists);
 
-/// The real process locations (environment + executable directory).
+/// The running program's own file (/proc/self/exe, GetModuleFileNameW); empty if unknown.
+std::filesystem::path executable_path();
+
+/// The real process locations (environment + executable directory; the current directory if
+/// the executable cannot be found).
 SettingsLocations current_settings_locations();
 
 /// A settings file on disk: the parsed document plus where it came from.
