@@ -177,8 +177,12 @@ if (( ONEFILE )); then
     # The bundle tree (assets/, cheats/, README.txt) appended to each binary.
     LINUX_ONE="$OUTDIR/dcb-pc-v$VERSION-linux"
     WIN_ONE="$OUTDIR/dcb-pc-v$VERSION-windows.exe"
-    "$RIPPER" embed build/linux-release/dcb "$STAGE/linux" "$LINUX_ONE"
-    "$RIPPER" embed build/windows-cross/dcb.exe "$STAGE/windows" "$WIN_ONE"
+    # Strip first (debug info is most of the release binary); stripping after embedding would
+    # cut the payload off. Exported symbols (.dynsym, for DCB_WATCH) survive a strip.
+    strip -o "$STAGE/dcb.stripped" build/linux-release/dcb
+    x86_64-w64-mingw32-strip -o "$STAGE/dcb.stripped.exe" build/windows-cross/dcb.exe
+    "$RIPPER" embed "$STAGE/dcb.stripped" "$STAGE/linux" "$LINUX_ONE"
+    "$RIPPER" embed "$STAGE/dcb.stripped.exe" "$STAGE/windows" "$WIN_ONE"
     ls -la "$LINUX_ONE" "$WIN_ONE"
     echo "== packed v$VERSION (single file) =="
     exit 0
