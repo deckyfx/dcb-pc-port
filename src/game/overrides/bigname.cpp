@@ -27,6 +27,8 @@
 // screen runs concurrently and draws with them during the task's final 10-frame sleep); every
 // step, stack argument and global write mirrors the MIPS routine.
 
+#include "native_files.hpp"
+
 #include <psx/recomp.h>
 
 #include <cstdint>
@@ -89,7 +91,7 @@ BigFont& font() {
     static BigFont f;
     if (f.tried) return f;
     f.tried = true;
-    const std::string path = std::string("assets/") + DCB_GAME_ID + "/en_bigfont.bin";
+    const std::string path = dcb::asset_path("en_bigfont.bin");
     FILE* in = std::fopen(path.c_str(), "rb");
     if (!in) return f;
     uint8_t hdr[8];

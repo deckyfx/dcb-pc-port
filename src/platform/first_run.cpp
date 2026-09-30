@@ -19,7 +19,7 @@ void usage() {
     std::fprintf(stderr,
                  "usage: dcb --import <disc.cue|disc.bin> [dest-dir] [--force]\n"
                  "  Imports a dump of your own disc (raw .cue/.bin, 2352 bytes per sector) into\n"
-                 "  <dest-dir>/<serial>/ (default: extracted/ in the current directory). The game then\n"
+                 "  <dest-dir>/<serial>/ (default: assets/dump/ in the current directory). The game then\n"
                  "  runs from those files; the disc image is no longer needed.\n"
                  "  --force  replace an existing <dest-dir>/<serial>/\n");
 }
@@ -43,7 +43,7 @@ int import_command(int argc, char** argv, const char* game_id) {
         return 2;
     }
     const fs::path image = args[0];
-    const fs::path dest = args.size() > 1 ? fs::path(args[1]) : fs::path("extracted");
+    const fs::path dest = args.size() > 1 ? fs::path(args[1]) : fs::path(hle::Disc::kDumpRoot);
 
     hle::import::Options options;
     options.overwrite = force;
@@ -85,7 +85,7 @@ fs::path locate_or_import(const std::string& serial, const fs::path& hint, bool 
     if (fs::path found = hle::Disc::find(serial, hint); !found.empty()) return found;
 #if defined(DCB_HAS_SDL3)
     if (interactive) {
-        if (fs::path imported = sdl3_first_run(serial, "extracted"); !imported.empty()) return imported;
+        if (fs::path imported = sdl3_first_run(serial, hle::Disc::kDumpRoot); !imported.empty()) return imported;
     }
 #else
     (void)interactive;

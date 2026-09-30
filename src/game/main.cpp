@@ -358,7 +358,7 @@ int main(int argc, char** argv) {
     // dcb --import <disc.cue|disc.bin> [dest]: one-time import of the player's dump, then exit.
     if (argc > 1 && std::string(argv[1]) == "--import") return platform::import_command(argc, argv, DCB_GAME_ID);
 
-    // Usage: dcb [extracted-dir|disc.cue|disc.bin]   (a PS-EXE path is also accepted, for development)
+    // Usage: dcb [data-dir|disc.cue|disc.bin]   (a PS-EXE path is also accepted, for development)
     std::filesystem::path disc_hint, exe_override;
     if (argc > 1) {
         const std::filesystem::path arg = argv[1];
@@ -374,8 +374,17 @@ int main(int argc, char** argv) {
         hle::System system(machine.ctx(), mmio, bios);
         bios.attach(&system);
         bios.insert_cards(std::filesystem::path("saves") / DCB_GAME_ID);
+        // The shipped zips carry the game data at assets/dump/<id>/ next to the binary; take it
+        // before the CWD-relative lookup, so a launch from elsewhere (Explorer, a shortcut) finds it.
+        std::filesystem::path exe_dump =
+            platform::current_settings_locations().exe_dir / hle::Disc::kDumpRoot / DCB_GAME_ID;
+        {
+            std::error_code ed_ec;
+            if (!std::filesystem::is_regular_file(exe_dump / "layout.txt", ed_ec)) exe_dump.clear();
+        }
         // No game data yet: the SDL build asks for the player's dump and imports it (first run).
-        const auto disc_path = platform::locate_or_import(DCB_GAME_ID, disc_hint, !std::getenv("DCB_HEADLESS"));
+        const auto disc_path = platform::locate_or_import(DCB_GAME_ID, disc_hint.empty() ? exe_dump : disc_hint,
+                                                          !std::getenv("DCB_HEADLESS"));
         // The boot executable's code is compiled in; its data comes from the disc, like everything else.
         auto disc = hle::Disc::open(disc_path);
         const std::vector<uint8_t> boot = exe_override.empty() ? disc->read_boot_exe() : std::vector<uint8_t>{};
@@ -386,9 +395,18 @@ int main(int argc, char** argv) {
         // guest state and timing stay bit-identical.
         if (std::getenv("DCB_LOG_LOADS")) {
             hle::LoadLog::instance().set_enabled(true);
-            hle::LoadLog::instance().set_data_dir(("extracted/" + std::string(DCB_GAME_ID)).c_str());
+            hle::LoadLog::instance().set_data_dir(disc_path.string());
         }
-        dcb::attach_native_files(mmio.disc(), DCB_GAME_ID);
+        // Loose assets (en_font.bin, text/, files/): the shipped zips carry
+        // assets/<id>/ next to the binary; accept it alongside the CWD one.
+        std::string exe_assets;
+        {
+            const std::filesystem::path p =
+                platform::current_settings_locations().exe_dir / "assets" / DCB_GAME_ID;
+            std::error_code ea_ec;
+            if (std::filesystem::is_directory(p, ea_ec)) exe_assets = p.string();
+        }
+        dcb::attach_native_files(mmio.disc(), DCB_GAME_ID, exe_assets);
         hle::HdTextures* hd_textures = nullptr;  // for the exit summary
         // Texture replacement (dcb_asset_ripper output). First found wins:
         //   DCB_HD_PACK=<.pak|folder> (+ DCB_HD_MANIFEST=<file> if the manifest lives elsewhere),

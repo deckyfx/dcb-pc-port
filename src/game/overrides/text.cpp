@@ -21,6 +21,7 @@
 
 #include "gpu/gpu.hpp"
 #include "hw/mmio.hpp"
+#include "native_files.hpp"
 #include "text.hpp"
 #include "text_catalog.hpp"
 #include "text_codes.hpp"
@@ -109,7 +110,7 @@ bool g_font_loaded = false;
 bool load_font(PsxContext& ctx) {
     if (g_font_loaded) return !g_font_rows.empty();
     g_font_loaded = true;
-    const std::string path = std::string("assets/") + DCB_GAME_ID + "/en_font.bin";
+    const std::string path = dcb::asset_path("en_font.bin");
     FILE* f = std::fopen(path.c_str(), "rb");
     if (!f) return false;
     uint8_t hdr[4];
@@ -154,7 +155,7 @@ std::vector<LongName> g_names;
 
 /// Loads en_names.txt ("<11 letters>\t<tag>\t<full name>" per line). Missing file: no names.
 void load_names() {
-    const std::string path = std::string("assets/") + DCB_GAME_ID + "/en_names.txt";
+    const std::string path = dcb::asset_path("en_names.txt");
     FILE* f = std::fopen(path.c_str(), "rb");
     if (!f) return;
     char line[256];
@@ -177,8 +178,8 @@ text::Catalog g_catalog;
 
 void load_catalog() {
     const char* lang = std::getenv("DCB_LANG");
-    const std::string dir = std::string("assets/") + DCB_GAME_ID + "/text";
-    const size_t n = g_catalog.load(dir, lang && *lang ? lang : "en");
+    const std::string dir = dcb::asset_path("text");
+    const size_t n = dir.empty() ? 0 : g_catalog.load(dir, lang && *lang ? lang : "en");
     std::fprintf(stderr, "[text] catalog: %zu strings (%s/%s.tsv)\n", n, dir.c_str(), lang && *lang ? lang : "en");
 }
 

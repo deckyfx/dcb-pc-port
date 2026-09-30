@@ -39,9 +39,13 @@ public:
     /// Open `path`: a directory with layout.txt (extracted data), a .cue, or a raw .bin.
     static std::unique_ptr<Disc> open(const std::filesystem::path& path);
 
-    /// Find the game data: `hint` (command-line argument), DCB_DISC, extracted/<serial>/ (native
-    /// data, preferred), then a .cue/.bin under disc/<serial>/ or in the current directory.
-    /// Throws with instructions (import the dump) when nothing is found.
+    /// Where imports go and the game data is looked for: <kDumpRoot>/<serial>/ (layout.txt, fs/,
+    /// exe/), beside the other assets, so a copy of assets/ is everything the game reads.
+    static constexpr const char* kDumpRoot = "assets/dump";
+
+    /// Find the game data: `hint` (command-line argument), DCB_DISC, assets/dump/<serial>/ (native
+    /// data, preferred), the older extracted/<serial>/, then a .cue/.bin under disc/<serial>/ or in
+    /// the current directory. Throws with instructions (import the dump) when nothing is found.
     static std::filesystem::path locate(const std::string& serial, const std::filesystem::path& hint = {});
     /// As locate(), but returns an empty path when nothing is found.
     static std::filesystem::path find(const std::string& serial, const std::filesystem::path& hint = {});
@@ -63,7 +67,8 @@ private:
 
 /// Sectors rebuilt from extracted files (see importer.hpp / tools/disc/extract_disc.py write_layout()).
 ///
-/// File overrides: a file at `assets/<serial>/disc/<name>` (the name as under fs/; the older
+/// File overrides: a file at `assets/<serial>/disc/<name>` (the assets/ holding the data when it
+/// sits at assets/dump/<serial>/, else the current directory's; the name as under fs/; the older
 /// `<dir>/overrides/<name>` also works) replaces that disc file, provided it is exactly the same
 /// size; anything else is refused and logged. Raw 2352-byte
 /// files (movies) get each sector header re-stamped with the position it is served at, so a file

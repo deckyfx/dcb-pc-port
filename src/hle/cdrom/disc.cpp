@@ -108,8 +108,9 @@ fs::path Disc::find(const std::string& serial, const fs::path& hint) {
     if (!hint.empty()) return hint;
     if (const char* env = std::getenv("DCB_DISC")) return env;
     std::error_code ec;
-    if (const fs::path extracted = fs::path("extracted") / serial; fs::exists(extracted / "layout.txt", ec))
-        return extracted;
+    for (const fs::path& dir : {fs::path(kDumpRoot) / serial, fs::path("extracted") / serial}) {
+        if (fs::exists(dir / "layout.txt", ec)) return dir;
+    }
     for (const fs::path& dir : {fs::path("disc") / serial, fs::current_path()}) {
         if (fs::path image = find_image(dir); !image.empty()) return image;
     }
@@ -121,7 +122,7 @@ fs::path Disc::locate(const std::string& serial, const fs::path& hint) {
     throw std::runtime_error("no game data found. This program needs a dump of your own disc (" + serial +
                              ") as .cue/.bin (raw, 2352 bytes per sector). Import it once with\n"
                              "    dcb --import <disc.cue|disc.bin>\n"
-                             "which writes extracted/" + serial +
+                             "which writes " + std::string(kDumpRoot) + "/" + serial +
                              "/ in the current directory (the image is not needed afterwards). "
                              "Alternatively pass the .cue/.bin as the first argument, put it in disc/" + serial +
                              "/ or next to the program, or set DCB_DISC");
@@ -185,15 +186,20 @@ ExtractedDisc::ExtractedDisc(const fs::path& dir) : dir_(dir) {
 
 void ExtractedDisc::apply_override(Range& r, const std::string& rel) {
     const std::string name = rel.rfind("fs/", 0) == 0 ? rel.substr(3) : rel;
-    // Modifications live with the other assets (assets/<serial>/disc/), keeping extracted/ a
-    // clean copy of the player's dump; the older extracted/<serial>/overrides/ still works.
+    // Modifications live with the other assets (assets/<serial>/disc/), keeping the dump a clean
+    // copy of the player's disc; the older <dump>/overrides/ still works. Data at
+    // <assets>/dump/<serial>/ takes them from that same <assets>/ (a portable copy next to the
+    // binary), older extracted/<serial>/ data from the current directory's.
+    const fs::path assets = dir_.parent_path().filename() == "dump" ? dir_.parent_path().parent_path()
+                                                                    : fs::path("assets");
+    const fs::path override_dir = assets / dir_.filename() / "disc";
     std::error_code ec;
-    fs::path candidate = fs::path("assets") / dir_.filename() / "disc" / name;
+    fs::path candidate = override_dir / name;
     if (!fs::is_regular_file(candidate, ec)) {
         candidate = dir_ / "overrides" / name;
         if (!fs::is_regular_file(candidate, ec)) return;
         std::fprintf(stderr, "[disc] %s: overrides now belong in %s\n", candidate.string().c_str(),
-                     (fs::path("assets") / dir_.filename() / "disc").string().c_str());
+                     override_dir.string().c_str());
     }
     const uint64_t want = r.kind == Range::Raw ? uint64_t{r.count} * kRawSector : uint64_t{r.bytes};
     const uint64_t have = fs::file_size(candidate, ec);
