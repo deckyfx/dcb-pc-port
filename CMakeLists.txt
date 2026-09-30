@@ -54,6 +54,15 @@ target_include_directories(dcb_vfs SYSTEM PUBLIC third_party)
 target_link_libraries(dcb_vfs PRIVATE dcb::warnings)
 
 # ---------------------------------------------------------------------------
+# dcb_patch — English data from the player's two dumps (src/patch/patch.hpp): the
+# first-run setup of the public build, and the dcb_patch CLI. No SDL.
+# ---------------------------------------------------------------------------
+file(GLOB DCB_PATCH_SOURCES CONFIGURE_DEPENDS src/patch/*.cpp)
+add_library(dcb_patch STATIC ${DCB_PATCH_SOURCES})
+target_include_directories(dcb_patch PUBLIC src)
+target_link_libraries(dcb_patch PUBLIC dcb_vfs PRIVATE dcb::warnings)
+
+# ---------------------------------------------------------------------------
 # psx_hle — native replacements: BIOS call tables, Psy-Q libraries,
 # and the hardware-register (MMIO) fallback for direct pokes.
 # ---------------------------------------------------------------------------
@@ -69,7 +78,7 @@ target_link_libraries(psx_hle PUBLIC psx_runtime dcb_vfs PRIVATE dcb::warnings)
 file(GLOB_RECURSE DCB_PLATFORM_SOURCES CONFIGURE_DEPENDS src/platform/*.cpp)
 add_library(dcb_platform STATIC ${DCB_PLATFORM_SOURCES})
 target_include_directories(dcb_platform PUBLIC src/platform)
-target_link_libraries(dcb_platform PUBLIC psx_hle PRIVATE dcb::warnings)
+target_link_libraries(dcb_platform PUBLIC psx_hle dcb_patch PRIVATE dcb::warnings)
 if(DCB_USE_SDL3)
     # A system SDL3 is used when present; otherwise a pinned release is built statically so the
     # Windows .exe needs no SDL3.dll. SYSTEM keeps our strict warnings out of SDL's headers.
@@ -173,6 +182,11 @@ if(DCB_BUILD_TOOLS AND NOT CMAKE_CROSSCOMPILING)
     # Not part of any preset build dependency; run it explicitly when ripping assets.
     add_executable(dcb_asset_ripper tools/asset_ripper.cpp)
     target_link_libraries(dcb_asset_ripper PRIVATE dcb_vfs dcb::warnings)
+
+    # The English-data builder from the command line (tools/patch_cli.cpp).
+    add_executable(dcb_patch_cli tools/patch_cli.cpp)
+    set_target_properties(dcb_patch_cli PROPERTIES OUTPUT_NAME dcb_patch)
+    target_link_libraries(dcb_patch_cli PRIVATE dcb_patch dcb::warnings)
 
     # `cmake --build --preset linux-debug --target recompile` regenerates generated/<id>/.
     add_custom_target(recompile

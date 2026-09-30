@@ -418,12 +418,12 @@ int main(int argc, char** argv) {
         {
             const char* env_manifest = std::getenv("DCB_HD_MANIFEST");
             const char* env_pack = std::getenv("DCB_HD_PACK");
-            const std::filesystem::path exe_assets =
+            const std::filesystem::path exe_assets_root =
                 platform::current_settings_locations().exe_dir / "assets";
             const auto cand = [&](const std::filesystem::path& base) {
                 return std::make_pair(base / (std::string(DCB_GAME_ID) + ".pak"), base / "converted" / DCB_GAME_ID);
             };
-            const auto [exe_pak, exe_loose] = cand(exe_assets);
+            const auto [exe_pak, exe_loose] = cand(exe_assets_root);
             const auto [cwd_pak, cwd_loose] = cand("assets");
             std::error_code hd_ec;
             std::string art;
