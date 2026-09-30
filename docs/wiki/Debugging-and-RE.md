@@ -70,7 +70,8 @@ Everything the runtime reads from the environment, with the page that explains i
 |---|---|
 | `DCB_DISC=<path>` | game data or disc image to run ([Game Data](Game-Data.md#where-data-is-found)) |
 | `DCB_HEADLESS=1` | run without a window |
-| `DCB_IMPORT_IMAGE=<path>` | first-run import without the explanation and dialog ([Game Data](Game-Data.md#first-run)) |
+| `DCB_IMPORT_IMAGE=<path>`, `DCB_IMPORT_US_IMAGE=<path>`, `DCB_SETUP_FIXES=<dir>` | first-run setup without the explanations and dialogs ([Game Data](Game-Data.md#first-run)) |
+| `DCB_NO_VERIFY=1` | do not check the dumps against redump.org in the setup ([Game Data](Game-Data.md#setup)) |
 | `DCB_SETTINGS=<file>` | `settings.ini` to use ([Playing](Playing.md#settings)) |
 | `DCB_FILTER=linear\|nearest`, `DCB_SCALE=fit\|integer` | override the display filter / scale mode for this run |
 | `DCB_CHEATS=<file>` | cheat file ([Trainer](Trainer.md#cheat-file)) |

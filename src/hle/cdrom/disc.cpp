@@ -120,9 +120,11 @@ fs::path Disc::find(const std::string& serial, const fs::path& hint) {
 fs::path Disc::locate(const std::string& serial, const fs::path& hint) {
     if (fs::path found = find(serial, hint); !found.empty()) return found;
     throw std::runtime_error("no game data found. This program needs a dump of your own disc (" + serial +
-                             ") as .cue/.bin (raw, 2352 bytes per sector). Import it once with\n"
+                             ") as .cue/.bin (raw, 2352 bytes per sector). Set the game up once with\n"
+                             "    dcb --setup <jp.cue|jp.bin> <us.cue|us.bin>\n"
+                             "(with the North American disc too, for the English version), or import it alone with\n"
                              "    dcb --import <disc.cue|disc.bin>\n"
-                             "which writes " + std::string(kDumpRoot) + "/" + serial +
+                             "Both write " + std::string(kDumpRoot) + "/" + serial +
                              "/ in the current directory (the image is not needed afterwards). "
                              "Alternatively pass the .cue/.bin as the first argument, put it in disc/" + serial +
                              "/ or next to the program, or set DCB_DISC");
