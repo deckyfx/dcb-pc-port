@@ -1,8 +1,10 @@
 #pragma once
 // English data for the JP build, made on the player's machine from their own two dumps (the
 // public channel: the program ships without any game data). C++ port of the offline Python
-// pipeline (tools/text/en_text.py, tools/assets/swap_us_images.py); outputs match it byte for
-// byte. No SDL: used by the first-run setup (src/platform) and the dcb_patch CLI.
+// pipeline (tools/text/en_text.py, tools/assets/swap_us_images.py): the text files match it byte
+// for byte (tools/patch/compare_text.sh), the US art entry for entry (tools/patch/compare_art.sh;
+// the pak holds only the US entries, not the ripped JP PNGs). No SDL: used by the first-run setup
+// (src/platform) and the dcb_patch CLI.
 //
 // Inputs are imported dumps (hle::import, <root>/<serial>/ with fs/ and exe/). Outputs go under
 // an assets root, laid out as the game reads them:
