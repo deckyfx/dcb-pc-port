@@ -3,7 +3,9 @@
 // decoder in the LZMA SDK (public domain, Igor Pavlov); the .xz container after the XZ file
 // format spec. Decodes into one flat buffer (the sections are small), so the "dictionary" is the
 // output itself. Supported: one or more blocks with the LZMA2 filter alone, any check type
-// (checks and the index are not verified: the VCDIFF window sizes are).
+// (checks and the index are not verified: the VCDIFF window sizes are). Decoding stops once the
+// expected size is reached: xdelta3 cuts its streams right after the data (no end byte, index or
+// footer), which Python's decompress(max_length=...) accepts too.
 
 #include "text_internal.hpp"
 
@@ -248,7 +250,8 @@ private:
     uint32_t state_ = 0, rep0_ = 0, rep1_ = 0, rep2_ = 0, rep3_ = 0;
 };
 
-/// One LZMA2 stream at `in[pos...]`, appended to `out`; returns the position after its end byte.
+/// One LZMA2 stream at `in[pos...]`, appended to `out` until its end byte or `limit` bytes; returns
+/// the position reached.
 size_t lzma2_decode(View in, size_t pos, Bytes& out, size_t limit) {
     Lzma lzma;
     bool have_props = false, need_dict_reset = true;
@@ -257,7 +260,14 @@ size_t lzma2_decode(View in, size_t pos, Bytes& out, size_t limit) {
         if (pos >= in.size()) corrupt("truncated LZMA2 data");
         return in[pos++];
     };
+    const auto be16 = [&]() -> size_t {  // two reads, in order
+        const size_t hi = byte();
+        return hi << 8 | byte();
+    };
     for (;;) {
+        // Enough: stop like Python's decompress(max_length=...). xdelta3's sections end right
+        // after their data (no end byte, index or footer), so reading on would fail.
+        if (out.size() >= limit) return pos;
         const uint32_t control = byte();
         if (control == 0) return pos;  // end of the LZMA2 data
         if (control == 1 || control == 2) {  // uncompressed chunk (1: with a dictionary reset)
@@ -267,16 +277,16 @@ size_t lzma2_decode(View in, size_t pos, Bytes& out, size_t limit) {
             } else if (need_dict_reset) {
                 corrupt("LZMA2 chunk without a dictionary reset");
             }
-            const size_t size = ((byte() << 8) | byte()) + 1;
+            const size_t size = be16() + 1;
             if (pos + size > in.size()) corrupt("truncated LZMA2 data");
             out.insert(out.end(), in.begin() + static_cast<std::ptrdiff_t>(pos),
                        in.begin() + static_cast<std::ptrdiff_t>(pos + size));
             pos += size;
         } else if (control >= 0x80) {
             size_t unpacked = (control & 0x1F) << 16;
-            unpacked += (byte() << 8) | byte();
+            unpacked += be16();
             unpacked += 1;
-            const size_t packed = ((byte() << 8) | byte()) + 1;
+            const size_t packed = be16() + 1;
             const uint32_t reset = (control >> 5) & 3;  // 0 none, 1 state, 2 +props, 3 +dictionary
             if (reset == 3) {
                 dict_start = out.size();
@@ -298,7 +308,6 @@ size_t lzma2_decode(View in, size_t pos, Bytes& out, size_t limit) {
         } else {
             corrupt("bad LZMA2 control byte");
         }
-        if (out.size() > limit) corrupt("more data than expected");
     }
 }
 

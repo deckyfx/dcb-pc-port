@@ -4,7 +4,6 @@
 
 #include <algorithm>
 #include <fstream>
-#include <iterator>
 
 namespace patch {
 
@@ -49,9 +48,13 @@ void wr32(Bytes& b, uint32_t v) {
 }
 
 Bytes read_file(const std::string& path) {
-    std::ifstream in(path, std::ios::binary);
+    std::ifstream in(path, std::ios::binary | std::ios::ate);
     if (!in) throw std::runtime_error("cannot read " + path);
-    return Bytes(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    Bytes data(static_cast<size_t>(in.tellg()));
+    in.seekg(0);
+    in.read(reinterpret_cast<char*>(data.data()), static_cast<std::streamsize>(data.size()));
+    if (static_cast<size_t>(in.gcount()) != data.size()) throw std::runtime_error("cannot read " + path);
+    return data;
 }
 
 // ---------------------------------------------------------------- DRV

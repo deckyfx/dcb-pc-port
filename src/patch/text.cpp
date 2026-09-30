@@ -96,10 +96,10 @@ void build_text(const Inputs& in, const ProgressFn& progress) {
     };
     const fs::path out = in.assets / in.serial;
     const fs::path jp_fs = in.jp_dump / "fs", us_fs = in.us_dump / "fs";
-    fs::create_directories(out / "files" / "B");
 
     // 0. Community fixes: the reference files they correct (text_fixes.cpp).
     next();
+    fs::create_directories(out / "files" / "B");
     Fixed fixed;
     if (auto patches = read_patches(in.fixes_dir); !patches.empty()) {
         try {
