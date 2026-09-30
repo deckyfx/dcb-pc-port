@@ -21,10 +21,8 @@
 // Default output roots (overridable with -o) are the gitignored assets/raw and
 // assets/converted directories.
 
-#include "vfs/hash.hpp"
 #include "vfs/pak.hpp"
-#include "vfs/tim.hpp"
-#include "vfs/toc.hpp"
+#include "vfs/rip.hpp"
 #include "vfs/vab.hpp"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -37,14 +35,11 @@
 #include <cstring>
 #include <filesystem>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 namespace fs = std::filesystem;
 
 namespace {
-
-constexpr uint32_t kSector = 2048;
 
 bool read_file(const fs::path& path, std::vector<uint8_t>& out) {
     FILE* f = std::fopen(path.string().c_str(), "rb");
@@ -73,234 +68,40 @@ bool write_file(const fs::path& path, const uint8_t* data, size_t size) {
     return ok && closed;
 }
 
-std::string sanitize(std::string s) {
-    for (char& ch : s) {
-        const bool ok = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') ||
-                        ch == '_' || ch == '-' || ch == '.';
-        if (!ok) ch = '_';
-    }
-    if (s.empty()) s = "unnamed";
-    return s;
-}
+using vfs::json_escape;
 
-void json_escape(std::string& out, const std::string& s) {
-    out.push_back('"');
-    for (char ch : s) {
-        if (ch == '"' || ch == '\\') {
-            out.push_back('\\');
-            out.push_back(ch);
-        } else if (ch >= 0x20) {
-            out.push_back(ch);
-        } else {
-            char buf[8];
-            std::snprintf(buf, sizeof buf, "\\u%04x", ch);
-            out += buf;
-        }
-    }
-    out.push_back('"');
-}
+std::string sanitize(std::string s) { return vfs::sanitize_name(std::move(s)); }
 
 // ---------------------------------------------------------------------------
-// DRV container table (vfs::parse_toc in dcb_vfs; unit-tested there).
+// DRV walk + manifest: vfs::Ripper (src/vfs/rip.hpp, shared with the English-data builder).
+// This file adds the output: payload .bins, PNGs, the manifest file, the log.
 // ---------------------------------------------------------------------------
 
-using vfs::TocEntry;
-
-// ---------------------------------------------------------------------------
-// Manifest
-// ---------------------------------------------------------------------------
-
-struct ManifestEntry {
-    uint64_t img = 0;
-    uint64_t clut = 0;
-    bool has_clut = false;
-    int w = 0, h = 0, bpp = 0;
-    std::string path;  // VFS-relative, '/'-separated
-    std::string drv;
-    uint32_t drv_offset = 0;
-    uint32_t drv_size = 0;
-    uint64_t lba = 0;
-    bool has_lba = false;
-    std::string alt;  // DRV stem this copy was found under (dedup provenance)
-    std::vector<uint16_t> pal;  // indexed: the palette row this PNG was resolved with
-};
-
-struct Ripper {
+struct Ripper : vfs::Ripper {
     fs::path raw_root;        // discrete payload .bins
     fs::path converted_root;  // PNGs + assets_manifest.json
-    std::vector<ManifestEntry> manifest;
     std::string game;
-    // ISO LBA of each DRV file start (from extracted/<serial>/manifest.json), for provenance.
-    std::vector<std::pair<std::string, uint64_t>> drv_lbas;
-    // Dedup: FNV-1a of resolved RGBA pixels -> VFS path of the PNG already written.
-    // Identical art shared across DRVs rips once; alternates stay as provenance.
-    std::unordered_map<uint64_t, std::string> png_by_pixels;
 
-    size_t payloads = 0, tims = 0, pngs = 0, png_reused = 0;
-
-    bool emit_tim_png(const vfs::Tim& tim, const std::string& drv, uint32_t payload_off, size_t tim_off,
-                      const std::string& stem);
-};
-
-bool Ripper::emit_tim_png(const vfs::Tim& tim, const std::string& drv, uint32_t payload_off, size_t tim_off,
-                          const std::string& stem) {
-    const int w = tim.pixel_width(), h = tim.pixel_height();
-    const unsigned palettes = tim.bpp == 16 ? 1 : static_cast<unsigned>(tim.clut.h);
-    if (palettes == 0 || palettes > 512) return false;
-    // Image content hash: exactly the bytes the game uploads with GP0(A0h).
-    const uint64_t img_hash = vfs::fnv1a64(tim.pixels.data(), tim.pixels.size());
-    // Per-row CLUT hashes: the runtime's palette sniffer keys on the uploaded row's
-    // content, so multi-palette TIMs need one hash per candidate row, not one for
-    // the whole strip.
-    std::vector<uint64_t> row_hashes;
-    if (tim.has_clut && !tim.clut.entries.empty()) {
-        const size_t per = tim.clut.w;
-        const size_t rows = tim.clut.entries.size() / per;
-        row_hashes.reserve(rows);
-        for (size_t row = 0; row < rows; ++row) {
-            row_hashes.push_back(
-                vfs::fnv1a64(tim.clut.entries.data() + row * per, per * sizeof(uint16_t)));
-        }
-    }
-    for (unsigned pal = 0; pal < palettes; ++pal) {
-        std::vector<uint8_t> rgba;
-        if (!vfs::tim_to_rgba(tim, pal, rgba)) return false;
-        const uint64_t px_hash = vfs::fnv1a64(rgba.data(), rgba.size());
-        std::string vfs_path;
-        const auto dup = png_by_pixels.find(px_hash);
-        if (dup != png_by_pixels.end()) {
-            vfs_path = dup->second;  // same art elsewhere: reuse the PNG
-            ++png_reused;
-        } else {
-            char name[128];
-            if (palettes == 1) {
-                std::snprintf(name, sizeof name, "%s_%dx%d.png", stem.c_str(), w, h);
-            } else {
-                std::snprintf(name, sizeof name, "%s_%dx%d_pal%u.png", stem.c_str(), w, h, pal);
-            }
-            const fs::path png_path = converted_root / "textures" / drv / name;
+    Ripper() {
+        on_payload = [this](const std::string& drv, const std::string& stem, const uint8_t* data, size_t size) {
+            const fs::path bin_path = raw_root / drv / (stem + ".bin");
+            if (write_file(bin_path, data, size)) return true;
+            std::fprintf(stderr, "[ripper] cannot write %s\n", bin_path.string().c_str());
+            return false;
+        };
+        on_image = [this](const std::string& path, int w, int h, const std::vector<uint8_t>& rgba) {
+            const fs::path png_path = converted_root / path;
             std::error_code ec;
             fs::create_directories(png_path.parent_path(), ec);  // stbi cannot create dirs
-            if (!stbi_write_png(png_path.string().c_str(), w, h, 4, rgba.data(), w * 4)) {
-                std::fprintf(stderr, "[ripper] cannot write %s\n", png_path.string().c_str());
-                return false;
-            }
-            vfs_path = std::string("textures/") + drv + "/" + name;
-            png_by_pixels.emplace(px_hash, vfs_path);
-            ++pngs;
-        }
-        ManifestEntry e;
-        e.img = img_hash;
-        // Indexed TIMs upload one palette row per candidate; direct TIMs have none.
-        if (tim.has_clut && pal < row_hashes.size()) {
-            e.clut = row_hashes[pal];
-            e.has_clut = true;
-            // The palette itself (the entries an index can reach), so the runtime can convert art
-            // against the image's own colours instead of whatever palette was uploaded last.
-            const size_t row = static_cast<size_t>(pal) * tim.clut.w;
-            const size_t reach = std::min<size_t>(tim.clut.w, tim.bpp == 4 ? 16 : 256);
-            if (row + reach <= tim.clut.entries.size())
-                e.pal.assign(tim.clut.entries.begin() + static_cast<std::ptrdiff_t>(row),
-                             tim.clut.entries.begin() + static_cast<std::ptrdiff_t>(row + reach));
-        }
-        e.w = w;
-        e.h = h;
-        e.bpp = tim.bpp;
-        e.path = vfs_path;
-        e.drv = drv;
-        e.drv_offset = payload_off + static_cast<uint32_t>(tim_off);
-        e.drv_size = static_cast<uint32_t>(tim.pixels.size());
-        e.alt = stem;  // the name this copy was found under (dedup provenance)
-        for (const auto& [file, lba] : drv_lbas) {
-            if (file == drv) {
-                e.lba = lba + payload_off / kSector;  // ISO LBA of the containing sector
-                e.has_lba = true;
-                break;
-            }
-        }
-        manifest.push_back(std::move(e));
+            if (stbi_write_png(png_path.string().c_str(), w, h, 4, rgba.data(), w * 4)) return true;
+            std::fprintf(stderr, "[ripper] cannot write %s\n", png_path.string().c_str());
+            return false;
+        };
+        on_log = [](bool error, const std::string& line) {
+            std::fprintf(error ? stderr : stdout, "%s\n", line.c_str());
+        };
     }
-    ++tims;
-    return true;
-}
-
-void rip_payload(Ripper& r, const std::vector<uint8_t>& drv, uint32_t off, uint32_t size, const std::string& drv_name,
-                 const std::string& entry_name) {
-    if (off + size < off || off + size > drv.size()) {
-        std::fprintf(stderr, "[ripper] %s:%s out of range (off=%u size=%u)\n", drv_name.c_str(), entry_name.c_str(),
-                     off, size);
-        return;
-    }
-    const std::string stem = sanitize(drv_name.substr(0, drv_name.find('.')) + "_" + entry_name);
-    // 1. Discrete payload file.
-    const fs::path bin_path = r.raw_root / drv_name / (stem + ".bin");
-    if (!write_file(bin_path, drv.data() + off, size)) {
-        std::fprintf(stderr, "[ripper] cannot write %s\n", bin_path.string().c_str());
-        return;
-    }
-    ++r.payloads;
-
-    // 2. Every strictly-validated TIM inside becomes PNGs + manifest entries.
-    const uint8_t* base = drv.data() + off;
-    vfs::Tim tim;
-    for (const auto& [tim_off, used] : vfs::scan_tims(base, size)) {
-        if (vfs::parse_tim(base + tim_off, used, tim) == 0) continue;  // cannot happen; be safe
-        char name[160];
-        std::snprintf(name, sizeof name, "%s_off%08x", stem.c_str(), static_cast<unsigned>(tim_off));
-        r.emit_tim_png(tim, drv_name, off, tim_off, name);
-    }
-}
-
-void rip_toc_level(Ripper& r, const std::vector<uint8_t>& drv, const std::vector<TocEntry>& toc,
-                   const std::string& drv_name) {
-    size_t groups = 0, payloads = 0;
-    for (const TocEntry& t : toc) {
-        const uint64_t off64 = static_cast<uint64_t>(t.sector) * kSector;
-        if (off64 > drv.size()) {
-            std::fprintf(stderr, "[ripper] %s:%s sector %u past end, skipped\n", drv_name.c_str(), t.name.c_str(),
-                         t.sector);
-            continue;
-        }
-        const uint32_t off = static_cast<uint32_t>(off64);
-        if (t.is_group || t.size == 0) {
-            // Sub-TOC of the same 32-byte shape (B.DRV CARD/FONT/..., A.DRV BGM, ...).
-            const vfs::TocResult sub = vfs::parse_toc_detailed(drv.data(), drv.size(), off);
-            size_t kept = 0;
-            for (const TocEntry& s : sub.entries) {
-                const uint64_t soff64 = static_cast<uint64_t>(s.sector) * kSector;
-                if (soff64 > drv.size()) {
-                    std::fprintf(stderr, "[ripper] %s:%s:%s sector %u past end, skipped\n", drv_name.c_str(),
-                                 t.name.c_str(), s.name.c_str(), s.sector);
-                    continue;
-                }
-                if (s.is_group) {
-                    std::fprintf(stderr, "[ripper] %s:%s:%s nested group, skipped\n", drv_name.c_str(),
-                                 t.name.c_str(), s.name.c_str());
-                    continue;
-                }
-                // Same clamp rule as top level: never read past the blob.
-                const uint32_t soff = static_cast<uint32_t>(soff64);
-                const uint32_t ssize =
-                    s.size < drv.size() - soff ? s.size : static_cast<uint32_t>(drv.size() - soff);
-                if (ssize == 0) {
-                    std::fprintf(stderr, "[ripper] %s:%s:%s empty after clamp, skipped\n", drv_name.c_str(),
-                                 t.name.c_str(), s.name.c_str());
-                    continue;
-                }
-                rip_payload(r, drv, soff, ssize, drv_name, t.name + "_" + s.name);
-                ++kept;
-            }
-            std::printf("[ripper] %s:%s: %zu/%zu sub-entries (%s at record %zu)\n", drv_name.c_str(),
-                        t.name.c_str(), kept, sub.entries.size(), vfs::toc_stop_name(sub.stop), sub.stop_index);
-            ++groups;
-            continue;
-        }
-        const uint32_t size = std::min(t.size, static_cast<uint32_t>(drv.size() - off));
-        rip_payload(r, drv, off, size, drv_name, t.name);
-        ++payloads;
-    }
-    if (groups > 0) std::printf("[ripper] %s: %zu payloads + %zu groups\n", drv_name.c_str(), payloads, groups);
-}
+};
 
 bool rip_drv(Ripper& r, const fs::path& drv_path) {
     std::vector<uint8_t> drv;
@@ -308,18 +109,7 @@ bool rip_drv(Ripper& r, const fs::path& drv_path) {
         std::fprintf(stderr, "[ripper] cannot read %s\n", drv_path.string().c_str());
         return false;
     }
-    const std::string drv_name = drv_path.filename().string();
-    const vfs::TocResult toc = vfs::parse_toc_detailed(drv.data(), drv.size(), 0);
-    if (toc.entries.empty()) {
-        // No container table (e.g. MMM.DAT, SLPS_031.01): still scan for TIMs.
-        std::fprintf(stderr, "[ripper] %s: no TOC, raw TIM scan\n", drv_name.c_str());
-        rip_payload(r, drv, 0, static_cast<uint32_t>(drv.size()), drv_name, "raw");
-        return true;
-    }
-    std::printf("[ripper] %s: %zu TOC entries (%s at record %zu)\n", drv_name.c_str(), toc.entries.size(),
-                vfs::toc_stop_name(toc.stop), toc.stop_index);
-    rip_toc_level(r, drv, toc.entries, drv_name);
-    return true;
+    return r.rip_drv(drv_path.filename().string(), drv);
 }
 
 // Minimal reader for extracted/<serial>/manifest.json: we only need
@@ -352,44 +142,14 @@ void load_lba_map(Ripper& r, const fs::path& manifest_path) {
 }
 
 void write_manifest(const Ripper& r) {
-    std::string json = "{\"version\":1,\"game\":";
-    json_escape(json, r.game);
-    json += ",\"entries\":[";
-    bool first = true;
-    for (const ManifestEntry& e : r.manifest) {
-        if (!first) json.push_back(',');
-        first = false;
-        json += "{\"img\":\"" + vfs::to_hex16(e.img) + "\",\"w\":" + std::to_string(e.w) +
-                ",\"h\":" + std::to_string(e.h) + ",\"bpp\":" + std::to_string(e.bpp) + ",\"path\":";
-        json_escape(json, e.path);
-        if (e.has_clut) json += ",\"clut\":\"" + vfs::to_hex16(e.clut) + "\"";
-        if (!e.pal.empty()) {  // 4 hex digits per 15-bit entry, in palette order
-            json += ",\"pal\":\"";
-            char hex[5];
-            for (const uint16_t v : e.pal) {
-                std::snprintf(hex, sizeof hex, "%04x", v);
-                json += hex;
-            }
-            json += "\"";
-        }
-        json += ",\"drv\":";
-        json_escape(json, e.drv);
-        json += ",\"drv_offset\":" + std::to_string(e.drv_offset) + ",\"drv_size\":" + std::to_string(e.drv_size);
-        if (e.has_lba) json += ",\"lba\":" + std::to_string(e.lba);
-        if (!e.alt.empty()) {
-            json += ",\"alt\":";
-            json_escape(json, e.alt);
-        }
-        json += "}";
-    }
-    json += "]}\n";
+    const std::string json = r.manifest_json(r.game);
     const fs::path out = r.converted_root / "assets_manifest.json";
     if (!write_file(out, reinterpret_cast<const uint8_t*>(json.data()), json.size())) {
         std::fprintf(stderr, "[ripper] cannot write %s\n", out.string().c_str());
         return;
     }
     std::printf("[ripper] %s: %zu entries, %zu payloads, %zu TIMs, %zu PNGs\n", out.string().c_str(),
-                r.manifest.size(), r.payloads, r.tims, r.pngs);
+                r.manifest().size(), r.payloads, r.tims, r.pngs);
 }
 
 int cmd_unpack(int argc, char** argv) {
