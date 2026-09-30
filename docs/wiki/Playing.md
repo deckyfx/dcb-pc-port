@@ -18,6 +18,12 @@ for one run.
 
 Input: keyboard and gamepad map to the PS1 digital pad (timed SIO0 model); any key or gamepad button skips movies, except the window hotkeys.
 
+Card lists (the Card Menu list, Deck Edit's Card Selection, the Fusion Shop's card list) scroll a
+page with L2 / R2 (keys `1` / `2`, gamepad triggers), and in the port also with Left / Right,
+which these lists do not use otherwise. Everywhere else Left / Right keep their own meaning (name
+entry grid, Deck Edit grid, menus, battle), and L1 / R1 keep theirs (the Card Menu's type panel,
+Deck Edit's count panel, the name cursor in name entry).
+
 ## Memory-card saves
 
 Memory-card saves go to `saves/<serial>/card1.mcd` under the current directory: a raw 128 KB card

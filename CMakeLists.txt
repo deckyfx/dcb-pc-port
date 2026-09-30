@@ -143,7 +143,8 @@ else()
     set(DCB_PLATFORM_NAME "linux")
 endif()
 target_compile_definitions(dcb PRIVATE DCB_VERSION_STRING="${DCB_VERSION}" DCB_BUILD_TYPE="$<CONFIG>"
-                                       DCB_PLATFORM_NAME="${DCB_PLATFORM_NAME}")
+                                       DCB_PLATFORM_NAME="${DCB_PLATFORM_NAME}"
+                                       DCB_APP_VERSION="${PROJECT_VERSION}")
 if(MINGW)
     target_link_options(dcb PRIVATE -static)   # no libstdc++/libgcc DLLs next to the .exe
 endif()
