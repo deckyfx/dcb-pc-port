@@ -358,6 +358,10 @@ int main(int argc, char** argv) {
     // dcb --import <disc.cue|disc.bin> [dest]: one-time import of the player's dump, then exit.
     if (argc > 1 && std::string(argv[1]) == "--import") return platform::import_command(argc, argv, DCB_GAME_ID);
 
+    // The single-file build carries assets/, cheats/ and README.txt: unpack them next to the
+    // binary on the first start (and after an update), then boot from them like the zip release.
+    if (!platform::unpack_bundled_assets(!std::getenv("DCB_HEADLESS"))) return 1;
+
     // Usage: dcb [data-dir|disc.cue|disc.bin]   (a PS-EXE path is also accepted, for development)
     std::filesystem::path disc_hint, exe_override;
     if (argc > 1) {
@@ -418,12 +422,12 @@ int main(int argc, char** argv) {
         {
             const char* env_manifest = std::getenv("DCB_HD_MANIFEST");
             const char* env_pack = std::getenv("DCB_HD_PACK");
-            const std::filesystem::path exe_assets =
+            const std::filesystem::path exe_assets_root =
                 platform::current_settings_locations().exe_dir / "assets";
             const auto cand = [&](const std::filesystem::path& base) {
                 return std::make_pair(base / (std::string(DCB_GAME_ID) + ".pak"), base / "converted" / DCB_GAME_ID);
             };
-            const auto [exe_pak, exe_loose] = cand(exe_assets);
+            const auto [exe_pak, exe_loose] = cand(exe_assets_root);
             const auto [cwd_pak, cwd_loose] = cand("assets");
             std::error_code hd_ec;
             std::string art;
