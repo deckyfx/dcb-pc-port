@@ -39,8 +39,9 @@ struct Inputs {
 
 /// The loose English files under <assets>/<serial>/ (en_text.py's outputs).
 void build_text(const Inputs& in, const ProgressFn& progress = {});
-/// The US art: <assets>/<serial>.pak (swap_us_images.py + pack), and the US movie as the disc
-/// override <assets>/<serial>/disc/DIGIMON.MOV.raw2352.
+/// The US art: <assets>/<serial>.pak holding the us/*.raw uploads swap_us_images.py makes and
+/// their manifest (art_swap.hpp; no JP PNGs: without an entry the game draws its own upload), and
+/// the US movie as the disc override <assets>/<serial>/disc/DIGIMON.MOV.raw2352 (same size only).
 void build_art(const Inputs& in, const ProgressFn& progress = {});
 /// Both, then the stamp file (kStampName) that marks the English data complete.
 void build_all(const Inputs& in, const ProgressFn& progress = {});

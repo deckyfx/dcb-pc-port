@@ -63,11 +63,7 @@ public:
     size_t payloads = 0, tims = 0, pngs = 0, png_reused = 0;
 
 private:
-    void log(bool error, const char* fmt, ...)
-#if defined(__GNUC__)
-        __attribute__((format(printf, 3, 4)))
-#endif
-        ;
+    void log(bool error, const char* fmt, ...);  ///< printf-style, to on_log
     bool emit_tim(const Tim& tim, const std::string& drv, uint32_t payload_off, size_t tim_off,
                   const std::string& stem);
     void rip_payload(const std::vector<uint8_t>& drv, uint32_t off, uint32_t size, const std::string& drv_name,
