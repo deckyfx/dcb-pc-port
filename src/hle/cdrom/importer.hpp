@@ -36,6 +36,7 @@ enum class ErrorCode {
     AlreadyExists,  ///< <dest>/<serial> exists and overwrite was not requested
     NoSpace,        ///< not enough free space at the destination
     Cancelled,      ///< the progress callback asked to stop
+    BadDump,        ///< the data track is not the known-good redump.org dump (verify_dump)
 };
 
 class ImportError : public std::runtime_error {
@@ -66,17 +67,25 @@ std::filesystem::path resolve_data_track(const std::filesystem::path& image);
 /// file name does not look like a serial.
 std::string serial_from_boot(std::string_view boot);
 
-/// A disc this program knows about.
+/// A disc this program knows about, with its known-good dump: the data track (.bin) of the
+/// redump.org entry. Both discs are single-track MODE2/2352, so the track is the whole .bin.
 struct KnownGame {
     const char* serial;
     const char* title;
+    uint64_t data_size;      ///< bytes in the data track
+    const char* data_sha1;   ///< its SHA-1, lower-case hex
+    const char* redump;      ///< the redump.org page listing it
 };
-/// SLPS-03101 (Japan, the version this port runs) and SLUS-01328 (North
-/// America; kept for the planned "Japanese code + English assets" build).
+/// SLPS-03101 (Japan, the version this port runs) and SLUS-01328 (North America: the source
+/// of the English text and art, patch::build_all).
 inline constexpr KnownGame kKnownGames[] = {
-    {"SLPS-03101", "Digimon World: Digital Card Arena (Japan)"},
-    {"SLUS-01328", "Digimon Digital Card Battle (North America)"},
+    {"SLPS-03101", "Digimon World: Digital Card Arena (Japan)", 278996592ull,
+     "6ebf547972205b8cdd07d1014b0835bda0ce2b70", "http://redump.org/disc/1685/"},
+    {"SLUS-01328", "Digimon Digital Card Battle (North America)", 215661936ull,
+     "b3945b3e76c1fcc554a7614e2b4211d974990105", "http://redump.org/disc/636/"},
 };
+/// The entry for a serial, or nullptr.
+const KnownGame* known_game(std::string_view serial);
 /// Title of a known serial, or nullptr.
 const char* known_title(std::string_view serial);
 
@@ -112,6 +121,18 @@ struct Result {
 
 /// Check the image and read its serial without writing anything.
 DiscInfo identify(const std::filesystem::path& image);
+
+/// Check that `image` (.cue or raw .bin) is the known-good redump.org dump of its disc: identify
+/// it, compare the data track's size (fails fast), then its SHA-1 (reads the whole track; the
+/// progress is in bytes, stage "Verifying"). Throws ImportError: BadDump on a mismatch (the
+/// message says what was expected and how to check), UnknownSerial for a disc without a known
+/// dump, Cancelled, or anything identify() throws. Returns what identify() returns.
+DiscInfo verify_dump(const std::filesystem::path& image, const ProgressFn& progress = {});
+
+/// The comparison behind verify_dump, for any file: `data_track` must be `size` bytes with SHA-1
+/// `sha1` (lower-case hex). `name` goes into the messages.
+void verify_data_track(const std::filesystem::path& data_track, uint64_t size, std::string_view sha1,
+                       const std::string& name, const ProgressFn& progress = {});
 
 /// Import `image` (.cue or raw .bin) into `dest_root`/<serial>/. Throws ImportError.
 Result import_disc(const std::filesystem::path& image, const std::filesystem::path& dest_root, const Options& options = {});

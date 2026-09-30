@@ -1,5 +1,7 @@
 #include "cdrom/importer.hpp"
 
+#include "cdrom/sha1.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -386,13 +388,68 @@ std::string serial_from_boot(std::string_view boot) {
     return serial;
 }
 
-const char* known_title(std::string_view serial) {
+const KnownGame* known_game(std::string_view serial) {
     for (const KnownGame& g : kKnownGames)
-        if (serial == g.serial) return g.title;
+        if (serial == g.serial) return &g;
     return nullptr;
 }
 
+const char* known_title(std::string_view serial) {
+    const KnownGame* g = known_game(serial);
+    return g ? g->title : nullptr;
+}
+
 DiscInfo identify(const fs::path& image) { return scan(image).info; }
+
+void verify_data_track(const fs::path& data_track, uint64_t size, std::string_view sha1, const std::string& name,
+                       const ProgressFn& progress) {
+    const std::string how =
+        "\n\nThis program needs a clean dump matching redump.org (a raw .cue/.bin, 2352 bytes per sector, "
+        "e.g. made with ImgBurn, cdrdao or redumper). You can check yours with any SHA-1 tool on the .bin.";
+    std::error_code ec;
+    const uint64_t actual_size = fs::file_size(data_track, ec);
+    if (ec) throw ImportError(ErrorCode::Io, "cannot read " + data_track.string() + ": " + ec.message());
+    // The size first: most bad dumps (wrong format, cut off, another pressing) fail here at once.
+    if (actual_size != size)
+        throw ImportError(ErrorCode::BadDump, name + ": " + data_track.filename().string() + " is " +
+                                                  std::to_string(actual_size) + " bytes; the known-good dump is " +
+                                                  std::to_string(size) + " bytes." + how);
+    std::ifstream in(data_track, std::ios::binary);
+    if (!in) throw ImportError(ErrorCode::Io, "cannot open " + data_track.string());
+    Sha1 sha;
+    Progress p;
+    p.total = size;
+    p.stage = "Verifying";
+    p.item = data_track.filename().string();
+    std::vector<char> buf(1u << 20);
+    while (p.done < size) {
+        const size_t want = static_cast<size_t>(std::min<uint64_t>(buf.size(), size - p.done));
+        in.read(buf.data(), static_cast<std::streamsize>(want));
+        if (static_cast<size_t>(in.gcount()) != want)
+            throw ImportError(ErrorCode::Io, "read error on " + data_track.string());
+        sha.update(buf.data(), want);
+        p.done += want;
+        if (progress && !progress(p)) throw ImportError(ErrorCode::Cancelled, "verification cancelled");
+    }
+    const std::string actual = Sha1::to_hex(sha.finish());
+    if (actual != sha1)
+        throw ImportError(ErrorCode::BadDump, name + ": " + data_track.filename().string() +
+                                                  " does not match the known-good dump (SHA-1 " + actual +
+                                                  ", expected " + std::string(sha1) +
+                                                  "). It is damaged, modified (patched, translated) or "
+                                                  "from another pressing." + how);
+}
+
+DiscInfo verify_dump(const fs::path& image, const ProgressFn& progress) {
+    const DiscInfo info = identify(image);
+    const KnownGame* game = known_game(info.serial);
+    if (game == nullptr || game->data_sha1 == nullptr)
+        throw ImportError(ErrorCode::UnknownSerial, "this is " + info.serial + " (\"" + info.volume_id +
+                                                        "\"), not a supported disc");
+    verify_data_track(info.data_track, game->data_size, game->data_sha1,
+                      std::string(game->title) + " (" + game->serial + ", " + game->redump + ")", progress);
+    return info;
+}
 
 Result import_disc(const fs::path& image, const fs::path& dest_root, const Options& options) {
     Scan s = scan(image);
