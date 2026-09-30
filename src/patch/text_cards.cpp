@@ -149,8 +149,9 @@ Bytes graft_dek(View jp, View us, std::vector<std::string>& report, std::vector<
         throw std::runtime_error("DECK2.DEK: bad magic");
     if (jp.size() != 8 + 159 * 104 || us.size() != 8 + 159 * 110) throw std::runtime_error("DECK2.DEK: bad size");
     Bytes out(jp.begin(), jp.end());
-    std::map<Bytes, int> tags;    // prefix -> tags used
-    std::map<Bytes, int> tag_of;  // full name -> its tag
+    // Keyed by std::string (not Bytes): GCC 13 warns falsely on std::less<std::vector<uint8_t>>.
+    std::map<std::string, int> tags;    // prefix -> tags used
+    std::map<std::string, int> tag_of;  // full name -> its tag
     for (size_t i = 0; i < 159; ++i) {
         const size_t jo = 8 + i * 104, uo = 8 + i * 110;
         if (!equal(View(out).subspan(jo, 60), us.subspan(uo, 60)))
@@ -160,11 +161,12 @@ Bytes graft_dek(View jp, View us, std::vector<std::string>& report, std::vector<
             // Too long for the slot: the first 11 letters and a tag byte (1, 2... per shared
             // prefix) key the full name in en_names.txt; the renderer draws the full name.
             const Bytes prefix(src.begin(), src.begin() + 11), full(src.begin(), src.end());
-            if (!tag_of.count(full)) {
-                tag_of[full] = ++tags[prefix];
-                long_names.push_back({prefix, tag_of[full], full});
+            const std::string name(str(full));
+            if (!tag_of.count(name)) {
+                tag_of[name] = ++tags[std::string(str(prefix))];
+                long_names.push_back({prefix, tag_of[name], full});
             }
-            const int tag = tag_of[full];
+            const int tag = tag_of[name];
             if (tag > 9) throw std::runtime_error("DECK2.DEK: more than 9 long names share a prefix");
             Bytes key = prefix;
             key.push_back(static_cast<uint8_t>(tag));
