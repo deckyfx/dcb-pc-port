@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """Rip the game's movies (a raw 2352-byte CD-XA stream file) into one file per movie.
 
-    tools/disc/rip_movies.py [--serial SLPS-03101] [--input FILE.raw2352] [--no-mpg]
+    tools/disc/rip_movies.py [--serial SLPS-03101] [--input FILE.raw2352] [--no-mpg] [--root DIR]
 
 Writes, per segment of config/<serial>/movies.json:
     assets/<serial>/movie_src/movie<N>.mp4          H.264 + AAC at the true frame rate (for upscaling)
     assets/converted/<serial>/movie/movie<N>.mpg    MPEG-1 + MP2, 30 fps (what the native player loads)
 
 The input defaults to assets/<serial>/disc/<file>.raw2352 (an override, e.g. the US movie) or else
-extracted/<serial>/fs/<file>.raw2352.
+the game data's fs/<file>.raw2352 (assets/dump/<serial>/ or extracted/<serial>/). Paths are under
+--root (default: the repository), e.g. a scratch build folder.
 
 The frame rate is measured, not assumed: ffmpeg's psxstr reader always reports 15 fps, but a movie
 streamed at double speed (like this game's opening) is 30 fps. Each segment's duration comes from
@@ -68,6 +69,8 @@ def main() -> int:
     ap.add_argument("--serial", default="SLPS-03101")
     ap.add_argument("--input", type=Path)
     ap.add_argument("--no-mpg", action="store_true", help="only write the .mp4 sources")
+    ap.add_argument("--root", type=Path, default=ROOT,
+                    help="folder holding assets/ and the game data (default: the repository)")
     args = ap.parse_args()
     if not shutil.which("ffmpeg"):
         sys.exit("ffmpeg is required")
@@ -76,7 +79,9 @@ def main() -> int:
     name = cfg["file"] + ".raw2352"
     src = args.input
     if src is None:
-        for cand in (ROOT / "assets" / args.serial / "disc" / name, ROOT / "extracted" / args.serial / "fs" / name):
+        for cand in (args.root / "assets" / args.serial / "disc" / name,
+                     args.root / "assets" / "dump" / args.serial / "fs" / name,
+                     args.root / "extracted" / args.serial / "fs" / name):
             if cand.is_file():
                 src = cand
                 break
@@ -85,8 +90,8 @@ def main() -> int:
     data = src.read_bytes()
     total = len(data) // SECTOR
     segments = sorted(cfg["segments"], key=lambda s: s["start"])
-    mp4_dir = ROOT / "assets" / args.serial / "movie_src"
-    mpg_dir = ROOT / "assets" / "converted" / args.serial / "movie"
+    mp4_dir = args.root / "assets" / args.serial / "movie_src"
+    mpg_dir = args.root / "assets" / "converted" / args.serial / "movie"
     mp4_dir.mkdir(parents=True, exist_ok=True)
     mpg_dir.mkdir(parents=True, exist_ok=True)
     print(f"{src}: {total} sectors")

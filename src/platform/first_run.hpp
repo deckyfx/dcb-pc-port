@@ -9,12 +9,12 @@
 namespace platform {
 
 /// `dcb --import <disc.cue|disc.bin> [dest] [--force]`: import and return the process exit
-/// code. `argv[1]` is "--import". Default dest: extracted/ in the current directory (where
+/// code. `argv[1]` is "--import". Default dest: assets/dump/ in the current directory (where
 /// hle::Disc::locate looks). `game_id` is the serial this build plays (for the summary).
 int import_command(int argc, char** argv, const char* game_id);
 
 /// hle::Disc::locate(serial, hint); when nothing is found and `interactive` (an SDL3 build with a
-/// display), explain what is needed, let the player pick their dump, import it into extracted/
+/// display), explain what is needed, let the player pick their dump, import it into assets/dump/
 /// with a progress window, and return the imported tree. Otherwise (headless, cancelled) throws
 /// with instructions.
 std::filesystem::path locate_or_import(const std::string& serial, const std::filesystem::path& hint, bool interactive);
