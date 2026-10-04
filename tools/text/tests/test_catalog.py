@@ -53,6 +53,13 @@ class TestCatalog(unittest.TestCase):
         self.assertEqual(catalog.jp_template(raw), "%2d枚の修復に成功\nご覧になりますか？".encode("cp932"))
         self.assertEqual(catalog.jp_template(b"??"), b"??")
 
+    def test_banner_player_name(self) -> None:
+        # The battle banner writes a player's name over "P0"/"P1" (US "*P0"/"*P1").
+        self.assertEqual(catalog.jp_template(b"\x90\xed\x93\xac P1\x82\xcc"), b"\x90\xed\x93\xac %s\x82\xcc")
+        raw = b"P0\x82\xcc xP1\x82\xcc P2\x82\xcc P0"
+        self.assertEqual(catalog.jp_template(raw), raw)
+        self.assertEqual(catalog.us_template(b"Battle: *P0's *P1 *P2"), b"Battle: %s's %s *P2")
+
     def test_escape(self) -> None:
         self.assertEqual(catalog.escape(b"a\nb\\c\td"), b"a\\nb\\\\c\\td")
 

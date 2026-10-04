@@ -8,6 +8,7 @@
 
 #include "text_internal.hpp"
 
+#include <algorithm>
 #include <cstdio>
 
 namespace patch::text {
@@ -158,7 +159,18 @@ Bytes jp_template(View raw) {
             b.push_back(a[i++]);
         }
     }
-    return b;
+    // The battle banner's player name: "P0" / "P1" after a space and before の (82 CC) -> %s
+    Bytes c;
+    for (size_t i = 0; i < b.size();) {
+        if (i > 0 && i + 3 < b.size() && b[i - 1] == ' ' && b[i] == 'P' && (b[i + 1] == '0' || b[i + 1] == '1') &&
+            b[i + 2] == 0x82 && b[i + 3] == 0xCC) {
+            c.insert(c.end(), {'%', 's'});
+            i += 2;
+        } else {
+            c.push_back(b[i++]);
+        }
+    }
+    return c;
 }
 
 Bytes us_template(View raw) {
@@ -167,6 +179,9 @@ Bytes us_template(View raw) {
         if (i + 1 < raw.size() && raw[i] == '*' && (raw[i + 1] == 'S' || raw[i + 1] == 'E')) {
             out.insert(out.end(), {'%', 'c'});
             i += 2;
+        } else if (i + 2 < raw.size() && raw[i] == '*' && raw[i + 1] == 'P' && (raw[i + 2] == '0' || raw[i + 2] == '1')) {
+            out.insert(out.end(), {'%', 's'});  // the battle banner's player name
+            i += 3;
         } else {
             out.push_back(raw[i++]);
         }
