@@ -11,7 +11,8 @@
 // The native ones keep the handle fields callers read (+0x00 in use, +0x24 size) and answer at
 // once. Bytes come from assets/<serial>/files/<X>/<DIR>/<NAME.EXT> when that loose file exists
 // (any size: modded files need not fit the disc), else from the archive entry, read through
-// hle::Disc (which honours assets/<serial>/disc/ overrides) without touching the drive.
+// hle::Disc (which honours assets/<serial>/disc/ overrides) without touching the drive. A file a
+// gameplay mod changes (mods/mods.hpp) is read whole and served patched, like a loose file.
 //
 // DCB_CD_FILES=1 keeps the original CD path (for comparison); DCB_LOG_FILES=1 logs every open.
 
@@ -20,6 +21,8 @@
 #include "vfs/toc.hpp"
 
 #include "native_files.hpp"
+
+#include "../mods/mods.hpp"
 
 #include <psx/backtrace.hpp>
 #include <psx/recomp.h>
@@ -184,12 +187,24 @@ bool resolve(const std::string& path, bool want_dir, uint32_t& id, Dir* dir_out)
             src.lba = dir.lba + e->sector;
             src.size = e->size;
         }
+        bool modded = false;
+        if (dcb::mods::wants(key)) {
+            std::vector<uint8_t> bytes = src.bytes;
+            if (src.loose || read_sectors(src.lba, (src.size + 2047) / 2048, bytes)) {
+                bytes.resize(src.size);
+                if (dcb::mods::apply(key, bytes)) {
+                    src.bytes = std::move(bytes);
+                    src.size = static_cast<uint32_t>(src.bytes.size());
+                    src.loose = modded = true;
+                }
+            }
+        }
         id = static_cast<uint32_t>(g_sources.size());
         g_sources.push_back(std::move(src));
         g_source_ids.emplace(key, id);
         if (log_files())
-            std::printf("[file] %s: %u bytes from %s\n", path.c_str(), g_sources[id].size,
-                        g_sources[id].loose ? loose.c_str() : "the game data");
+            std::printf("[file] %s: %u bytes from %s%s\n", path.c_str(), g_sources[id].size,
+                        loose.empty() ? "the game data" : loose.c_str(), modded ? " (patched by a mod)" : "");
         return true;
     }
     if (want_dir && dir_out) *dir_out = dir;

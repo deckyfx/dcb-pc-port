@@ -2,15 +2,41 @@
 //
 //   dcb_patch --jp <dump/SLPS-03101> --us <dump/SLUS-01328> --out <assets-root> [--fixes DIR]
 //             [--text-only | --art-only]
+//   dcb_patch --rematch <AREAnn.PAK> <C/AREAnn.PAK> <out.pak>   the boss-rematch mod on one city
+//             file (patch/mods.hpp), as the game applies it when loading
 //
 // For testing the C++ port against the Python pipeline (tools/patch/compare.sh).
+#include "patch/mods.hpp"
 #include "patch/patch.hpp"
 
 #include <cstdio>
 #include <cstring>
 #include <exception>
+#include <fstream>
+#include <iterator>
+#include <string>
+
+namespace {
+
+int rematch(const char* in_path, const std::string& file, const char* out_path) {
+    std::ifstream in(in_path, std::ios::binary);
+    const patch::Bytes pak((std::istreambuf_iterator<char>(in)), {});
+    std::string why;
+    const auto out = patch::mods::patch_city_pak(pak, patch::mods::rematches_for(file), &why);
+    if (!out) {
+        std::fprintf(stderr, "dcb_patch: %s: %s\n", in_path, why.c_str());
+        return 1;
+    }
+    std::ofstream(out_path, std::ios::binary).write(reinterpret_cast<const char*>(out->data()),
+                                                    static_cast<std::streamsize>(out->size()));
+    std::printf("%s: %zu -> %zu bytes\n", out_path, pak.size(), out->size());
+    return 0;
+}
+
+}  // namespace
 
 int main(int argc, char** argv) {
+    if (argc == 5 && std::strcmp(argv[1], "--rematch") == 0) return rematch(argv[2], argv[3], argv[4]);
     patch::Inputs in;
     bool text = true, art = true;
     for (int i = 1; i < argc; ++i) {

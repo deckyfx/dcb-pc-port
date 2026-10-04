@@ -79,6 +79,7 @@ text and art built from the player's own discs.*
 - [ ] Enhance / upscale assets (needs a renderer with higher internal resolution to show HD art)
 - [ ] Enhancements: widescreen
 - [ ] Network Battle
+- [x] Mods: beaten Battle Arena bosses (Digimon Emperor, A) can be fought again in the Battle Cafe
 - [ ] Custom Battle mode: pick the opponent and the arena
 - [ ] Rust port of the game logic
 
@@ -114,6 +115,7 @@ The wiki lives in [docs/wiki/](docs/wiki/Home.md):
 - [Game Data](docs/wiki/Game-Data.md): `dcb --setup`, `dcb --import`, first run, data lookup, file overrides
 - [Playing](docs/wiki/Playing.md): settings, hotkeys, pause menu, save states, memory cards
 - [Trainer](docs/wiki/Trainer.md): presets, battle actions, cheat file format, memory search
+- [Mods](docs/wiki/Mods.md): gameplay mods (boss rematches), turned on or off in `settings.ini`
 - [English Text](docs/wiki/English-Text.md): English font, card/deck text and text catalog from the US dump
 - [Community Fixes](docs/wiki/Community-Fixes.md): romhacking.net fixes applied to SLPS-03101
 - [Textures](docs/wiki/Textures.md): asset ripper, replacement textures, US images, sprite resizing

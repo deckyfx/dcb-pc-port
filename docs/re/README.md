@@ -22,6 +22,8 @@ documented in [../RE_WORKFLOW.md](../RE_WORKFLOW.md).
   Detector), the Fusion Shop roll, and the functions that write them.
 - [Battle data](battle.md) — players' HP, attacks and DP in a card battle (translated from the
   US GameShark codes), and the battle hotkeys.
+- [Battle Cafe](battle-cafe.md) — the city script VM's ops, the city host's cafe and battle
+  commands, how a cafe lists its opponents and starts a battle, the face sheet, the bosses' flags.
 - [Text engine](text-engine.md) — SJIS/ASCII encoding, the JP/US renderers, fonts and glyph
   cache, string sources, override plan and the state of the English-text port.
 - [Card lists](card-lists.md) — the shared list cursor (L2/R2 page), which screens are card

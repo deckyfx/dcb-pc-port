@@ -1004,6 +1004,34 @@
    "overlay": "KAWSEG",
    "source": "re",
    "note": "1 while vs_names_load runs. Conf H"
+  },
+  "0x800440CC": {
+   "name": "city_battle_task",
+   "source": "re",
+   "note": "battle against DECK2.DEK record a0 (copies its 0x68 bytes), loads KAWSEG, counts the result, reloads SAISEG; spawned by city_battle_start. Conf H"
+  },
+  "0x800443F8": {
+   "name": "friend_battle_task",
+   "source": "re",
+   "note": "battle with a friend (both players' decks), win/loss counters +0x1C/+0x1E and +0x2754/+0x2756. Conf M"
+  },
+  "0x801E8040": {
+   "name": "city_battle_start",
+   "overlay": "SAISEG",
+   "source": "re",
+   "note": "spawns city_battle_task(g_city_battle_deck 801F7CC0), set by city host 0x0B cmd 2 (battle) / cmd 0x13. Conf H"
+  },
+  "0x801E3888": {
+   "name": "cafe_list_add",
+   "overlay": "SAISEG",
+   "source": "re",
+   "note": "city host 0x0B cmd 3 (n): appends Battle Cafe entry n to the list at 801F805D (count 801F8078), page arrows 0x10/0x11 every 6. Conf H"
+  },
+  "0x801E8E50": {
+   "name": "cafe_list_draw_faces",
+   "overlay": "SAISEG",
+   "source": "re",
+   "note": "draws the cafe list: entry n = face cell (640 + (n%4)*32, 256 + (n/4)*56) 63x56 of the city's face sheet (8-bit TIM at VRAM 640,256). Conf H"
   }
  }
 }

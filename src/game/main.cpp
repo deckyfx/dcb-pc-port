@@ -21,6 +21,7 @@
 #include "platform.hpp"
 #include "save_states.hpp"
 #include "settings.hpp"
+#include "mods/mods.hpp"
 #include "trainer.hpp"
 
 #include <psx/coverage.h>
@@ -422,6 +423,19 @@ int main(int argc, char** argv) {
                 platform::current_settings_locations().exe_dir / "assets" / DCB_GAME_ID;
             std::error_code ea_ec;
             if (std::filesystem::is_directory(p, ea_ec)) exe_assets = p.string();
+        }
+        // Gameplay mods ([mods] in settings.ini; read here, as the headless build has no settings
+        // host): they patch files as the file server opens them, so before the game opens any.
+        {
+            const std::filesystem::path ini_path = platform::resolve_settings_path(
+                platform::current_settings_locations(), [](const std::filesystem::path& p) {
+                    std::error_code ini_ec;
+                    return std::filesystem::exists(p, ini_ec);
+                });
+            const platform::IniDocument ini =
+                platform::IniDocument::parse(platform::read_text_file(ini_path).value_or(""));
+            const std::optional<std::string> rematch = ini.get("mods", "boss_rematch");
+            dcb::mods::set_boss_rematch(!rematch || (*rematch != "false" && *rematch != "0"));
         }
         dcb::attach_native_files(mmio.disc(), DCB_GAME_ID, exe_assets);
         hle::HdTextures* hd_textures = nullptr;  // for the exit summary
