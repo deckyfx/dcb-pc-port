@@ -14,3 +14,8 @@ if(Python3_FOUND)
                      -DWORK=${CMAKE_CURRENT_BINARY_DIR}/import_parity
                      -P ${CMAKE_CURRENT_LIST_DIR}/python_parity.cmake)
 endif()
+
+# SHA-1 test vectors and the redump dump check (src/hle/cdrom/sha1.*, importer verify_dump).
+add_executable(test_sha1 ${CMAKE_CURRENT_LIST_DIR}/test_sha1.cpp)
+target_link_libraries(test_sha1 PRIVATE psx_hle dcb::warnings)
+add_test(NAME import.sha1 COMMAND test_sha1)

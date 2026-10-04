@@ -9,7 +9,7 @@ onto it from the player's own US dump (SLUS-01328). No game data is ever part of
 | Page | What it covers |
 |---|---|
 | [Building](Building.md) | Repository layout, the disc → Ghidra → recompile → build workflow, CMake presets, `dcb.sh` |
-| [Game Data](Game-Data.md) | Importing your disc (`dcb --import`), the first-run importer, where data is looked up, native file access, file overrides |
+| [Game Data](Game-Data.md) | Setting up from your two discs (`dcb --setup`, `dcb --import`), the first-run setup, where data is looked up, native file access, file overrides |
 | [Playing](Playing.md) | `settings.ini`, memory-card saves, the native pause menu, save states, performance overlay, pause / frame advance / fast-forward |
 | [Trainer](Trainer.md) | Built-in presets, battle actions (F10/F11/F12), GameShark-style cheat file, memory search |
 | [English Text](English-Text.md) | English font, card/deck text, city scripts and the text catalog built from the US dump |

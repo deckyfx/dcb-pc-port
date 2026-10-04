@@ -54,6 +54,10 @@ SYSTEM.TIM is never swapped: its US version replaces the kana font rows the JP t
 from and moves the icons (docs/re/text-engine.md). Only local, gitignored files are touched:
 assets/converted/SLPS-03101/ (manifest, us/) and the backup at assets/SLPS-03101/backup/us_images/.
 Edit the manifest by hand only after --restore, or the next --restore undoes the edit.
+
+Being retired: src/patch/art_swap.cpp is the C++ port the game's first-run setup and dcb_patch use,
+and its tables (KEEP_JP, COMPOSE, NARROW, ...) are now the source of truth. Change them there; while
+this script lives, mirror the change here and check both with tools/patch/compare_art.sh.
 """
 
 from __future__ import annotations

@@ -357,15 +357,26 @@ int main(int argc, char** argv) {
 
     // dcb --import <disc.cue|disc.bin> [dest]: one-time import of the player's dump, then exit.
     if (argc > 1 && std::string(argv[1]) == "--import") return platform::import_command(argc, argv, DCB_GAME_ID);
+    // dcb --setup <jp> <us> [--fixes DIR]: the first-run setup from a terminal, then exit.
+    if (argc > 1 && std::string(argv[1]) == "--setup") return platform::setup_command(argc, argv, DCB_GAME_ID);
 
     // The single-file build carries assets/, cheats/ and README.txt: unpack them next to the
     // binary on the first start (and after an update), then boot from them like the zip release.
     if (!platform::unpack_bundled_assets(!std::getenv("DCB_HEADLESS"))) return 1;
 
-    // Usage: dcb [data-dir|disc.cue|disc.bin]   (a PS-EXE path is also accepted, for development)
+    // Usage: dcb [--no-verify] [data-dir|disc.cue|disc.bin]   (a PS-EXE path is also accepted, for
+    // development). --no-verify: the first-run setup does not check the dumps against redump.org.
+    bool no_verify = false;
+    std::vector<std::string> args;
+    for (int i = 1; i < argc; ++i) {
+        if (std::string(argv[i]) == "--no-verify")
+            no_verify = true;
+        else
+            args.emplace_back(argv[i]);
+    }
     std::filesystem::path disc_hint, exe_override;
-    if (argc > 1) {
-        const std::filesystem::path arg = argv[1];
+    if (!args.empty()) {
+        const std::filesystem::path arg = args[0];
         std::string ext = arg.extension().string();
         for (char& ch : ext) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
         (ext == ".exe" || arg.filename().string().find("SLPS_") == 0 ? exe_override : disc_hint) = arg;
@@ -386,9 +397,11 @@ int main(int argc, char** argv) {
             std::error_code ed_ec;
             if (!std::filesystem::is_regular_file(exe_dump / "layout.txt", ed_ec)) exe_dump.clear();
         }
-        // No game data yet: the SDL build asks for the player's dump and imports it (first run).
-        const auto disc_path = platform::locate_or_import(DCB_GAME_ID, disc_hint.empty() ? exe_dump : disc_hint,
-                                                          !std::getenv("DCB_HEADLESS"));
+        // No game data (or no English data) yet: the SDL build runs the first-run setup with the
+        // player's two discs; platform::setup_needs() says when.
+        const auto disc_path =
+            platform::locate_or_setup(DCB_GAME_ID, disc_hint.empty() ? exe_dump : disc_hint,
+                                      !std::getenv("DCB_HEADLESS"), platform::verify_enabled(no_verify));
         // The boot executable's code is compiled in; its data comes from the disc, like everything else.
         auto disc = hle::Disc::open(disc_path);
         const std::vector<uint8_t> boot = exe_override.empty() ? disc->read_boot_exe() : std::vector<uint8_t>{};

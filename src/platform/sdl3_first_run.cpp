@@ -1,9 +1,18 @@
-// First run without game data (SDL3 builds): explain that a dump of the player's own disc is
-// needed, let them pick it with the system file dialog, import it with a progress window, and
-// hand the imported tree back to the boot sequence. Self-contained: it brings SDL up and shuts it
-// down again before the game's own window (sdl3.cpp) is created.
+// First run of the public download (SDL3 builds): explain what is needed, let the player pick
+// their two disc images with the system file dialog (the Japanese one, then the North American
+// one), check each against redump.org and import it with a progress window, optionally take a
+// folder of community fixes, build the English data (patch::build_all), and hand the imported
+// game back to the boot sequence. Only the steps setup_needs() asks for are shown. Self-contained:
+// it brings SDL up and shuts it down again before the game's own window (sdl3.cpp) is created.
 //
-// DCB_IMPORT_IMAGE=<path> skips the explanation and the file dialog (automated tests of the flow).
+// Everything can be quit at any point and is picked up again on the next start: imports are
+// all-or-nothing (hle::import), and the English build leaves an unfinished stamp until it is done
+// (build_english()). A failed build is shown and the game is not started.
+//
+// Automated tests of the flow skip the explanations and dialogs (one attempt each):
+//   DCB_IMPORT_IMAGE=<path>     the Japanese disc image
+//   DCB_IMPORT_US_IMAGE=<path>  the North American disc image
+//   DCB_SETUP_FIXES=<dir>       the fixes folder (unset: none)
 //
 // Also the progress window of the single-file build's first start (unpack_bundled_assets).
 
@@ -11,13 +20,12 @@
 
 #include "first_run.hpp"
 
-#include "cdrom/importer.hpp"
-
 #include <SDL3/SDL.h>
 
 #include <atomic>
 #include <cstdio>
 #include <cstdlib>
+#include <functional>
 #include <mutex>
 #include <string>
 #include <system_error>
@@ -44,9 +52,22 @@ std::string to_utf8(const fs::path& p) {
     return std::string(reinterpret_cast<const char*>(u.data()), u.size());
 }
 
+std::string title_of(const std::string& serial) {
+    const char* title = imp::known_title(serial);
+    return std::string(title ? title : "the game") + ", " + serial;
+}
+
+/// What the worker thread reports, for the progress window.
+struct Shown {
+    std::string stage, item;
+    uint64_t done = 0, total = 0;
+};
+/// Report progress from the worker; false = the player cancelled.
+using Report = std::function<bool(const Shown&)>;
+
 class FirstRun {
 public:
-    FirstRun(std::string serial, fs::path dest_root) : serial_(std::move(serial)), dest_root_(std::move(dest_root)) {}
+    explicit FirstRun(SetupNeeds needs) : needs_(std::move(needs)) {}
 
     ~FirstRun() {
         if (renderer_ != nullptr) SDL_DestroyRenderer(renderer_);
@@ -54,87 +75,54 @@ public:
         if (sdl_) SDL_Quit();
     }
 
-    fs::path run() {
+    FirstRunResult run() {
         if (!SDL_Init(SDL_INIT_VIDEO)) {
             SDL_Log("dcb: first run: no display (%s)", SDL_GetError());
-            return {};
+            return {FirstRunResult::NoDisplay, {}};
         }
         sdl_ = true;
         if (!SDL_CreateWindowAndRenderer(kTitle, kWidth, kHeight, 0, &window_, &renderer_)) {
             SDL_Log("dcb: first run: cannot create a window: %s", SDL_GetError());
-            return {};
+            return {FirstRunResult::NoDisplay, {}};
         }
         SDL_SetRenderScale(renderer_, kScale, kScale);
         SDL_SetRenderVSync(renderer_, 1);
-        draw_text({"Digital Card Arena PC port", "", "No game data yet."});
+        draw_text({"Digital Card Arena PC port", "", "First-run setup."});
 
-        std::error_code ec;
-        const std::string dest = to_utf8(fs::absolute(dest_root_ / serial_, ec));
-        const char* preset = std::getenv("DCB_IMPORT_IMAGE");
-        for (bool first = true;; first = false) {
-            fs::path image;
-            if (preset != nullptr) {
-                if (!first) return {};  // automated run: one attempt
-                image = from_utf8(preset);
-            } else {
-                if (!ask_intro(dest)) return {};
-                image = pick_file();
-                if (quit_) return {};
-                if (image.empty()) continue;  // dialog cancelled: explain again
-            }
-            const Outcome out = import(image);
-            if (quit_) return {};
-            if (out.ok && out.serial == serial_) return out.dir;
-            if (out.ok || out.code == imp::ErrorCode::AlreadyExists) {
-                const char* title = imp::known_title(out.serial);
-                message(SDL_MESSAGEBOX_WARNING, "Different version of the game",
-                        "That disc is " + std::string(title ? title : out.serial) + ", " + out.serial + ".\n\n" +
-                            "Its files are kept in " + to_utf8(fs::absolute(dest_root_ / out.serial, ec)) +
-                            " for a planned English option, but this version plays the Japanese disc (" + serial_ +
-                            ").\n\nPlease choose a dump of the Japanese disc.");
-            } else if (out.code != imp::ErrorCode::Cancelled) {
-                message(SDL_MESSAGEBOX_ERROR, "Import failed", "The disc image could not be imported:\n\n" + out.error);
-            }
-        }
+        const FirstRunResult quit = {FirstRunResult::Quit, {}};
+        if (!automated() && !ask_intro()) return quit;
+        if (needs_.need_jp && !obtain(needs_.serial, std::getenv("DCB_IMPORT_IMAGE"))) return quit;
+        if (needs_.need_us && !obtain(kEnglishSerial, std::getenv("DCB_IMPORT_US_IMAGE"))) return quit;
+        if (needs_.need_english && !build()) return quit;
+        return {FirstRunResult::Done, needs_.jp_dump()};
     }
 
 private:
-    struct Outcome {
-        bool ok = false;
-        imp::ErrorCode code = imp::ErrorCode::Io;
-        std::string error;
-        std::string serial;
-        fs::path dir;
-    };
-
-    std::string serial_;
-    fs::path dest_root_;
+    SetupNeeds needs_;
     bool sdl_ = false;
     bool quit_ = false;
     SDL_Window* window_ = nullptr;
     SDL_Renderer* renderer_ = nullptr;
 
-    void message(SDL_MessageBoxFlags flags, const char* title, const std::string& text) {
-        if (!SDL_ShowSimpleMessageBox(flags, title, text.c_str(), window_))
-            std::fprintf(stderr, "[import] %s: %s\n", title, text.c_str());
+    static bool automated() { return std::getenv("DCB_IMPORT_IMAGE") != nullptr; }
+
+    bool have(const std::string& serial) const {
+        std::error_code ec;
+        return fs::is_regular_file(needs_.dump_root() / serial / "layout.txt", ec);
     }
 
-    /// Explain what is needed; true = "Choose disc image...", false = quit.
-    bool ask_intro(const std::string& dest) {
-        const std::string text =
-            "This PC port does not include the game. It runs from a copy of your own disc:\n\n"
-            "    " + std::string(imp::known_title(serial_) ? imp::known_title(serial_) : "the game") + ", " +
-            serial_ + "\n\n"
-            "dumped as a raw .cue/.bin image (2352 bytes per sector, e.g. made with ImgBurn or cdrdao; "
-            ".iso/.chd/.pbp files do not work).\n\n"
-            "Choose the .cue file (or the .bin). Its game files are copied once into\n\n"
-            "    " + dest + "\n\n"
-            "(about 250 MB). After that the disc image is no longer needed.";
+    void message(SDL_MessageBoxFlags flags, const char* title, const std::string& text) {
+        if (!SDL_ShowSimpleMessageBox(flags, title, text.c_str(), window_))
+            std::fprintf(stderr, "[setup] %s: %s\n", title, text.c_str());
+    }
+
+    /// A message box with two buttons; true = `yes` (Return), false = `no` (Escape, or no box).
+    bool ask(const char* title, const std::string& text, const char* no, const char* yes) {
         const SDL_MessageBoxButtonData buttons[] = {
-            {SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, 0, "Quit"},
-            {SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, 1, "Choose disc image..."},
+            {SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, 0, no},
+            {SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, 1, yes},
         };
-        const SDL_MessageBoxData data = {SDL_MESSAGEBOX_INFORMATION, window_, "Game data needed", text.c_str(),
+        const SDL_MessageBoxData data = {SDL_MESSAGEBOX_INFORMATION, window_, title, text.c_str(),
                                          SDL_arraysize(buttons), buttons, nullptr};
         int button = 0;
         if (!SDL_ShowMessageBox(&data, &button)) {
@@ -144,86 +132,192 @@ private:
         return button == 1;
     }
 
-    /// The system file dialog; empty if cancelled (quit_ set if the window was closed).
-    fs::path pick_file() {
+    /// Explain what is needed; true = continue, false = quit.
+    bool ask_intro() {
+        std::error_code ec;
+        const std::string dest = to_utf8(fs::absolute(needs_.assets, ec));
+        std::string text = "This PC port does not include the game. It runs from copies of your own discs";
+        if (needs_.need_english) {
+            text +=
+                ":\n\n"
+                "    " + title_of(needs_.serial) + "\n        the game itself\n"
+                "    " + title_of(kEnglishSerial) + "\n        the English text and art\n\n";
+        } else {
+            text += ":\n\n    " + title_of(needs_.serial) + "\n\n";
+        }
+        text +=
+            "each dumped as a raw .cue/.bin image (2352 bytes per sector, e.g. made with ImgBurn, cdrdao or "
+            "redumper; .iso/.chd/.pbp files do not work). Each image is checked against the redump.org "
+            "database, then its game files are copied once into\n\n"
+            "    " + dest + "\n\n"
+            "(about 250 MB per disc). After that the disc images are no longer needed.";
+        if (!needs_.verify) text += "\n\n(Verification is off: --no-verify / DCB_NO_VERIFY.)";
+        return ask("Game data needed", text, "Quit", "Continue");
+    }
+
+    /// Get `serial` imported: ask for its image until it is (true), or the player quits (false).
+    /// Another known disc chosen instead is imported too when the setup needs it.
+    bool obtain(const std::string& serial, const char* preset) {
+        for (bool first = true; !have(serial); first = false) {
+            fs::path image;
+            if (preset != nullptr || automated()) {
+                if (!first || preset == nullptr) return false;  // automated run: one attempt
+                image = from_utf8(preset);
+            } else {
+                const bool jp = serial == needs_.serial;
+                const bool both = needs_.need_jp && needs_.need_us;
+                const std::string text =
+                    std::string(both ? (jp ? "Step 1 of 2: " : "Step 2 of 2: ") : "") +
+                    (jp ? "the Japanese disc" : "the North American disc") + "\n\n    " + title_of(serial) +
+                    "\n\nChoose its .cue file (or the .bin).";
+                if (!ask(jp ? "Japanese disc" : "North American disc", text, "Quit", "Choose disc image...")) return false;
+                image = pick_file(jp ? "Choose the Japanese disc image" : "Choose the North American disc image");
+                if (quit_) return false;
+                if (image.empty()) continue;  // dialog cancelled: ask again
+            }
+            Imported got;
+            const std::string error = work("Checking", [&](const Report& report) {
+                got = import_checked(image, needs_.dump_root(), needs_.verify, [&](const imp::Progress& p) {
+                    return report({p.stage, p.item, p.done, p.total});
+                });
+            });
+            if (quit_) return false;
+            if (!error.empty()) {
+                message(SDL_MESSAGEBOX_ERROR, "This disc image cannot be used", error);
+                continue;
+            }
+            if (got.serial != serial) {
+                std::error_code ec;
+                message(SDL_MESSAGEBOX_WARNING, "A different disc",
+                        "That is " + title_of(got.serial) + ".\n\n" +
+                            (got.serial == needs_.serial || got.serial == kEnglishSerial
+                                 ? "It is needed too and has been kept in " + to_utf8(fs::absolute(got.dir, ec)) + ". "
+                                 : std::string()) +
+                            "Please choose " + title_of(serial) + ".");
+            }
+        }
+        return true;
+    }
+
+    /// The optional fixes folder; empty = none. Sets quit_ if the window was closed.
+    fs::path ask_fixes() {
+        if (automated()) {
+            const char* dir = std::getenv("DCB_SETUP_FIXES");
+            return dir ? from_utf8(dir) : fs::path();
+        }
+        const std::string text =
+            "Optional: community fixes.\n\n"
+            "Fan-made fixes for the English data (.xdelta files) can be applied now. They are made by other "
+            "players, are not part of this program and are never shipped with it; if you have some, put them "
+            "in one folder and choose it.\n\n"
+            "Most players skip this step. Fixes can also be applied later from a terminal:\n"
+            "    dcb --setup <jp.cue> <us.cue> --fixes <folder>";
+        if (!ask("Community fixes (optional)", text, "Skip", "Choose folder...")) return {};
+        return pick(true, "Choose the folder with the .xdelta fixes");
+    }
+
+    /// Build the English data; true when done, false when quit or failed (already shown).
+    bool build() {
+        const fs::path fixes = ask_fixes();
+        if (quit_) return false;
+        for (;;) {
+            const std::string error = work("Building the English version", [&](const Report& report) {
+                build_english(needs_, fixes, [&](const patch::Progress& p) {
+                    return report({p.stage, std::string(), p.done, p.total});
+                });
+            });
+            if (quit_) return false;
+            if (error.empty()) return true;
+            if (automated() ||
+                !ask("The English version could not be built",
+                     "Building the English data failed:\n\n" + error +
+                         "\n\nThe game is not started with incomplete data. Try again, or quit (the setup "
+                         "continues on the next start).",
+                     "Quit", "Try again")) {
+                message(SDL_MESSAGEBOX_ERROR, "Setup not finished", "Building the English data failed:\n\n" + error);
+                return false;
+            }
+        }
+    }
+
+    /// The system file (or folder) dialog; empty if cancelled (quit_ set if the dialog failed).
+    fs::path pick(bool folder, const char* prompt) {
         struct Pick {
             std::mutex mutex;
             bool done = false;
             std::string path, error;
-        } pick;
+        } result;
         static const SDL_DialogFileFilter filters[] = {
             {"PlayStation disc image (.cue, .bin)", "cue;bin"},
             {"All files", "*"},
         };
-        SDL_ShowOpenFileDialog(
-            [](void* user, const char* const* files, int) {
-                auto* p = static_cast<Pick*>(user);
-                std::lock_guard lock(p->mutex);
-                if (files == nullptr)
-                    p->error = SDL_GetError();
-                else if (files[0] != nullptr)
-                    p->path = files[0];
-                p->done = true;
-            },
-            &pick, window_, filters, 2, nullptr, false);
+        const SDL_DialogFileCallback callback = [](void* user, const char* const* files, int) {
+            auto* p = static_cast<Pick*>(user);
+            std::lock_guard lock(p->mutex);
+            if (files == nullptr)
+                p->error = SDL_GetError();
+            else if (files[0] != nullptr)
+                p->path = files[0];
+            p->done = true;
+        };
+        if (folder)
+            SDL_ShowOpenFolderDialog(callback, &result, window_, nullptr, false);
+        else
+            SDL_ShowOpenFileDialog(callback, &result, window_, filters, 2, nullptr, false);
         for (;;) {
             {
-                std::lock_guard lock(pick.mutex);
-                if (pick.done) break;
+                std::lock_guard lock(result.mutex);
+                if (result.done) break;
             }
             pump();
-            draw_text({"Choose your disc image", "", "(.cue or .bin)"});
+            draw_text({prompt});
         }
-        if (!pick.error.empty())
-            message(SDL_MESSAGEBOX_ERROR, "File dialog", "The file dialog could not be opened: " + pick.error +
-                                                             "\n\nImport from a terminal instead:\n    dcb --import <disc.cue>");
-        if (!pick.error.empty()) quit_ = true;
-        return pick.path.empty() ? fs::path() : from_utf8(pick.path.c_str());
+        if (!result.error.empty()) {
+            message(SDL_MESSAGEBOX_ERROR, "File dialog",
+                    "The file dialog could not be opened: " + result.error +
+                        "\n\nSet the game up from a terminal instead:\n    dcb --setup <jp.cue> <us.cue>");
+            quit_ = true;
+        }
+        return result.path.empty() ? fs::path() : from_utf8(result.path.c_str());
     }
+    fs::path pick_file(const char* prompt) { return pick(false, prompt); }
 
-    /// Run the import on a worker thread while this thread shows its progress.
-    Outcome import(const fs::path& image) {
-        Outcome out;
+    /// Run `job(report)` on a worker thread while this thread shows its progress. Closing the
+    /// window cancels (quit_ set; the job sees report() return false). Returns the job's error
+    /// message, empty on success or cancellation.
+    template <typename Job>
+    std::string work(const char* heading, Job job) {
         std::mutex mutex;
-        imp::Progress progress;
+        Shown shown;
+        std::string error;
         std::atomic<bool> cancel{false}, finished{false};
         std::thread worker([&] {
             try {
-                // Keep an existing complete tree (it may hold replaced assets), replace a broken one.
-                const imp::DiscInfo info = imp::identify(image);
-                std::error_code ec;
-                imp::Options options;
-                options.overwrite = !fs::exists(dest_root_ / info.serial / "layout.txt", ec);
-                options.progress = [&](const imp::Progress& p) {
+                job(Report([&](const Shown& s) {
                     std::lock_guard lock(mutex);
-                    progress = p;
+                    shown = s;
                     return !cancel.load();
-                };
-                const imp::Result r = imp::import_disc(image, dest_root_, options);
-                out.ok = true;
-                out.serial = r.disc.serial;
-                out.dir = r.dir;
+                }));
             } catch (const imp::ImportError& e) {
-                out.code = e.code();
-                out.error = e.what();
-                if (e.code() == imp::ErrorCode::AlreadyExists) out.serial = imp::identify(image).serial;
+                if (e.code() != imp::ErrorCode::Cancelled) error = e.what();
+            } catch (const patch::Cancelled&) {
             } catch (const std::exception& e) {
-                out.error = e.what();
+                error = e.what();
             }
             finished = true;
         });
         while (!finished) {
             pump();
             if (quit_) cancel = true;
-            imp::Progress p;
+            Shown s;
             {
                 std::lock_guard lock(mutex);
-                p = progress;
+                s = shown;
             }
-            draw_progress(p);
+            draw_progress(heading, s);
         }
         worker.join();
-        return out;
+        return quit_ ? std::string() : error;
     }
 
     void pump() {
@@ -249,11 +343,11 @@ private:
         SDL_RenderPresent(renderer_);
     }
 
-    void draw_progress(const imp::Progress& p) {
+    void draw_progress(const char* heading, const Shown& p) {
         const int pct = p.total ? static_cast<int>(p.done * 100 / p.total) : 0;
         begin_frame();
         char line[96];
-        std::snprintf(line, sizeof line, "Importing... %d%%", pct);
+        std::snprintf(line, sizeof line, "%s... %d%%", heading, pct);
         SDL_RenderDebugText(renderer_, 16.0f, 48.0f, line);
         // Bar: 288 x 10 logical pixels.
         const SDL_FRect frame = {16.0f, 64.0f, 288.0f, 10.0f};
@@ -262,7 +356,7 @@ private:
         const SDL_FRect bar = {18.0f, 66.0f, 284.0f * static_cast<float>(pct) / 100.0f, 6.0f};
         SDL_RenderFillRect(renderer_, &bar);
         SDL_SetRenderDrawColor(renderer_, 200, 200, 200, 255);
-        std::snprintf(line, sizeof line, "%s %.24s", p.stage, p.item.c_str());
+        std::snprintf(line, sizeof line, "%.18s %.18s", p.stage.c_str(), p.item.c_str());
         SDL_RenderDebugText(renderer_, 16.0f, 84.0f, line);
         SDL_RenderDebugText(renderer_, 16.0f, 150.0f, "Close the window to cancel.");
         SDL_RenderPresent(renderer_);
@@ -271,9 +365,7 @@ private:
 
 }  // namespace
 
-fs::path sdl3_first_run(const std::string& serial, const fs::path& dest_root) {
-    return FirstRun(serial, dest_root).run();
-}
+FirstRunResult sdl3_first_run(const SetupNeeds& needs) { return FirstRun(needs).run(); }
 
 bool sdl3_progress_window(const char* caption,
                           const std::function<void(const std::function<void(uint64_t, uint64_t)>&)>& job) {

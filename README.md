@@ -41,7 +41,7 @@ text and art built from the player's own discs.*
 **Game data**
 - [x] CD-ROM streaming from the original disc image; runs from the disc image alone (no BIOS, no extracted files)
 - [x] Runs from extracted game data alone (sectors rebuilt from files; verified identical to the disc)
-- [x] One-time asset import from the player's own dump: no disc needed afterwards, no copyrighted data in the download (`dcb --import`, or a file picker on first run)
+- [x] One-time asset import from the player's own dump: no disc needed afterwards, no copyrighted data in the download (`dcb --setup`, or a first-run window asking for both discs, checked against redump.org)
 
 **Game**
 - [x] Boot FMV (MDEC, 24-bit), title screen (GPU renderer, SDL3 window)
@@ -82,8 +82,9 @@ cmake --build --preset linux-debug
 ./build/linux-debug/dcb                                # or ./dcb.sh (build + run)
 ```
 
-A built `dcb` only needs the game data, imported once from the disc (`dcb --import <disc.cue>`, or
-a file picker on first run); the US dump is imported the same way. A Windows x64 `.exe`
+A built `dcb` only needs the game data, set up once from dumps of the Japanese and North American
+discs (`dcb --setup <jp.cue> <us.cue>`, or the first-run window): both are verified against
+redump.org and imported, and the English data is built from them. A Windows x64 `.exe`
 cross-compiles with `cmake --preset windows-cross && cmake --build --preset windows-cross`.
 English text, textures and movies are built from the imported dumps; see the wiki pages below.
 
@@ -92,7 +93,7 @@ English text, textures and movies are built from the imported dumps; see the wik
 The wiki lives in [docs/wiki/](docs/wiki/Home.md):
 
 - [Building](docs/wiki/Building.md): layout, recompile workflow, presets, `dcb.sh`
-- [Game Data](docs/wiki/Game-Data.md): `dcb --import`, first run, data lookup, file overrides
+- [Game Data](docs/wiki/Game-Data.md): `dcb --setup`, `dcb --import`, first run, data lookup, file overrides
 - [Playing](docs/wiki/Playing.md): settings, hotkeys, pause menu, save states, memory cards
 - [Trainer](docs/wiki/Trainer.md): presets, battle actions, cheat file format, memory search
 - [English Text](docs/wiki/English-Text.md): English font, card/deck text and text catalog from the US dump
