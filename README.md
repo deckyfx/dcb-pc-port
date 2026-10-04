@@ -85,8 +85,9 @@ text and art built from the player's own discs.*
 ## Quick start
 
 You need your own dumps (raw `.cue`/`.bin`, Mode 2 / 2352-byte sectors) of the Japanese disc
-**SLPS-03101** and the US disc **SLUS-01328** (English text and art; without it the game runs in
-Japanese). Building from
+**SLPS-03101** and the US disc **SLUS-01328** (English text and art). The first-run window asks for
+both; only a start without a window (`DCB_HEADLESS=1`) runs in Japanese from the Japanese dump
+alone. Building from
 source recompiles the game code from your own disc, so the boot EXE is extracted first (Linux):
 
 ```bash
@@ -100,7 +101,8 @@ A built `dcb` only needs the game data, set up once from dumps of the Japanese a
 discs (`dcb --setup <jp.cue> <us.cue>`, or the first-run window): both are verified against
 redump.org and imported, and the English data is built from them. A Windows x64 `.exe`
 cross-compiles with `cmake --preset windows-cross && cmake --build --preset windows-cross`.
-`./pack.sh` zips a ready-to-run bundle (program + `assets/`) from your dumps, for your own
+`./pack.sh` zips a ready-to-run bundle (program + `assets/`: the pak, the English files, the US
+movie override when the pak has no native movies, and the game data) from your dumps, for your own
 machines; see the wiki pages below.
 
 ## Documentation

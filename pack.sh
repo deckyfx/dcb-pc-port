@@ -129,6 +129,10 @@ else
 fi
 [[ -d "$SRC_ASSETS/text" ]] || echo "   warning: no text/ catalog: menus and dialogs stay Japanese" >&2
 
+# The pak's file names sit in its header (vfs/pak.hpp): native movies are movie/movie<N>.mpg.
+PAK_HAS_MOVIES=0
+if head -c 4194304 "$SRC_PAK" | LC_ALL=C grep -aq 'movie/movie[0-9]*\.mpg'; then PAK_HAS_MOVIES=1; fi
+
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 mkdir -p "$OUTDIR" "$STAGE/linux" "$STAGE/windows"
@@ -151,8 +155,9 @@ first run.
 EOF
 for OS in linux windows; do
     # Only what the game reads: the pak (the one texture/movie/sfx source it mounts), the
-    # loose English files, and the dump. Not converted/, raw/, backup/, movie_src/, disc/
-    # (the movies are in the pak), fixes/ or custom/ (already applied).
+    # loose English files, and the dump. Not converted/, raw/, backup/, movie_src/, fixes/ or
+    # custom/ (already applied); disc/ (the US movie as a disc override) only when the pak has
+    # no native movies, as with English data built by dcb --setup.
     A="$STAGE/$OS/assets"
     mkdir -p "$A/$SERIAL" "$A/dump"
     cp "$SRC_PAK" "$A/$SERIAL.pak"
@@ -162,6 +167,7 @@ for OS in linux windows; do
     for d in files text; do
         if [[ -d "$SRC_ASSETS/$d" ]]; then cp -r "$SRC_ASSETS/$d" "$A/$SERIAL/"; fi
     done
+    if (( ! PAK_HAS_MOVIES )) && [[ -d "$SRC_ASSETS/disc" ]]; then cp -rL "$SRC_ASSETS/disc" "$A/$SERIAL/"; fi
     # -L: the dump may be reached through a symlink (assets/dump -> extracted/).
     cp -rL "$JP_DUMP" "$A/dump/$SERIAL"
     cp "$STAGE/README.txt" "$STAGE/$OS/"
