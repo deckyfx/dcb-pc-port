@@ -4,6 +4,33 @@
 
 > Copyrighted inputs (`disc/`, `bios/`, `extracted/`, `assets/`, `generated/`) are gitignored. Never commit them.
 
+## Requirements (Linux)
+
+Toolchain: CMake 3.25 or newer, Ninja, a C++20 compiler (built with GCC 15), Python 3 (developer
+tools), git. SDL3 is built from source and linked statically unless a system SDL3 is found, so its
+backends need their development headers; a header missing at configure time silently drops that
+backend (no Wayland, no window decorations, no PulseAudio...), and one removed after configuring
+breaks the build (`fatal error: X11/...: No such file`). On Ubuntu / Debian:
+
+```bash
+sudo apt install build-essential cmake ninja-build git python3 pkg-config \
+  libx11-dev libxext-dev libxcursor-dev libxrandr-dev libxi-dev libxfixes-dev libxtst-dev \
+  libxkbcommon-dev libwayland-dev wayland-protocols libdecor-0-dev libgl-dev \
+  libasound2-dev libpulse-dev libpipewire-0.3-dev libdbus-1-dev libudev-dev
+```
+
+Optional:
+
+| Package | For |
+|---|---|
+| `g++-mingw-w64-x86-64-posix` | the Windows `.exe` (`windows-cross` preset) |
+| `zip` | `./pack.sh` release zips |
+| `ffmpeg` | native movies in the private pak (`tools/disc/rip_movies.py`, `pack.sh -r`); the public build does without |
+| `uv` | the Ghidra MCP bridge (`tools/ghidra/setup_ghidra_mcp.sh`) |
+
+A fresh configure lists any backend SDL could not find (`Unable to find ...`); JACK, sndio, EGL and
+libusb are not needed.
+
 ## Repository layout
 
 ```

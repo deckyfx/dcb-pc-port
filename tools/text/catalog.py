@@ -11,7 +11,8 @@ Other languages are more <lang>.tsv files with the same ids (DCB_LANG=<lang> pic
 Template syntax, shared by every file: printf placeholders (%d, %3d, %c, %s, %%) the game fills
 in; the memory-card slot digit the game writes over "S"/"E" after スロット (US: "*S"/"*E")
 becomes %c, and the card count it writes over "??" before 枚 (two characters, space-padded)
-%2d. Escapes: \\n line break, \\t tab, \\\\ backslash.
+%2d; the player name the battle banner writes over "P0"/"P1" (US: "*P0"/"*P1") becomes %s.
+Escapes: \\n line break, \\t tab, \\\\ backslash.
 """
 from __future__ import annotations
 
@@ -25,6 +26,11 @@ _SLOT_US = re.compile(rb"\*([SE])")
 # "??枚": OPENSEG 801EA4F4 writes a card count (1-99) over the two "?" as " n" / "nn" (the old-save
 # conversion's "??枚のカードデータの修復に成功しました。"), so the string drawn is "%2d枚...".
 _COUNT_JP = re.compile(rb"\?\?(?=\x96\x87)")
+# The battle banner (string table 80070E78, drawn by 800466D0) copies Shift-JIS pairs as they are
+# and writes a player's name over a single-byte "P<digit>": " P0の" / " P1の" in the JP strings
+# (after a space, before の), "*P0" / "*P1" in the US ones ("Battle: *P0's Support Card.").
+_NAME_JP = re.compile(rb"(?<= )P[01](?=\x82\xcc)")
+_NAME_US = re.compile(rb"\*P[01]")
 
 
 @dataclass
@@ -65,11 +71,11 @@ def read_string(blob: bytes, off: int) -> tuple[bytes, int]:
 
 
 def jp_template(raw: bytes) -> bytes:
-    return _COUNT_JP.sub(rb"%2d", _SLOT_JP.sub(rb"\1%c", raw))
+    return _NAME_JP.sub(rb"%s", _COUNT_JP.sub(rb"%2d", _SLOT_JP.sub(rb"\1%c", raw)))
 
 
 def us_template(raw: bytes) -> bytes:
-    return _SLOT_US.sub(rb"%c", raw)
+    return _NAME_US.sub(rb"%s", _SLOT_US.sub(rb"%c", raw))
 
 
 def escape(b: bytes) -> bytes:

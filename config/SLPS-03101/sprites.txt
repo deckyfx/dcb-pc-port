@@ -1,0 +1,8 @@
+# Sprites drawn at another size (hle::Gpu::SpriteScale):
+#   tex_x tex_y u v w h draw_w draw_h [src_w src_h]
+# tex_x/tex_y = texture page base in VRAM (x in 16-bit units); u v w h = the sprite as the game
+# draws it; draw_w draw_h = the size to draw it at, centred on the original rectangle;
+# src_w src_h = texels to show (default w h; larger when the manifest gives the art a bigger slot).
+# Equal src and draw sizes draw one texel per pixel. Find the numbers with DCB_TRACE_PRIMS=1.
+512 0   0 168  176 32   256 32  256 32   title: copyright, 1:1 from its 256-wide slot (manifest slot_w), like the US game
+704 0   0   0  224 32   196 28           title: DIGITAL CARD BATTLE subtitle, drawn smaller

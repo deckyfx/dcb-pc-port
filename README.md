@@ -56,10 +56,10 @@ text and art built from the player's own discs.*
 
 **English build** (SLPS-03101 code + English assets from the player's US dump, SLUS-01328; [research and plan](docs/HYBRID_EN_ASSETS.md))
 - [x] English font, card/deck names and effect text, menus and dialogs (text catalog), city, tutorial and event scripts, VS-screen big names
-- [x] US art (1109 images, 717 palettes) and the US opening movie
+- [x] US art (1114 images, 717 palettes) and the US opening movie
 - [x] Built on the player's machine by the program itself (`src/patch`, C++): no Python or ffmpeg, identical to the offline pipeline (`tools/patch/compare_*.sh`)
 - [x] Community fixes (Effect Text Fix, Digi-Parts Fix) applied when the player supplies them
-- [ ] English title logo in the public build (the hand-edited one is made from game art and cannot ship)
+- [x] English title in the public build (the US subtitle, copyright and menu labels fitted into the JP title; the JP logo stays)
 - [ ] D-1 Grand Prix (a Japan-only mode: no US text to take)
 
 **Distribution**
@@ -88,7 +88,8 @@ You need your own dumps (raw `.cue`/`.bin`, Mode 2 / 2352-byte sectors) of the J
 **SLPS-03101** and the US disc **SLUS-01328** (English text and art). The first-run window asks for
 both; only a start without a window (`DCB_HEADLESS=1`) runs in Japanese from the Japanese dump
 alone. Building from
-source recompiles the game code from your own disc, so the boot EXE is extracted first (Linux):
+source recompiles the game code from your own disc, so the boot EXE is extracted first (Linux; the
+compiler and SDL3 development packages are listed in [Building](docs/wiki/Building.md#requirements-linux)):
 
 ```bash
 python3 tools/disc/extract_disc.py disc/SLPS-03101/dcb_jp.cue -o extracted/SLPS-03101

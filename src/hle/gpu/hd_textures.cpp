@@ -316,51 +316,6 @@ bool parse_manifest(const std::vector<uint8_t>& blob, std::vector<ManifestEntry>
     }
 }
 
-/// Map one fitted RGBA pixel to a palette index. Exact 16-bit match first
-/// (RGB *and* STP, via the same rgba_to_psx15 the PNG round-trips through),
-/// so identity art — including transparent 0x0000 wherever it sits, not just
-/// at index 0 — returns its original index. Nearest-RGB fallback skips the
-/// transparent entry only when it really is 0x0000; STP is compared, not
-/// ignored, so duplicate RGB entries keep their bit.
-unsigned quantize_index(const std::vector<uint16_t>& pal, size_t per, uint8_t r, uint8_t g, uint8_t b,
-                        uint8_t a) {
-    const uint16_t want = vfs::rgba_to_psx15(r, g, b, a);
-    for (size_t k = 0; k < per; ++k) {
-        if (pal[k] == want) return static_cast<unsigned>(k);
-    }
-    // No exact entry: transparent stays index 0 only if that entry is 0x0000,
-    // else nearest opaque color.
-    if (a < 128) {
-        if (!pal.empty() && pal[0] == 0) return 0;
-    }
-    // Exact entry for transparent-black-as-zero when it lives elsewhere.
-    if (want == 0) {
-        for (size_t k = 0; k < per; ++k) {
-            if (pal[k] == 0) return static_cast<unsigned>(k);
-        }
-    }
-    // Nearest colour. The STP bit only breaks ties (same distance, e.g. duplicate RGB entries
-    // either side of the bit): colour always wins. Art from another source (such as the US
-    // release, where every opaque texel has STP set) must not be pulled onto the few STP
-    // entries of this palette; exact matches, and so identity packs, never get here.
-    unsigned best = 0;
-    uint64_t best_d = UINT64_MAX;
-    for (size_t k = 0; k < per; ++k) {
-        const uint16_t e = pal[k];
-        if (e == 0) continue;
-        const int dr = static_cast<int>(r) - vfs::expand5(static_cast<uint16_t>(e & 0x1F));
-        const int dg = static_cast<int>(g) - vfs::expand5(static_cast<uint16_t>((e >> 5) & 0x1F));
-        const int db = static_cast<int>(b) - vfs::expand5(static_cast<uint16_t>((e >> 10) & 0x1F));
-        const uint64_t colour = static_cast<uint64_t>(dr * dr + dg * dg + db * db);
-        const uint64_t d = colour * 2 + (((e ^ want) & 0x8000u) ? 1u : 0u);
-        if (d < best_d) {
-            best_d = d;
-            best = static_cast<unsigned>(k);
-        }
-    }
-    return best;
-}
-
 }  // namespace
 
 HdTextures::HdTextures() = default;
@@ -887,7 +842,7 @@ const std::vector<uint16_t>* HdTextures::replace(const Candidate& pick, int tw, 
             // below), 254 = STP set, anything else = opaque STP-clear. Inverting
             // either bit (e.g. mapping 255 -> STP) would corrupt palettes that
             // carry the same RGB with and without STP.
-            unsigned best = quantize_index(*pal_ptr, per, r, g, b, a);
+            unsigned best = vfs::palette_index(pal_ptr->data(), per, r, g, b, a);
             indices[i] = static_cast<uint8_t>(best);
         }
         // Re-pack indices into words in VRAM order (low unit first).

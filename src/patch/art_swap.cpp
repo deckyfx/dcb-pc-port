@@ -7,7 +7,9 @@
 #include "patch/art_swap.hpp"
 
 #include "vfs/hash.hpp"
+#include "vfs/image.hpp"
 #include "vfs/rip.hpp"
+#include "vfs/tim.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -94,6 +96,28 @@ struct NarrowRule {  ///< NARROW: (DRV, JP image rect) -> (US image rect, texels
 };
 const NarrowRule kNarrow[] = {
     {"B.DRV", {464, 184, 34, 18}, {464, 184, 48, 18}, 10},  // the VS / result record strip
+};
+
+struct FitRule {  ///< FIT: (DRV, entry, JP image rect) -> (US image rect, slot width in pixels or 0)
+    const char* drv;
+    const char* entry;
+    Rect jp;
+    Rect us;
+    int slot_w;
+};
+// US art whose layout differs, fitted into the JP image and its palette the way the texture
+// replacer fits a PNG (fit_image): the title, which the pairing leaves alone (the US one has
+// another logo and image list). The subtitle, US 320x48, goes into the JP 224x32 one (drawn
+// smaller, config/SLPS-03101/sprites.txt); the US copyright, 256 wide, into the JP 176-wide one
+// with a 256-wide slot (drawn 1:1 from it, like the US game); NEW GAME, CONTINUE and Battle
+// with Friend have the JP size. The JP palettes stay (the logo and the D-1 Grand Prix label
+// share them).
+const FitRule kFit[] = {
+    {"B.DRV", "TITLE.ARC", {704, 0, 112, 32}, {704, 0, 160, 48}, 0},
+    {"B.DRV", "TITLE.ARC", {512, 168, 44, 32}, {512, 168, 64, 32}, 256},
+    {"B.DRV", "TITLE.ARC", {704, 128, 24, 28}, {704, 128, 24, 28}, 0},
+    {"B.DRV", "TITLE.ARC", {704, 156, 24, 28}, {704, 156, 24, 28}, 0},
+    {"B.DRV", "TITLE.ARC", {704, 184, 24, 28}, {704, 184, 24, 28}, 0},
 };
 
 const char* const kNever = R"((^|/)SYSTEM\.TIM$)";
@@ -742,6 +766,42 @@ std::pair<std::vector<uint8_t>, std::vector<uint8_t>> compose_image(const Tim& u
     return {std::move(pixels), std::move(palette)};
 }
 
+std::optional<std::vector<uint8_t>> fit_image(const Tim& jp, const std::vector<uint8_t>& rgba, int w, int h,
+                                              int slot_w) {
+    if ((jp.bpp != 4 && jp.bpp != 8) || !jp.has_clut || w <= 0 || h <= 0) return std::nullopt;
+    const int jp_w = jp.image.w * 16 / jp.bpp, jp_h = jp.image.h;
+    const int tw = slot_w ? slot_w : jp_w, th = jp_h;
+    const int per_unit = 16 / jp.bpp;
+    if (tw < jp_w || tw % per_unit) return std::nullopt;
+    std::vector<uint8_t> fit;
+    if (!vfs::downsample_rgba(rgba, w, h, tw, th, fit)) return std::nullopt;
+    // The JP image's own palette: row 0, the entries an index can reach (the manifest "pal").
+    const size_t reach = std::min<size_t>(jp.clut.w, jp.bpp == 4 ? 16 : 256);
+    if (jp.palette.size() < 2 * reach) return std::nullopt;
+    std::vector<uint16_t> pal(reach);
+    for (size_t k = 0; k < reach; ++k) pal[k] = load16(jp.palette.data() + 2 * k);
+    const bool same_size = tw == jp_w;
+    if (same_size && jp.pixels.size() < static_cast<size_t>(jp_w) * static_cast<size_t>(th) / static_cast<size_t>(per_unit) * 2)
+        return std::nullopt;
+    std::vector<uint8_t> out(static_cast<size_t>(tw) * static_cast<size_t>(th) * static_cast<size_t>(jp.bpp) / 8);
+    for (size_t i = 0; i < static_cast<size_t>(tw) * static_cast<size_t>(th); ++i) {
+        const uint8_t* px = &fit[i * 4];
+        unsigned index = 0;
+        bool kept = false;
+        if (same_size) {
+            const unsigned orig = jp.bpp == 8 ? jp.pixels[i] : (jp.pixels[i / 2] >> ((i & 1) * 4)) & 15u;
+            if (orig < reach && pal[orig] == vfs::rgba_to_psx15(px[0], px[1], px[2], px[3])) {
+                index = orig;
+                kept = true;
+            }
+        }
+        if (!kept) index = vfs::palette_index(pal.data(), reach, px[0], px[1], px[2], px[3]);
+        if (jp.bpp == 8) out[i] = static_cast<uint8_t>(index);
+        else out[i / 2] = static_cast<uint8_t>(out[i / 2] | (index << ((i & 1) * 4)));
+    }
+    return out;
+}
+
 // ---------------------------------------------------------------------------------------------
 // plan(): swap_us_images.main() up to the manifest it writes.
 // ---------------------------------------------------------------------------------------------
@@ -903,7 +963,7 @@ std::optional<Plan> plan(const fs::path& jp_fs, const fs::path& us_fs, const Ste
     }
     for (const auto& [key, pick] : image_plan) {
         const Meta& m = image_meta.at(key);
-        result.images.push_back({key, m.w, m.h, m.bpp, pick->label, py_stem(m.path), pick->us});
+        result.images.push_back({key, m.w, m.h, m.bpp, pick->label, py_stem(m.path), pick->us, 0});
     }
     for (const auto& [pkey, cands] : palettes) {
         if (outside.count(pkey)) continue;
@@ -921,8 +981,45 @@ std::optional<Plan> plan(const fs::path& jp_fs, const fs::path& us_fs, const Ste
         if (!pick || existing.count(pkey)) continue;  // a palette that is also a ripped image: leave it
         const auto [w, h] = palette_rect.at(pkey);
         result.palettes.push_back(
-            {pkey, w, h, 16, pick->label + " (palette)", py_stem(image_meta.at(pick->image).path), pick->us});
+            {pkey, w, h, 16, pick->label + " (palette)", py_stem(image_meta.at(pick->image).path), pick->us, 0});
     }
+
+    // 5. FIT: US art fitted into JP images whose entry does not pair (the title).
+    for (const FitRule& r : kFit) {
+        if (!jp.drvs.count(r.drv) || !us.drvs.count(r.drv)) continue;
+        const Bytes* drv_bytes[2] = {&jp.drvs.at(r.drv), &us.drvs.at(r.drv)};
+        std::optional<Tim> tims[2];
+        for (int side = 0; side < 2; ++side) {
+            const Bytes& bytes = *drv_bytes[side];
+            for (const DrvFile& f : toc_of(side, r.drv, bytes)) {
+                if (f.path != r.entry) continue;
+                const auto offsets = container_offsets(bytes.data() + f.offset, static_cast<size_t>(f.size), f.path);
+                for (const uint64_t o : offsets ? *offsets : std::vector<uint64_t>{}) {
+                    std::optional<Tim> t = read_tim(bytes, static_cast<size_t>(f.offset + o));
+                    if (t && t->image == (side == 0 ? r.jp : r.us)) tims[side] = std::move(t);
+                }
+            }
+        }
+        if (!tims[0] || !tims[1]) continue;
+        const uint64_t key = fnv(tims[0]->pixels);
+        const auto by_hash = jp_by_hash.find(key);
+        if (by_hash == jp_by_hash.end() || images.count(key)) continue;
+        std::vector<Meta> jv = by_hash->second;
+        sort_variants(jv);
+        // The US art as the ripper renders it (palette row 0): what a PNG of it would hold.
+        const Bytes& us_drv = *drv_bytes[1];
+        vfs::Tim ut;
+        std::vector<uint8_t> rgba;
+        if (!vfs::parse_tim(us_drv.data() + tims[1]->offset, us_drv.size() - tims[1]->offset, ut) ||
+            !vfs::tim_to_rgba(ut, 0, rgba))
+            continue;
+        std::optional<Bytes> data = fit_image(*tims[0], rgba, ut.pixel_width(), ut.pixel_height(), r.slot_w);
+        if (!data) continue;
+        result.images.push_back({key, jv[0].w, jv[0].h, jv[0].bpp, std::string(r.drv) + ":" + r.entry, py_stem(jv[0].path),
+                                 std::move(*data), r.slot_w});
+    }
+    std::sort(result.images.begin(), result.images.end(),
+              [](const Replacement& a, const Replacement& b) { return a.key < b.key; });
     if (!next()) return std::nullopt;
     return result;
 }

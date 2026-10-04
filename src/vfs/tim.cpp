@@ -162,4 +162,40 @@ uint16_t rgba_to_psx15(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
     return a == kStpAlpha ? static_cast<uint16_t>(px | 0x8000u) : px;
 }
 
+unsigned palette_index(const uint16_t* pal, size_t per, uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
+    const uint16_t want = rgba_to_psx15(r, g, b, a);
+    for (size_t k = 0; k < per; ++k) {
+        if (pal[k] == want) return static_cast<unsigned>(k);
+    }
+    // No exact entry: transparent stays index 0 only if that entry is 0x0000, else nearest
+    // opaque colour.
+    if (a < 128 && per != 0 && pal[0] == 0) return 0;
+    // Exact entry for transparent-black-as-zero when it lives elsewhere.
+    if (want == 0) {
+        for (size_t k = 0; k < per; ++k) {
+            if (pal[k] == 0) return static_cast<unsigned>(k);
+        }
+    }
+    // Nearest colour. The STP bit only breaks ties (same distance, e.g. duplicate RGB entries
+    // either side of the bit): colour always wins. Art from another source (such as the US
+    // release, where every opaque texel has STP set) must not be pulled onto the few STP
+    // entries of this palette; exact matches, and so identity packs, never get here.
+    unsigned best = 0;
+    uint64_t best_d = UINT64_MAX;
+    for (size_t k = 0; k < per; ++k) {
+        const uint16_t e = pal[k];
+        if (e == 0) continue;
+        const int dr = static_cast<int>(r) - expand5(static_cast<uint16_t>(e & 0x1F));
+        const int dg = static_cast<int>(g) - expand5(static_cast<uint16_t>((e >> 5) & 0x1F));
+        const int db = static_cast<int>(b) - expand5(static_cast<uint16_t>((e >> 10) & 0x1F));
+        const uint64_t colour = static_cast<uint64_t>(dr * dr + dg * dg + db * db);
+        const uint64_t d = colour * 2 + (((e ^ want) & 0x8000u) ? 1u : 0u);
+        if (d < best_d) {
+            best_d = d;
+            best = static_cast<unsigned>(k);
+        }
+    }
+    return best;
+}
+
 }  // namespace vfs

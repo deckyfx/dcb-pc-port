@@ -10,9 +10,9 @@
 # the dumps are only read.
 #
 # Passes when every manifest entry the Python run points at us/*.raw is in the C++ pak with the
-# same fields and byte-identical data, and the pak holds nothing else (the JP PNG entries of the
-# offline pak are identity art: without an entry the game commits its own upload). Also checks
-# the US movie override.
+# same fields and byte-identical data, and the pak holds nothing else but sprites.txt (the JP PNG
+# entries of the offline pak are identity art: without an entry the game commits its own upload),
+# which must be config/SLPS-03101/sprites.txt. Also checks the US movie override.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
@@ -99,7 +99,10 @@ for key, e in py_raw.items():
         continue
     same += 1
 extra_entries = sorted(set(cpp) - set(py_raw))
-extra_files = sorted(set(pak) - {"assets_manifest.json"} - {e["path"] for e in cpp_entries})
+extra_files = sorted(set(pak) - {"assets_manifest.json", "sprites.txt"} - {e["path"] for e in cpp_entries})
+# The sprite sizes of the fitted title art: config/SLPS-03101/sprites.txt, as it is.
+if pak.get("sprites.txt") != Path("config/SLPS-03101/sprites.txt").read_bytes():
+    errors.append("sprites.txt is missing from the pak or differs from config/SLPS-03101/sprites.txt")
 errors += [f"extra entry {k} ({cpp[k]['path']})" for k in extra_entries]
 errors += [f"extra file {f}" for f in extra_files]
 # A key both a replaced upload and a JP PNG entry would change which candidate the game picks.
