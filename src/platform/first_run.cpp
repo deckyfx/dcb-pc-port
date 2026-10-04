@@ -1,7 +1,9 @@
 #include "first_run.hpp"
 
 #include "cdrom/disc.hpp"
+#include "cdrom/importer.hpp"
 #include "settings.hpp"
+#include "vfs/payload.hpp"
 
 #include <cstdio>
 #include <cstdlib>
@@ -135,6 +137,71 @@ int import_command(int argc, char** argv, const char* game_id) {
         std::fprintf(stderr, "[import] error: %s\n", e.what());
         return 1;
     }
+}
+
+bool unpack_bundled_assets(bool interactive) {
+    const fs::path self = executable_path();
+    if (self.empty()) return true;
+    const fs::path dir = self.parent_path();
+    vfs::PayloadTrailer trailer;
+    switch (vfs::check_payload(self, dir, &trailer)) {
+    case vfs::PayloadStatus::None: return true;  // a plain binary
+    case vfs::PayloadStatus::UpToDate:
+        std::printf("[dcb] bundled data: already unpacked in %s\n", (dir / "assets").string().c_str());
+        return true;
+    case vfs::PayloadStatus::NotOurs:
+        std::printf("[dcb] bundled data: %s was not unpacked by this program; using it as it is "
+                    "(remove it to unpack the bundled copy)\n",
+                    (dir / "assets").string().c_str());
+        return true;
+    default: break;
+    }
+
+    std::printf("[dcb] unpacking the bundled data (%llu MB) into %s\n",
+                static_cast<unsigned long long>(trailer.size >> 20), dir.string().c_str());
+    vfs::PayloadResult result;
+    int shown = -10;  // last percentage printed, in steps of 10
+    // Runs on the progress window's worker thread: an exception (std::bad_alloc, a filesystem
+    // error) must not escape it, so it becomes the reported failure below.
+    const auto job = [&](const std::function<void(uint64_t, uint64_t)>& window_progress) {
+        try {
+            result = vfs::unpack_payload(self, dir, [&](uint64_t done, uint64_t total) {
+                const int pct = total ? static_cast<int>(done * 100 / total) : 100;
+                if (pct / 10 != shown / 10) {
+                    shown = pct;
+                    std::printf("[dcb] unpacking: %3d%%\n", pct);
+                }
+                if (window_progress) window_progress(done, total);
+            });
+        } catch (const std::exception& e) {
+            result.status = vfs::PayloadStatus::Failed;
+            result.error = e.what();
+        }
+    };
+    bool ran = false;
+#if defined(DCB_HAS_SDL3)
+    if (interactive) ran = sdl3_progress_window("Unpacking the game data...", job);
+#endif
+    if (!ran) job({});
+
+    if (result.status == vfs::PayloadStatus::Unpacked) {
+        std::printf("[dcb] unpacked %zu files (%llu MB)", result.files, static_cast<unsigned long long>(result.bytes >> 20));
+        if (result.kept) std::printf(", kept %zu existing player file(s)", result.kept);
+        if (result.removed) std::printf(", removed %zu file(s) of an older version", result.removed);
+        std::printf("\n");
+        return true;
+    }
+    const std::string text = "The game data bundled in this program could not be unpacked:\n\n" + result.error +
+                             "\n\nThe game unpacks it next to the program on its first start. Move " +
+                             self.filename().string() +
+                             " into a folder you can write to (with about 500 MB free) and start it again.";
+    std::fprintf(stderr, "[dcb] error: %s\n", text.c_str());
+#if defined(DCB_HAS_SDL3)
+    if (interactive) sdl3_error_box("Cannot unpack the game data", text);
+#else
+    (void)interactive;
+#endif
+    return false;
 }
 
 SetupNeeds setup_needs(const std::string& serial, const fs::path& found, bool verify) {

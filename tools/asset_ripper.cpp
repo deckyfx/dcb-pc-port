@@ -3,6 +3,7 @@
 //   dcb_asset_ripper unpack <extracted/serial|drv-dir|drv-file> -o <out-dir> [--lba-map manifest.json]
 //   dcb_asset_ripper pack <asset-dir> <out.pak>
 //   dcb_asset_ripper sfx [raw-dir|file.bin] [-o out] [--game ID]
+//   dcb_asset_ripper embed <program> <bundle-dir> <out-program>
 //
 // `unpack` reads every *.DRV in the input (plus P.DRV overlays), parses the 32-byte
 // container table-of-contents (magic + u32 sector + u32 size + u32 timestamp +
@@ -17,12 +18,19 @@
 // `pack` bundles a directory of processed (e.g. AI-upscaled) PNGs into one
 // hash-checked .pak for runtime mounting via DCB_HD_PACK.
 //
+// `embed` makes the single-file build (vfs/payload.hpp): <program> with every file under
+// <bundle-dir> appended as a .pak plus the trailer the game looks for at startup.
+//
 // Needs the player's own dump; writes nothing copyrighted into the repo.
 // Default output roots (overridable with -o) are the gitignored assets/raw and
 // assets/converted directories.
 
+#include "vfs/hash.hpp"
 #include "vfs/pak.hpp"
+#include "vfs/payload.hpp"
 #include "vfs/rip.hpp"
+#include "vfs/tim.hpp"
+#include "vfs/toc.hpp"
 #include "vfs/vab.hpp"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -444,16 +452,94 @@ int cmd_pack(int argc, char** argv) {
     return 0;
 }
 
+int cmd_embed(int argc, char** argv) {
+    if (argc != 3) {
+        std::fprintf(stderr, "usage: dcb_asset_ripper embed <program> <bundle-dir> <out-program>\n");
+        return 1;
+    }
+    const fs::path program = argv[0], root = argv[1], out = argv[2];
+    // Sorted, so the same tree always gives the same archive and content id.
+    // Any file that cannot be listed fails the run: a bundle silently missing a file would
+    // still unpack and boot, just wrongly.
+    std::vector<std::pair<std::string, fs::path>> files;
+    std::error_code ec;
+    fs::recursive_directory_iterator it(root, ec);
+    if (ec) {
+        std::fprintf(stderr, "[embed] cannot read %s: %s\n", root.string().c_str(), ec.message().c_str());
+        return 1;
+    }
+    for (const fs::recursive_directory_iterator end; it != end; it.increment(ec)) {
+        if (ec) {
+            std::fprintf(stderr, "[embed] cannot read %s: %s\n", root.string().c_str(), ec.message().c_str());
+            return 1;
+        }
+        std::error_code type_ec;
+        if (!it->is_regular_file(type_ec)) {
+            if (!type_ec) continue;
+            std::fprintf(stderr, "[embed] %s: %s\n", it->path().string().c_str(), type_ec.message().c_str());
+            return 1;
+        }
+        std::error_code rel_ec;
+        const fs::path rel = fs::relative(it->path(), root, rel_ec);
+        if (rel_ec || rel.empty()) {
+            std::fprintf(stderr, "[embed] %s: cannot make it relative to %s\n", it->path().string().c_str(),
+                         root.string().c_str());
+            return 1;
+        }
+        files.emplace_back(rel.generic_string(), it->path());
+    }
+    if (ec) {
+        std::fprintf(stderr, "[embed] cannot read %s: %s\n", root.string().c_str(), ec.message().c_str());
+        return 1;
+    }
+    if (files.empty()) {
+        std::fprintf(stderr, "[embed] nothing to bundle in %s\n", root.string().c_str());
+        return 1;
+    }
+    std::sort(files.begin(), files.end());
+    vfs::PakWriter pak;
+    for (const auto& [name, path] : files) {
+        if (!pak.add_file(name, path)) {
+            std::fprintf(stderr, "[embed] %s\n", pak.error().c_str());
+            return 1;
+        }
+    }
+    std::string error;
+    if (!vfs::write_payload_program(out, program, pak, error)) {
+        std::fprintf(stderr, "[embed] %s\n", error.c_str());
+        return 1;
+    }
+    // Keep it executable: the program's own mode (perms::unknown from a failed status would ask
+    // for every bit, so each step is checked).
+    std::error_code perm_ec;
+    const fs::file_status st = fs::status(program, perm_ec);
+    if (perm_ec || st.permissions() == fs::perms::unknown) {
+        std::fprintf(stderr, "[embed] cannot read the mode of %s: %s\n", program.string().c_str(),
+                     perm_ec ? perm_ec.message().c_str() : "unknown");
+        return 1;
+    }
+    fs::permissions(out, st.permissions(), perm_ec);
+    if (perm_ec) {
+        std::fprintf(stderr, "[embed] cannot set the mode of %s: %s\n", out.string().c_str(), perm_ec.message().c_str());
+        return 1;
+    }
+    std::printf("[embed] %s: %zu files, %llu MB, payload id %s\n", out.string().c_str(), pak.file_count(),
+                static_cast<unsigned long long>(pak.byte_size() >> 20), vfs::to_hex16(pak.content_id()).c_str());
+    return 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
     if (argc >= 2 && std::strcmp(argv[1], "unpack") == 0) return cmd_unpack(argc - 2, argv + 2);
     if (argc >= 2 && std::strcmp(argv[1], "pack") == 0) return cmd_pack(argc - 2, argv + 2);
     if (argc >= 2 && std::strcmp(argv[1], "sfx") == 0) return cmd_sfx(argc - 2, argv + 2);
+    if (argc >= 2 && std::strcmp(argv[1], "embed") == 0) return cmd_embed(argc - 2, argv + 2);
     std::fprintf(stderr,
                  "dcb_asset_ripper — offline PSX asset pipeline\n"
                  "  unpack <extracted/serial|drv-dir|file.DRV> [-o out] [--lba-map manifest.json]\n"
                  "  pack <asset-dir> <out.pak>\n"
-                 "  sfx [raw-dir|file.bin] [-o out] [--game ID]\n");
+                 "  sfx [raw-dir|file.bin] [-o out] [--game ID]\n"
+                 "  embed <program> <bundle-dir> <out-program>\n");
     return 1;
 }

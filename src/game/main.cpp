@@ -360,6 +360,10 @@ int main(int argc, char** argv) {
     // dcb --setup <jp> <us> [--fixes DIR]: the first-run setup from a terminal, then exit.
     if (argc > 1 && std::string(argv[1]) == "--setup") return platform::setup_command(argc, argv, DCB_GAME_ID);
 
+    // The single-file build carries assets/, cheats/ and README.txt: unpack them next to the
+    // binary on the first start (and after an update), then boot from them like the zip release.
+    if (!platform::unpack_bundled_assets(!std::getenv("DCB_HEADLESS"))) return 1;
+
     // Usage: dcb [--no-verify] [data-dir|disc.cue|disc.bin]   (a PS-EXE path is also accepted, for
     // development). --no-verify: the first-run setup does not check the dumps against redump.org.
     bool no_verify = false;
