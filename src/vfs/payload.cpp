@@ -8,6 +8,7 @@
 #include <cstring>
 #include <fstream>
 #include <set>
+#include <system_error>
 #include <vector>
 
 namespace vfs {
@@ -26,6 +27,21 @@ fs::path name_path(const std::string& name) {
 
 /// Names the reader accepts but a Windows path would not keep inside `dest` ("C:x").
 bool safe_name(const std::string& name) { return name.find(':') == std::string::npos; }
+
+/// True when a component of `relative` below `root` (or the target itself) already exists as a
+/// symlink: writing through it could land outside `root`. `root` itself may be a link (a games
+/// folder the player linked); missing components are fine (they are created as directories).
+bool has_symlink_component(const fs::path& root, const fs::path& relative) {
+    fs::path current = root;
+    for (const fs::path& component : relative) {
+        current /= component;
+        std::error_code ec;
+        const fs::file_status status = fs::symlink_status(current, ec);
+        if (ec == std::errc::no_such_file_or_directory || status.type() == fs::file_type::not_found) return false;
+        if (ec || fs::is_symlink(status)) return true;
+    }
+    return false;
+}
 
 std::string path_text(const fs::path& p) {
     const std::u8string u = p.u8string();
@@ -137,8 +153,10 @@ PayloadStatus check_payload(const fs::path& program, const fs::path& dest, Paylo
     std::error_code ec;
     const bool stamped = read_stamp(dest / kPayloadStamp, head, files);
     if (stamped && head == to_hex16(found->id)) return PayloadStatus::UpToDate;
-    // Someone else's assets/ (a zip install, a dev tree): not ours to replace.
-    if (!stamped && fs::exists(dest / "assets", ec)) return PayloadStatus::NotOurs;
+    // Someone else's assets/ (a zip install, a dev tree): not ours to replace. A stamp that is
+    // there but unreadable (a stamp write that failed half-way) is ours: unpack again.
+    if (!stamped && !fs::exists(dest / kPayloadStamp, ec) && fs::exists(dest / "assets", ec))
+        return PayloadStatus::NotOurs;
     return PayloadStatus::Needed;
 }
 
@@ -188,12 +206,15 @@ PayloadResult unpack_payload(const fs::path& program, const fs::path& dest, cons
     uint64_t done = 0;
     if (progress) progress(0, total);
     for (const PakEntry& e : pak.entries()) {
-        const fs::path target = dest / name_path(e.name);
+        const fs::path relative = name_path(e.name);
+        const fs::path target = dest / relative;
         if (payload_keeps_existing(e.name) && fs::exists(target, ec)) {
             ++result.kept;
             done += e.size;
             continue;
         }
+        if (has_symlink_component(dest, relative))
+            return fail("cannot unpack " + path_text(target) + " (a symlink is in the way)");
         fs::create_directories(target.parent_path(), ec);
         const bool wrote = pak.extract(e, target, [&](uint64_t n) {
             done += n;

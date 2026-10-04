@@ -161,15 +161,22 @@ bool unpack_bundled_assets(bool interactive) {
                 static_cast<unsigned long long>(trailer.size >> 20), dir.string().c_str());
     vfs::PayloadResult result;
     int shown = -10;  // last percentage printed, in steps of 10
+    // Runs on the progress window's worker thread: an exception (std::bad_alloc, a filesystem
+    // error) must not escape it, so it becomes the reported failure below.
     const auto job = [&](const std::function<void(uint64_t, uint64_t)>& window_progress) {
-        result = vfs::unpack_payload(self, dir, [&](uint64_t done, uint64_t total) {
-            const int pct = total ? static_cast<int>(done * 100 / total) : 100;
-            if (pct / 10 != shown / 10) {
-                shown = pct;
-                std::printf("[dcb] unpacking: %3d%%\n", pct);
-            }
-            if (window_progress) window_progress(done, total);
-        });
+        try {
+            result = vfs::unpack_payload(self, dir, [&](uint64_t done, uint64_t total) {
+                const int pct = total ? static_cast<int>(done * 100 / total) : 100;
+                if (pct / 10 != shown / 10) {
+                    shown = pct;
+                    std::printf("[dcb] unpacking: %3d%%\n", pct);
+                }
+                if (window_progress) window_progress(done, total);
+            });
+        } catch (const std::exception& e) {
+            result.status = vfs::PayloadStatus::Failed;
+            result.error = e.what();
+        }
     };
     bool ran = false;
 #if defined(DCB_HAS_SDL3)

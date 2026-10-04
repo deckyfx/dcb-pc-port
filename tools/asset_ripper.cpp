@@ -459,14 +459,40 @@ int cmd_embed(int argc, char** argv) {
     }
     const fs::path program = argv[0], root = argv[1], out = argv[2];
     // Sorted, so the same tree always gives the same archive and content id.
+    // Any file that cannot be listed fails the run: a bundle silently missing a file would
+    // still unpack and boot, just wrongly.
     std::vector<std::pair<std::string, fs::path>> files;
     std::error_code ec;
-    for (const auto& e : fs::recursive_directory_iterator(root, ec)) {
-        if (!e.is_regular_file()) continue;
-        const fs::path rel = fs::relative(e.path(), root, ec);
-        if (!ec) files.emplace_back(rel.generic_string(), e.path());
+    fs::recursive_directory_iterator it(root, ec);
+    if (ec) {
+        std::fprintf(stderr, "[embed] cannot read %s: %s\n", root.string().c_str(), ec.message().c_str());
+        return 1;
     }
-    if (ec || files.empty()) {
+    for (const fs::recursive_directory_iterator end; it != end; it.increment(ec)) {
+        if (ec) {
+            std::fprintf(stderr, "[embed] cannot read %s: %s\n", root.string().c_str(), ec.message().c_str());
+            return 1;
+        }
+        std::error_code type_ec;
+        if (!it->is_regular_file(type_ec)) {
+            if (!type_ec) continue;
+            std::fprintf(stderr, "[embed] %s: %s\n", it->path().string().c_str(), type_ec.message().c_str());
+            return 1;
+        }
+        std::error_code rel_ec;
+        const fs::path rel = fs::relative(it->path(), root, rel_ec);
+        if (rel_ec || rel.empty()) {
+            std::fprintf(stderr, "[embed] %s: cannot make it relative to %s\n", it->path().string().c_str(),
+                         root.string().c_str());
+            return 1;
+        }
+        files.emplace_back(rel.generic_string(), it->path());
+    }
+    if (ec) {
+        std::fprintf(stderr, "[embed] cannot read %s: %s\n", root.string().c_str(), ec.message().c_str());
+        return 1;
+    }
+    if (files.empty()) {
         std::fprintf(stderr, "[embed] nothing to bundle in %s\n", root.string().c_str());
         return 1;
     }
@@ -483,7 +509,20 @@ int cmd_embed(int argc, char** argv) {
         std::fprintf(stderr, "[embed] %s\n", error.c_str());
         return 1;
     }
-    fs::permissions(out, fs::status(program, ec).permissions(), ec);  // keep it executable
+    // Keep it executable: the program's own mode (perms::unknown from a failed status would ask
+    // for every bit, so each step is checked).
+    std::error_code perm_ec;
+    const fs::file_status st = fs::status(program, perm_ec);
+    if (perm_ec || st.permissions() == fs::perms::unknown) {
+        std::fprintf(stderr, "[embed] cannot read the mode of %s: %s\n", program.string().c_str(),
+                     perm_ec ? perm_ec.message().c_str() : "unknown");
+        return 1;
+    }
+    fs::permissions(out, st.permissions(), perm_ec);
+    if (perm_ec) {
+        std::fprintf(stderr, "[embed] cannot set the mode of %s: %s\n", out.string().c_str(), perm_ec.message().c_str());
+        return 1;
+    }
     std::printf("[embed] %s: %zu files, %llu MB, payload id %s\n", out.string().c_str(), pak.file_count(),
                 static_cast<unsigned long long>(pak.byte_size() >> 20), vfs::to_hex16(pak.content_id()).c_str());
     return 0;

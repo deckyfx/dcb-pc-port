@@ -279,6 +279,32 @@ void make_program(const fs::path& out, const fs::path& program,
     CHECK(vfs::write_payload_program(out, program, w, error));
 }
 
+/// A stamp that exists but cannot be read (a failed stamp write) is ours: unpack again, not
+/// "someone else's assets/". A symlink inside the destination is refused, never written through.
+void test_payload_stamp_and_symlink() {
+    const fs::path dir = scratch_dir() / "stamp_symlink";
+    const fs::path program = dir / "plain";
+    put_file(program, "\x7F" "ELF not really a program");
+    const fs::path app = dir / "app" / "dcb";
+    make_program(app, program, {{"assets/sub/x.txt", "new"}}, dir);
+    const fs::path home = app.parent_path();
+
+    fs::create_directories(home / "assets");
+    CHECK(vfs::check_payload(app, home) == vfs::PayloadStatus::NotOurs);  // unstamped assets/
+    put_file(home / vfs::kPayloadStamp, "");                                // unreadable stamp
+    CHECK(vfs::check_payload(app, home) == vfs::PayloadStatus::Needed);
+
+#ifndef _WIN32
+    // A folder inside assets/ redirected elsewhere (assets/ itself redirected is "not ours": the
+    // stamp lives in it): the unpack fails and the outside file is untouched.
+    put_file(dir / "outside" / "x.txt", "keep");
+    fs::create_directory_symlink(dir / "outside", home / "assets" / "sub");
+    const vfs::PayloadResult r = vfs::unpack_payload(app, home);
+    CHECK(r.status == vfs::PayloadStatus::Failed && r.error.find("symlink") != std::string::npos);
+    CHECK(get_file(dir / "outside" / "x.txt") == "keep");
+#endif
+}
+
 void test_payload() {
     const fs::path dir = scratch_dir();
     const fs::path program = dir / "plain";
@@ -956,6 +982,7 @@ constexpr Case kCases[] = {
     {"fnv", test_fnv},
     {"pak_roundtrip", test_pak_roundtrip},
     {"payload", test_payload},
+    {"payload_stamp_symlink", test_payload_stamp_and_symlink},
     {"vfs_mounts", test_vfs_mounts},
     {"hd_replace", test_hd_replace},
     {"hd_identity_stp", test_hd_identity_stp},
