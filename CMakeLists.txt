@@ -73,6 +73,15 @@ add_custom_command(OUTPUT ${DCB_PATCH_TEXT_EMBED}
     DEPENDS ${DCB_PATCH_TEXT_CONFIG} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/EmbedFiles.cmake
     COMMENT "Embedding the text catalog" VERBATIM)
 target_sources(dcb_patch PRIVATE ${DCB_PATCH_TEXT_EMBED})
+# The sprite sizes for the US title art (config/SLPS-03101/sprites.txt), shipped in the pak.
+set(DCB_PATCH_ART_CONFIG ${CMAKE_CURRENT_SOURCE_DIR}/config/SLPS-03101/sprites.txt)
+set(DCB_PATCH_ART_EMBED ${CMAKE_CURRENT_BINARY_DIR}/generated/patch_art_config.cpp)
+add_custom_command(OUTPUT ${DCB_PATCH_ART_EMBED}
+    COMMAND ${CMAKE_COMMAND} -DOUT=${DCB_PATCH_ART_EMBED} -DFILES=${DCB_PATCH_ART_CONFIG}
+            -DNAMESPACE=patch::embedded -DFUNCTION=art_config -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/EmbedFiles.cmake
+    DEPENDS ${DCB_PATCH_ART_CONFIG} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/EmbedFiles.cmake
+    COMMENT "Embedding the sprite sizes" VERBATIM)
+target_sources(dcb_patch PRIVATE ${DCB_PATCH_ART_EMBED})
 
 # ---------------------------------------------------------------------------
 # psx_hle — native replacements: BIOS call tables, Psy-Q libraries,

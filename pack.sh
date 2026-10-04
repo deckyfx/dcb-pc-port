@@ -104,12 +104,16 @@ if (( REBUILD )); then
         cp -r "$ASSETS/custom/textures/." "$CONVERTED/textures/"
         echo "   custom images: $(find "$ASSETS/custom/textures" -type f | wc -l)"
     fi
+    # Sprite sizes: ours (the fitted US title art, the same rules dcb --setup puts in its pak), or
+    # the hand-made ones in custom/ when there are.
+    cp "config/$SERIAL/sprites.txt" "$CONVERTED/"
     if [[ -f "$ASSETS/custom/sprites.txt" ]]; then cp "$ASSETS/custom/sprites.txt" "$CONVERTED/"; fi
     if US_DUMP="$(dump_dir "$US_SERIAL" fs)"; then
         ln -s "$PWD/$US_DUMP" "$WORK/extracted/$US_SERIAL"
         "$RIPPER" unpack "$US_DUMP" -o "$WORK/assets" >/dev/null
         python3 tools/text/en_text.py --jp "$JP_DUMP" --us "$US_DUMP" --out "$WORK/assets/$SERIAL" >/dev/null
-        # The US art over the JP rip; its summary is shown so a failed swap is not missed.
+        # The US art over the JP rip (hand-edited custom/ images win); its summary is shown so a
+        # failed swap is not missed.
         python3 tools/assets/swap_us_images.py --apply --root "$WORK" 2>&1 | grep -E "^replaced|error" || true
         swapped="$(grep -o 'us/[0-9a-f]*\.raw' "$CONVERTED/assets_manifest.json" | wc -l)"
         (( swapped > 0 )) || { echo "error: the US art swap replaced nothing" >&2; exit 1; }

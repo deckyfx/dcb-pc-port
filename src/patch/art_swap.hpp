@@ -60,6 +60,15 @@ std::pair<std::vector<uint8_t>, std::vector<uint8_t>> compose_image(const Tim& u
 /// True when `us`'s palette is `jp`'s uploaded in another w x h (the same colours).
 bool is_palette_reshape(const Tim& jp, const Tim& us);
 
+/// FIT: RGBA art (`w` x `h`, as the ripper renders a TIM) as the upload the texture replacer
+/// makes of a PNG of it for the JP image `jp` (hle::HdTextures::replace): box-downsampled to the
+/// JP pixel size, or to `slot_w` x the JP height when given (a manifest "slot_w"), then
+/// quantized to the JP image's own palette (vfs::palette_index); at the JP size a pixel whose
+/// colour the JP index already gives keeps that index. Returns the packed pixel data, or nothing
+/// when the art is smaller than the target or `jp` is not a palette image.
+std::optional<std::vector<uint8_t>> fit_image(const Tim& jp, const std::vector<uint8_t>& rgba, int w, int h,
+                                              int slot_w = 0);
+
 /// One upload to replace.
 struct Replacement {
     uint64_t key = 0;             ///< the JP upload's hash (manifest "img")
@@ -67,6 +76,7 @@ struct Replacement {
     std::string us;               ///< where the US data came from ("B.DRV:M_CARD.ARC", "... (palette)")
     std::string alt;              ///< the ripper's name for the JP image
     std::vector<uint8_t> data;    ///< the upload's replacement bytes
+    int slot_w = 0;               ///< manifest "slot_w": the art is uploaded this many pixels wide (0 = w)
 };
 
 struct Plan {

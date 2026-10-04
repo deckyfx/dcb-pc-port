@@ -10,11 +10,13 @@
 #include "patch.hpp"
 
 #include "patch/art_swap.hpp"
+#include "patch/embed.hpp"
 #include "vfs/hash.hpp"
 #include "vfs/pak.hpp"
 #include "vfs/rip.hpp"
 
 #include <fstream>
+#include <string_view>
 #include <system_error>
 
 namespace patch {
@@ -42,6 +44,7 @@ std::string manifest_json(const std::string& serial, const art::Plan& plan) {
             vfs::json_escape(json, r.us);
             json += ",\"alt\":";
             vfs::json_escape(json, r.alt);
+            if (r.slot_w) json += ",\"slot_w\":" + std::to_string(r.slot_w);
             json += "}";
         }
     }
@@ -98,6 +101,9 @@ void build_art(const Inputs& in, const ProgressFn& progress) {
     bool ok = pak.add("assets_manifest.json", reinterpret_cast<const uint8_t*>(json.data()), json.size());
     for (const auto* list : {&plan->images, &plan->palettes})
         for (const art::Replacement& r : *list) ok = ok && pak.add("us/" + vfs::to_hex16(r.key) + ".raw", r.data);
+    // The sprite sizes the fitted title art is drawn at (config/<serial>/sprites.txt).
+    for (const embedded::File& f : embedded::art_config())
+        if (std::string_view(f.name) == "sprites.txt") ok = ok && pak.add("sprites.txt", f.data, f.size);
     if (!ok) throw std::runtime_error("US art pak: " + pak.error());
     fs::create_directories(in.assets);
     const fs::path pak_path = in.assets / (in.serial + ".pak");

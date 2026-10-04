@@ -21,8 +21,10 @@ from its manifest drv_offset), and an entry is swapped only when both games have
 images in it (pixel size, bit depth, VRAM position, palette position and rows, palette variants).
 Images are paired by that shape, since the US build reorders containers (the attack name moved
 to the end of every E PAK); among images of one shape, identical ones pair first, the rest in
-file order. Entries whose layout differs (the title, the MATCH/WIN name plates) are listed and
-left alone. Images identical on both discs are skipped.
+file order. Entries whose layout differs (the MATCH/WIN name plates) are listed and left alone;
+FIT fits a few US images of such an entry into the JP ones (the title: subtitle, copyright, menu
+labels; fit_image). Images identical on both discs are skipped. Hand-edited art in
+assets/<serial>/custom/textures/ (put over the rip by pack.sh -r) wins over any US image.
 
 TIS image lists (C.DRV: the city screens' AREAnn.PAK, WORLD.TIS, DECK.TIS, UNIT.TIS) are read
 straight from the disc instead, since the ripper lists only some copies of their TIMs, and not the
@@ -129,6 +131,21 @@ KEEP_JP_AT = {
 # visible on the highlighted label). The US columns are moved to the texels the JP code shows.
 JP_DRAW_SCALE = {
     ("C.DRV", (792, 0, 16, 144)): (68, 64),
+}
+# US art whose layout differs, fitted into the JP image and its palette the way the texture
+# replacer fits a PNG (fit_image): (DRV, entry, JP image rect) -> (US image rect, slot width in
+# pixels or 0). The title, which pair() leaves alone (the US one has another logo and image list):
+# the subtitle, US 320x48, into the JP 224x32 one (drawn smaller, config/SLPS-03101/sprites.txt);
+# the US copyright, 256 wide, into the JP 176-wide one with a 256-wide slot (manifest "slot_w",
+# drawn 1:1 from it like the US game); NEW GAME, CONTINUE and Battle with Friend at the JP size.
+# The JP palettes stay (the logo and the D-1 Grand Prix label share them). A hand-edited image in
+# assets/<serial>/custom/textures/ wins over the fitted one (it only gets the slot).
+FIT = {
+    ("B.DRV", "TITLE.ARC", (704, 0, 112, 32)): ((704, 0, 160, 48), 0),
+    ("B.DRV", "TITLE.ARC", (512, 168, 44, 32)): ((512, 168, 64, 32), 256),
+    ("B.DRV", "TITLE.ARC", (704, 128, 24, 28)): ((704, 128, 24, 28), 0),
+    ("B.DRV", "TITLE.ARC", (704, 156, 24, 28)): ((704, 156, 24, 28), 0),
+    ("B.DRV", "TITLE.ARC", (704, 184, 24, 28)): ((704, 184, 24, 28), 0),
 }
 NEVER = re.compile(r"(^|/)SYSTEM\.TIM$")
 # Entries where a few images changed shape: swap the images whose shape still matches, keep the
@@ -341,6 +358,147 @@ def composed(drv_name: str, jt: Tim, ut: Tim) -> Tim:
         return ut
     pixels, palette = compose_image(ut, jt, blocks)
     return Tim(ut.offset, ut.bpp, ut.image, ut.clut, pixels, palette)
+
+
+def _expand5(v: int) -> int:
+    return (v << 3) | (v >> 2)
+
+
+def tim_rgba(t: Tim) -> tuple[int, int, bytes]:
+    """A palette TIM as RGBA with its palette row 0, the way the ripper renders its PNG
+    (vfs::tim_to_rgba): a 0x0000 entry is transparent (alpha 0), STP gives alpha 254."""
+    if t.clut is None or t.bpp not in (4, 8):
+        raise ValueError("tim_rgba takes 4- or 8-bit palette TIMs")
+    w, h = t.image[2] * 16 // t.bpp, t.image[3]
+    per = t.clut[2]
+    pal = struct.unpack(f"<{per}H", t.palette[:2 * per])
+    out = bytearray(w * h * 4)
+    for y in range(h):
+        for x in range(w):
+            i = y * w + x
+            idx = (t.pixels[i // 2] >> (4 * (x & 1))) & 15 if t.bpp == 4 else t.pixels[i]
+            e = pal[idx]
+            if e:
+                out[i * 4:i * 4 + 4] = bytes((_expand5(e & 31), _expand5(e >> 5 & 31), _expand5(e >> 10 & 31),
+                                              254 if e & 0x8000 else 255))
+    return w, h, bytes(out)
+
+
+def downsample_rgba(src: bytes, sw: int, sh: int, dw: int, dh: int) -> bytes | None:
+    """vfs::downsample_rgba: a box filter (each destination pixel averages the source box
+    covering it, rounded); None when asked to upsample."""
+    if dw > sw or dh > sh:
+        return None
+    if (dw, dh) == (sw, sh):
+        return src
+    out = bytearray(dw * dh * 4)
+    for y in range(dh):
+        y0, y1 = y * sh // dh, (y + 1) * sh // dh
+        for x in range(dw):
+            x0, x1 = x * sw // dw, (x + 1) * sw // dw
+            acc, n = [0, 0, 0, 0], 0
+            for sy in range(y0, y1):
+                for sx in range(x0, x1):
+                    p = (sy * sw + sx) * 4
+                    for c in range(4):
+                        acc[c] += src[p + c]
+                    n += 1
+            d = (y * dw + x) * 4
+            out[d:d + 4] = bytes((a + n // 2) // (n or 1) for a in acc)
+    return bytes(out)
+
+
+def rgba_to_psx15(r: int, g: int, b: int, a: int) -> int:
+    """vfs::rgba_to_psx15: alpha < 128 is 0x0000, alpha 254 sets STP."""
+    if a < 128:
+        return 0
+    px = (r >> 3) | (g >> 3) << 5 | (b >> 3) << 10
+    return px | 0x8000 if a == 254 else px
+
+
+def palette_index(pal: list[int], r: int, g: int, b: int, a: int) -> int:
+    """vfs::palette_index: the texture replacer's quantizer."""
+    want = rgba_to_psx15(r, g, b, a)
+    if want in pal:
+        return pal.index(want)
+    if a < 128 and pal and pal[0] == 0:
+        return 0
+    if want == 0 and 0 in pal:
+        return pal.index(0)
+    best, best_d = 0, None
+    for k, e in enumerate(pal):
+        if e == 0:
+            continue
+        d = ((r - _expand5(e & 31)) ** 2 + (g - _expand5(e >> 5 & 31)) ** 2 + (b - _expand5(e >> 10 & 31)) ** 2) * 2 \
+            + (1 if (e ^ want) & 0x8000 else 0)
+        if best_d is None or d < best_d:
+            best, best_d = k, d
+    return best
+
+
+def fit_image(jp: Tim, w: int, h: int, rgba: bytes, slot_w: int = 0) -> bytes | None:
+    """RGBA art as the upload the texture replacer makes of a PNG of it for the JP image `jp`
+    (FIT; hle::HdTextures::replace): box-downsampled to the JP pixel size, or slot_w x the JP
+    height, then quantized to the JP image's own palette (row 0, the entries an index reaches);
+    at the JP size a pixel whose colour the JP index already gives keeps that index. None when
+    the art is smaller than that."""
+    if jp.bpp not in (4, 8) or jp.clut is None:
+        return None
+    jw, th = jp.image[2] * 16 // jp.bpp, jp.image[3]
+    tw = slot_w or jw
+    if tw < jw or tw % (16 // jp.bpp):
+        return None
+    fit = downsample_rgba(rgba, w, h, tw, th)
+    if fit is None:
+        return None
+    reach = min(jp.clut[2], 16 if jp.bpp == 4 else 256)
+    pal = list(struct.unpack(f"<{reach}H", jp.palette[:2 * reach]))
+    out = bytearray(tw * th * jp.bpp // 8)
+    for i in range(tw * th):
+        r, g, b, a = fit[i * 4:i * 4 + 4]
+        index = None
+        if tw == jw:
+            orig = jp.pixels[i] if jp.bpp == 8 else (jp.pixels[i // 2] >> (4 * (i & 1))) & 15
+            if orig < reach and pal[orig] == rgba_to_psx15(r, g, b, a):
+                index = orig
+        if index is None:
+            index = palette_index(pal, r, g, b, a)
+        if jp.bpp == 8:
+            out[i] = index
+        else:
+            out[i // 2] |= index << (4 * (i & 1))
+    return bytes(out)
+
+
+def fit_plan(jp_drvs: dict[str, bytes], us_drvs: dict[str, bytes]) -> list[tuple[Tim, bytes, str, int]]:
+    """The FIT images: (JP TIM, fitted pixel data, "DRV:entry", slot width)."""
+    out = []
+    tocs: dict[tuple[str, str], list] = {}
+    for (drv_name, entry, jp_rect), (us_rect, slot_w) in FIT.items():
+        if drv_name not in jp_drvs or drv_name not in us_drvs:
+            continue
+        found = []
+        for side, drvs, rect in (("jp", jp_drvs, jp_rect), ("us", us_drvs, us_rect)):
+            drv = drvs[drv_name]
+            if (side, drv_name) not in tocs:
+                tocs[(side, drv_name)] = drv_unpack.read_toc(drv)[0]
+            tim = None
+            for f in tocs[(side, drv_name)]:
+                if f.path != entry:
+                    continue
+                for o in container_offsets(drv[f.offset:f.offset + f.size], f.path) or []:
+                    t = read_tim(drv, f.offset + o)
+                    if t is not None and t.image == rect:
+                        tim = t
+            found.append(tim)
+        jt, ut = found
+        if jt is None or ut is None:
+            continue
+        w, h, rgba = tim_rgba(ut)
+        data = fit_image(jt, w, h, rgba, slot_w)
+        if data is not None:
+            out.append((jt, data, f"{drv_name}:{entry}", slot_w))
+    return out
 
 
 def with_palette(tim: bytes, palette: bytes) -> bytes:
@@ -750,12 +908,38 @@ def main() -> int:
     for k in clash:
         del palette_plan[k]
 
+    # FIT (the title), then hand-edited art (assets/<serial>/custom/textures/, put over the rip
+    # by pack.sh -r), which wins over any US image; custom art in a FIT slot still gets the slot.
+    custom = root / "assets" / JP / "custom"
+
+    def has_custom(key: str) -> bool:
+        return any((custom / e["path"]).is_file() for e in jp_by_hash.get(key, []))
+
+    custom_kept = [k for k in image_plan if has_custom(k)]
+    for k in custom_kept:
+        del image_plan[k]
+    fitted: dict[str, tuple[bytes, str, int]] = {}  # JP image hash -> (data, label, slot width)
+    slots: dict[str, int] = {}  # custom art in a FIT slot: JP image hash -> slot width
+    for jt, data, label, slot_w in fit_plan(jp_drvs, us_drvs):
+        key = fnv1a64(jt.pixels)
+        if key not in jp_by_hash or key in images or (only and not only.search(label)):
+            continue
+        if has_custom(key):
+            custom_kept.append(key)
+            if slot_w:
+                slots[key] = slot_w
+            continue
+        fitted[key] = (data, label, slot_w)
+
     if args.apply:
         raw = jp_dir / RAW_DIR
         raw.mkdir(parents=True, exist_ok=True)
         backup.mkdir(parents=True, exist_ok=True)
         shutil.copy2(jp_dir / "assets_manifest.json", backup / "assets_manifest.json")
-        entries = [e for e in jp_manifest["entries"] if e["img"] not in image_plan]
+        entries = [e for e in jp_manifest["entries"] if e["img"] not in image_plan and e["img"] not in fitted]
+        for e in entries:
+            if e["img"] in slots:
+                e["slot_w"] = slots[e["img"]]
         for key, c in image_plan.items():
             (raw / f"{key}.raw").write_bytes(c.us)
             m = image_meta[key]
@@ -766,6 +950,14 @@ def main() -> int:
             w, h = palette_rect[key]
             entries.append({"img": key, "w": w, "h": h, "bpp": 16, "path": f"{RAW_DIR}/{key}.raw",
                             "us": c.label + " (palette)", "alt": Path(image_meta[c.image]["path"]).stem})
+        for key, (data, label, slot_w) in fitted.items():
+            (raw / f"{key}.raw").write_bytes(data)
+            m = sorted(jp_by_hash[key], key=variant_index)[0]
+            e = {"img": key, "w": m["w"], "h": m["h"], "bpp": m["bpp"], "path": f"{RAW_DIR}/{key}.raw",
+                 "us": label, "alt": Path(m["path"]).stem}
+            if slot_w:
+                e["slot_w"] = slot_w
+            entries.append(e)
         jp_manifest["entries"] = entries
         (jp_dir / "assets_manifest.json").write_text(json.dumps(jp_manifest, separators=(",", ":")))
 
@@ -790,6 +982,10 @@ def main() -> int:
     if palette_conflicts:
         print(f"{palette_conflicts} JP palettes stand for several US ones (the same bytes uploaded for "
               f"different images); each follows its picked image, so one of the others may show off-colour")
+    if fitted:
+        print(f"{verb} {len(fitted)} title images with the US art fitted into the JP ones (FIT)")
+    if custom_kept:
+        print(f"{len(custom_kept)} images keep their hand-edited art (assets/{JP}/custom/)")
     for why, keys in kept.items():
         print(f"kept JP ({len(keys)} image{'s' if len(keys) > 1 else ''}): {why}")
     if recomposed:
