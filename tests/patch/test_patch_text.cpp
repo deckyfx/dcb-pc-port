@@ -176,6 +176,10 @@ void test_catalog() {
                "\x83\x58\x83\x8D\x83\x62\x83\x67%c\x82\xCC %2d\x96\x87"));
     CHECK(same(jp_template(bytes("??x")), "??x"));
     CHECK(same(us_template(bytes("slot *S, *E *x")), "slot %c, %c *x"));
+    // the battle banner's player name: " P0の" / "*P1" -> %s; a P elsewhere stays
+    CHECK(same(jp_template(bytes("\x90\xED\x93\xAC P1\x82\xCC")), "\x90\xED\x93\xAC %s\x82\xCC"));
+    CHECK(same(jp_template(bytes("P0\x82\xCC xP1\x82\xCC P2\x82\xCC P0")), "P0\x82\xCC xP1\x82\xCC P2\x82\xCC P0"));
+    CHECK(same(us_template(bytes("Battle: *P0's *P1 *P2")), "Battle: %s's %s *P2"));
     CHECK(same(escape(bytes("a\\b\nc\td")), "a\\\\b\\nc\\td"));
 
     // "EXE": two strings (zero padding between), "SEG" (an overlay): the US side.

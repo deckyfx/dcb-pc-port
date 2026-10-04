@@ -98,6 +98,10 @@ Codes that are **not** handled by the renderer but are expanded by the caller be
 | `h0`–`h3` | `*h1` (the only one seen) | Fusion Shop line builder EVOSEG `801ebf4c` | `h0` player name (game_data + 0), `h1` the fusion result's card name, `h2`/`h3` the same with all but the first character as ？ | H |
 | `S`, `E` | `*S`, `*E` | memory-card screens (OPENSEG) | slot number | M (seen in strings, expander not traced) |
 
+The text catalog matches what is drawn, after these expansions: its templates turn the slot letter
+into `%c` and the banner's `P0`/`P1` (US `*P0`/`*P1`) into `%s` (`tools/text/catalog.py`,
+`src/patch/text_catalog.cpp`), so "Battle: \<name\>'s Support Card." is translated whatever the name.
+
 ### 2.3 Other encodings in the JP EXE
 
 | Where | Encoding | Conf. |
