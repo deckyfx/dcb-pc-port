@@ -8,6 +8,7 @@
 
 #include "text_internal.hpp"
 
+#include <algorithm>
 #include <cstdio>
 
 namespace patch::text {
