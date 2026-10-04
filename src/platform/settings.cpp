@@ -319,8 +319,8 @@ IniDocument default_settings_ini() {
     doc.add_comment("audio", "Master volume, 0-100.");
     doc.set("audio", "volume", std::to_string(kVolumeMax));
 
-    doc.add_comment("mods", "Gameplay mods. boss_rematch: beaten Battle Arena bosses (the Digimon Emperor,");
-    doc.add_comment("mods", "A) can be fought again in their city's Battle Cafe.");
+    doc.add_comment("mods", "Gameplay mods. boss_rematch: beaten Battle Arena bosses (Wormmon, Stingmon,");
+    doc.add_comment("mods", "Shadramon, the Digimon Emperor, A) can be fought again in their city's Battle Cafe.");
     doc.set("mods", "boss_rematch", "true");
 
     doc.add_comment("keyboard", "SDL scancode names (e.g. Z, Return, Space, Left Shift, Keypad 8, Comma);");

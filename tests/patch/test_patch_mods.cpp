@@ -41,12 +41,17 @@ size_t target_of(const Bytes& s, size_t at) { return static_cast<int32_t>(patch:
 
 /// The cafe's shape: a list entry falling into the menu, the menu, the pick and its tests, one
 /// opponent section that battles, restores the music and returns, and a jump back to the menu.
-Bytes cafe_script(size_t& p_at, size_t& menu_at, size_t& test_at) {
+/// `gated`: the entry (slot 1) is listed only while r185 != 1 (`skip_if(r185 != 1); jump past`).
+Bytes cafe_script(size_t& p_at, size_t& menu_at, size_t& test_at, bool gated = false) {
     Bytes s = {'M', 'S', 'C', 'D'};
     patch::wr32(s, 3);
     patch::wr32(s, 0);
     patch::wr32(s, 372);
     cmd(s, 6);
+    if (gated) {
+        skip_if(s, 185, 3, 1);
+        jump(s, s.size() + 8 + 8);  // past the entry, onto the menu
+    }
     p_at = s.size();
     cmd(s, 3, {1});
     menu_at = s.size();
@@ -107,6 +112,15 @@ void test_rematch() {
     CHECK(patch::rd16(*out, test_at + 6) == 1 && patch::rd32(*out, test_at + 8) == 2);
     CHECK(target_of(*out, test_at + 12) >= in.size());
     CHECK(target_of(*out, in.size() - 8) >= in.size());
+
+    // The cafe lists slot 1 for a regular member: a boss may not take it.
+    r.slot = 1;
+    CHECK(!patch::mods::add_rematches(in, {r}, &why) && why.find("slot 1") != std::string::npos);
+    // Unless that entry is listed only until the boss is unlocked (Wormmon's deck-info entry).
+    size_t gp = 0, gm = 0, gt = 0;
+    const Bytes gated = cafe_script(gp, gm, gt, true);
+    CHECK(patch::mods::add_rematches(gated, {r}, &why));
+    r.slot = 5;
 
     // A script without the cafe's shape is left alone.
     Bytes plain(in.begin(), in.begin() + menu_at);

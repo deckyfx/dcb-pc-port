@@ -2,6 +2,7 @@
 
 #include "text_internal.hpp"
 
+#include <algorithm>
 #include <initializer_list>
 #include <map>
 #include <stdexcept>
@@ -135,6 +136,24 @@ std::optional<Cafe> find_cafe(View script, const std::vector<MsdRecord>& recs, s
 
 const std::vector<Rematch>& rematches_for(const std::string& file) {
     static const std::map<std::string, std::vector<Rematch>> table = {
+        {"C/AREA02.PAK",
+         {{15, 10, {{56, 1}}, "Wormmon",
+           "Want to try my Tryout Deck\nonce more?",
+           "Oh... okay. Maybe next time.",
+           "You're really strong...\nI'll keep practicing!",
+           "I did it! The Wormmon Card\nisn't so weak after all!"}}},
+        {"C/AREA03.PAK",
+         {{14, 14, {{87, 1}}, "Stingmon",
+           "You again? Fine.\nThe Black Storm awaits.",
+           "Then get out of my way.",
+           "Hmph... You got lucky.",
+           "Is that all you've got?"}}},
+        {"C/AREA04.PAK",
+         {{6, 18, {{119, 1}}, "Shadramon",
+           "Back for more?\nMy Evil Fire still burns!",
+           "Scared of getting burned?",
+           "Grrr... The fire went out...",
+           "Burn to ashes!"}}},
         {"C/AREA05.PAK",
          {{11, 23, {{138, 1}}, "Digimon Emperor",
            "So you want to face me again?\nVery well.",
@@ -178,6 +197,26 @@ std::optional<Bytes> add_rematches(View script, const std::vector<Rematch>& list
         if (why) *why = "unexpected cafe dispatch test";
         return std::nullopt;
     }
+    // A cafe gains members as the story goes on (each behind its own flags): a boss's slot must be
+    // one the script never lists, or listed only until the boss is unlocked (Wormmon's deck-info
+    // entry, `skip_if(r56 != 1); jump past` = listed while r56 != 1), so neither replaces the other.
+    for (size_t i = 0; i < recs.size(); ++i) {
+        if (!(recs[i].op == kOpCmd0 + 1 && cmd_of(recs[i]) == 3)) continue;
+        for (const Rematch& r : list) {
+            if (arg_of(recs[i], 0) != r.slot) continue;
+            const MsdRecord& gate = recs[i < 2 ? i : i - 2];
+            const bool until_unlocked =
+                i >= 2 && gate.op == kOpSkipIf && rd16(gate.raw, 4) == kCmpNe && rd16(gate.raw, 6) == 0 &&
+                recs[i - 1].op == kOpJump && jump_target(script, recs[i - 1]) > recs[i].offset &&
+                std::any_of(r.unlocked.begin(), r.unlocked.end(), [&](const RegEquals& c) {
+                    return rd16(gate.raw, 2) == c.reg && static_cast<int32_t>(rd32(gate.raw, 8)) == c.value;
+                });
+            if (!until_unlocked) {
+                if (why) *why = "cafe slot " + std::to_string(r.slot) + " is listed for someone else";
+                return std::nullopt;
+            }
+        }
+    }
 
     Bytes out(script.begin(), script.end());
     Assembler a(out);
@@ -203,8 +242,17 @@ std::optional<Bytes> add_rematches(View script, const std::vector<Rematch>& list
     a.jump(jump_target(script, test_jump));
     std::vector<size_t> section_jumps;
     for (const Rematch& r : list) {
-        a.skip_if(kRegPick, kCmpNe, r.slot);
+        // Only when unlocked: a slot the cafe also lists for something else (Wormmon's deck-info
+        // entry before he is beaten) keeps going to its own section.
+        std::vector<size_t> skips;
+        a.skip_if(kRegPick, kCmpEq, r.slot);
+        skips.push_back(a.jump());
+        for (const RegEquals& c : r.unlocked) {
+            a.skip_if(c.reg, kCmpEq, c.value);
+            skips.push_back(a.jump());
+        }
         section_jumps.push_back(a.jump());
+        for (const size_t j : skips) a.set_target(j, a.here());
     }
     a.jump(after_test);
 

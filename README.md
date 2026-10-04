@@ -79,7 +79,7 @@ text and art built from the player's own discs.*
 - [ ] Enhance / upscale assets (needs a renderer with higher internal resolution to show HD art)
 - [ ] Enhancements: widescreen
 - [ ] Network Battle
-- [x] Mods: beaten Battle Arena bosses (Digimon Emperor, A) can be fought again in the Battle Cafe
+- [x] Mods: beaten Battle Arena bosses (Wormmon, Stingmon, Shadramon, Digimon Emperor, A) can be fought again in the Battle Cafe
 - [ ] Custom Battle mode: pick the opponent and the arena
 - [ ] Rust port of the game logic
 
