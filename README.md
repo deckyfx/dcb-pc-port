@@ -65,7 +65,7 @@ text and art built from the player's own discs.*
 **Distribution**
 - [x] Public: the program alone; the first run builds everything from the player's two discs
 - [x] Private: `pack.sh` zips a self-contained bundle (program + `assets/`) from your own dumps, for your own machines
-- [ ] Private single file: `pack.sh -1`, the bundle appended to the program, unpacked on first start (#44)
+- [x] Private single file: `pack.sh -1`, the bundle appended to the program, unpacked next to it on first start
 
 **PC features**
 - [x] PC options: `settings.ini` (initial window size, filtering, aspect, key/gamepad rebinding, volume); resizable window, picture fits it (F8: fit / integer)
