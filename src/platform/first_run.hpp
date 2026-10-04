@@ -4,12 +4,14 @@
 // (SLPS-03101, the game that runs) and the North American one (SLUS-01328, where the English
 // text and art come from). Both are checked against redump.org (hle::import::verify_dump),
 // imported (hle::import), and the English data is built from them (patch::build_all); after
-// that the disc images are no longer needed.
+// that the disc images are no longer needed. The single-file build unpacks the bundle it carries.
 
 #include "cdrom/importer.hpp"
 #include "patch/patch.hpp"
 
+#include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <string>
 
 namespace platform {
@@ -85,6 +87,12 @@ void build_english(const SetupNeeds& needs, const std::filesystem::path& fixes_d
 std::filesystem::path locate_or_setup(const std::string& serial, const std::filesystem::path& hint, bool interactive,
                                       bool verify);
 
+/// The single-file build (vfs/payload.hpp): if this program carries its bundle, unpack it next to
+/// itself when that has not been done yet (progress on stdout, plus a small window when
+/// `interactive` and SDL3 has a display). Returns false, after saying why (and a message box when
+/// interactive), if it could not: the caller exits. A plain binary returns true at once.
+bool unpack_bundled_assets(bool interactive);
+
 #if defined(DCB_HAS_SDL3)
 /// The SDL3 first-run window (sdl3_first_run.cpp).
 struct FirstRunResult {
@@ -92,6 +100,15 @@ struct FirstRunResult {
     std::filesystem::path game;  ///< Done: the imported Japanese data
 };
 FirstRunResult sdl3_first_run(const SetupNeeds& needs);
+
+/// Run `job` on a worker thread behind a small window showing `caption` and its progress (it calls
+/// the given callback with bytes done / total). Returns false, without running `job`, when SDL
+/// has no display. The window cannot be closed early: the job always completes.
+bool sdl3_progress_window(const char* caption,
+                          const std::function<void(const std::function<void(uint64_t, uint64_t)>&)>& job);
+
+/// An error message box (no window of our own needed); false if SDL cannot show one.
+bool sdl3_error_box(const char* title, const std::string& text);
 #endif
 
 }  // namespace platform

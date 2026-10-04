@@ -4,6 +4,7 @@
 
 #include "vfs/hash.hpp"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -11,6 +12,23 @@
 #include <unordered_set>
 
 namespace vfs {
+
+FILE* open_file(const std::filesystem::path& path, const char* mode) {
+#if defined(_WIN32)
+    const std::wstring wmode(mode, mode + std::strlen(mode));
+    return _wfopen(path.c_str(), wmode.c_str());
+#else
+    return std::fopen(path.c_str(), mode);
+#endif
+}
+
+bool seek_to(FILE* f, uint64_t offset) {
+#if defined(_WIN32)
+    return _fseeki64(f, static_cast<__int64>(offset), SEEK_SET) == 0;
+#else
+    return fseeko(f, static_cast<off_t>(offset), SEEK_SET) == 0;
+#endif
+}
 
 namespace {
 
@@ -40,6 +58,25 @@ bool get64(FILE* f, uint64_t& v) {
     return true;
 }
 
+constexpr size_t kChunk = 1 << 20;  ///< streaming copy granularity
+
+/// Size and FNV-1a hash of a file, read in chunks.
+bool hash_file(const std::filesystem::path& path, uint64_t& size, uint64_t& hash) {
+    FILE* f = open_file(path, "rb");
+    if (!f) return false;
+    std::vector<uint8_t> chunk(kChunk);
+    size = 0;
+    hash = kFnvOffsetBasis;
+    size_t n = 0;
+    while ((n = std::fread(chunk.data(), 1, chunk.size(), f)) > 0) {
+        hash = fnv1a64(chunk.data(), n, hash);
+        size += n;
+    }
+    const bool ok = std::ferror(f) == 0;
+    std::fclose(f);
+    return ok;
+}
+
 bool valid_name_for_write(const std::string& name) {
     if (name.empty() || name.size() > 1023) return false;
     if (name.front() == '/' || name.back() == '/') return false;
@@ -63,75 +100,150 @@ bool valid_name_for_write(const std::string& name) {
 
 }  // namespace
 
-bool PakWriter::add(std::string name, const std::vector<uint8_t>& data) { return add(std::move(name), data.data(), data.size()); }
-
-bool PakWriter::add(std::string name, const uint8_t* data, size_t size) {
+bool PakWriter::check_name(const std::string& name) {
     if (!valid_name_for_write(name)) {
         error_ = "bad pak entry name: " + name;
         return false;
     }
-    for (const auto& n : names_) {
-        if (n == name) {
-            error_ = "duplicate pak entry: " + name;
-            return false;
-        }
+    if (names_.count(name) != 0) {
+        error_ = "duplicate pak entry: " + name;
+        return false;
     }
-    names_.push_back(std::move(name));
-    blobs_.emplace_back(data, data + size);
     return true;
 }
 
+bool PakWriter::add(std::string name, const std::vector<uint8_t>& data) { return add(std::move(name), data.data(), data.size()); }
+
+bool PakWriter::add(std::string name, const uint8_t* data, size_t size) {
+    if (!check_name(name)) return false;
+    names_.insert(name);
+    Staged staged;
+    staged.name = std::move(name);
+    staged.data.assign(data, data + size);
+    staged.size = size;
+    staged.hash = fnv1a64(data, size);
+    entries_.push_back(std::move(staged));
+    return true;
+}
+
+bool PakWriter::add_file(std::string name, const std::filesystem::path& source) {
+    if (!check_name(name)) return false;
+    Staged staged;
+    staged.source = source;
+    if (!hash_file(source, staged.size, staged.hash)) {
+        error_ = "cannot read " + source.string();
+        return false;
+    }
+    names_.insert(name);
+    staged.name = std::move(name);
+    entries_.push_back(std::move(staged));
+    return true;
+}
+
+uint64_t PakWriter::byte_size() const {
+    uint64_t total = 12;
+    for (const Staged& e : entries_) total += 2 + e.name.size() + 24 + e.size;
+    return total;
+}
+
+uint64_t PakWriter::content_id() const {
+    uint64_t id = kFnvOffsetBasis;
+    for (const Staged& e : entries_) {
+        id = fnv1a64(e.name.data(), e.name.size(), id);
+        std::vector<uint8_t> numbers;
+        put64(numbers, e.size);
+        put64(numbers, e.hash);
+        id = fnv1a64(numbers.data(), numbers.size(), id);
+    }
+    return id;
+}
+
 bool PakWriter::write(const std::string& path) const {
-    FILE* f = std::fopen(path.c_str(), "wb");
+    FILE* f = open_file(path, "wb");
     if (!f) return false;
+    bool ok = write(f);
+    if (std::fclose(f) != 0) ok = false;
+    return ok;
+}
+
+bool PakWriter::write(std::FILE* f) const {
     bool ok = true;
 
-    // Header: magic + count placeholder (patched after the table is fixed up).
+    // Header: magic + count.
     uint8_t header[12];
     std::memcpy(header, kPakMagic, 8);
-    const uint32_t count = static_cast<uint32_t>(names_.size());
+    const uint32_t count = static_cast<uint32_t>(entries_.size());
     header[8] = static_cast<uint8_t>(count);
     header[9] = static_cast<uint8_t>(count >> 8);
     header[10] = static_cast<uint8_t>(count >> 16);
     header[11] = static_cast<uint8_t>(count >> 24);
     ok = ok && std::fwrite(header, 1, sizeof header, f) == sizeof header;
 
-    // Table first so readers can memory-map-style seek; data offsets are absolute.
+    // Table first so readers can memory-map-style seek; data offsets are from the archive start.
     size_t table_size = 0;
-    for (size_t i = 0; i < names_.size(); ++i) table_size += 2 + names_[i].size() + 24;
+    for (const Staged& e : entries_) table_size += 2 + e.name.size() + 24;
     uint64_t data_at = 12 + table_size;
     std::vector<uint8_t> table;
     table.reserve(table_size);
-    for (size_t i = 0; i < names_.size(); ++i) {
-        put16(table, static_cast<uint16_t>(names_[i].size()));
-        table.insert(table.end(), names_[i].begin(), names_[i].end());
+    for (const Staged& e : entries_) {
+        put16(table, static_cast<uint16_t>(e.name.size()));
+        table.insert(table.end(), e.name.begin(), e.name.end());
         put64(table, data_at);
-        put64(table, blobs_[i].size());
-        put64(table, fnv1a64(blobs_[i].data(), blobs_[i].size()));
-        data_at += blobs_[i].size();
+        put64(table, e.size);
+        put64(table, e.hash);
+        data_at += e.size;
     }
     ok = ok && std::fwrite(table.data(), 1, table.size(), f) == table.size();
-    for (const auto& blob : blobs_) {
-        if (!blob.empty()) ok = ok && std::fwrite(blob.data(), 1, blob.size(), f) == blob.size();
+    std::vector<uint8_t> chunk;
+    for (const Staged& e : entries_) {
+        if (!ok) break;
+        if (e.source.empty()) {
+            if (!e.data.empty()) ok = std::fwrite(e.data.data(), 1, e.data.size(), f) == e.data.size();
+            continue;
+        }
+        // Streamed: the table already holds its size and hash, so the file must not have changed.
+        FILE* in = open_file(e.source, "rb");
+        if (!in) {
+            error_ = "cannot read " + e.source.string();
+            return false;
+        }
+        chunk.resize(kChunk);
+        uint64_t done = 0, hash = kFnvOffsetBasis;
+        size_t n = 0;
+        while (ok && (n = std::fread(chunk.data(), 1, chunk.size(), in)) > 0) {
+            hash = fnv1a64(chunk.data(), n, hash);
+            done += n;
+            ok = done <= e.size && std::fwrite(chunk.data(), 1, n, f) == n;
+        }
+        std::fclose(in);
+        if (ok && (done != e.size || hash != e.hash)) {
+            error_ = "file changed while packing: " + e.source.string();
+            return false;
+        }
     }
-    if (std::fclose(f) != 0) ok = false;
     return ok;
 }
 
-bool PakReader::open(const std::string& path) {
+bool PakReader::open(const std::filesystem::path& file, uint64_t base, uint64_t length) {
     path_.clear();
+    base_ = 0;
     entries_.clear();
     index_.clear();
     error_.clear();
-    FILE* f = std::fopen(path.c_str(), "rb");
+    const std::string path = file.string();  // for messages
+    FILE* f = open_file(file, "rb");
     if (!f) {
         error_ = "cannot open " + path;
         return false;
     }
     // file_size, not ftell: `long` is 32-bit on Windows and packs of upscaled art pass 2 GiB.
+    // `total`: the archive's own size (the rest of the file, or the embedded span).
     std::error_code size_ec;
-    const uint64_t total = std::filesystem::file_size(path, size_ec);
-    if (size_ec || total < 12) {
+    const uint64_t file_total = std::filesystem::file_size(file, size_ec);
+    const bool in_file = !size_ec && base <= file_total;
+    const uint64_t rest = in_file ? file_total - base : 0;
+    const uint64_t total = length != 0 ? std::min(length, rest) : rest;
+    if (!in_file || total < 12 || !seek_to(f, base)) {
         error_ = "truncated header in " + path;
         std::fclose(f);
         return false;
@@ -170,7 +282,7 @@ bool PakReader::open(const std::string& path) {
             std::fclose(f);
             return false;
         }
-        // Offsets must be inside the file and ranges must not wrap.
+        // Offsets must be inside the archive and ranges must not wrap.
         if (offset > total || size > total ||
             offset + size < offset || offset + size > total) {
             error_ = "entry out of range in " + path + ": " + name;
@@ -181,7 +293,8 @@ bool PakReader::open(const std::string& path) {
         entries_.push_back({std::move(name), offset, size, hash});
     }
     std::fclose(f);
-    path_ = path;
+    path_ = file;
+    base_ = base;
     return true;
 }
 
@@ -201,11 +314,40 @@ bool PakReader::read(const std::string& name, std::vector<uint8_t>& out) const {
     out.resize(static_cast<size_t>(entry.size));
     bool ok = true;
     if (entry.size > 0) {
-        in.seekg(static_cast<std::streamoff>(entry.offset));
+        in.seekg(static_cast<std::streamoff>(base_ + entry.offset));
         ok = in.read(reinterpret_cast<char*>(out.data()), static_cast<std::streamsize>(out.size())).good();
     }
     if (ok && fnv1a64(out.data(), out.size()) != entry.hash) ok = false;  // corrupt pak/data
     if (!ok) out.clear();
+    return ok;
+}
+
+bool PakReader::extract(const PakEntry& entry, const std::filesystem::path& dest,
+                        const std::function<void(uint64_t)>& on_bytes) const {
+    FILE* in = open_file(path_, "rb");
+    if (!in) return false;
+    FILE* out = open_file(dest, "wb");
+    if (!out) {
+        std::fclose(in);
+        return false;
+    }
+    bool ok = seek_to(in, base_ + entry.offset);
+    std::vector<uint8_t> chunk(kChunk);
+    uint64_t left = entry.size, hash = kFnvOffsetBasis;
+    while (ok && left > 0) {
+        const size_t n = static_cast<size_t>(std::min<uint64_t>(left, chunk.size()));
+        ok = std::fread(chunk.data(), 1, n, in) == n && std::fwrite(chunk.data(), 1, n, out) == n;
+        hash = fnv1a64(chunk.data(), n, hash);
+        left -= n;
+        if (ok && on_bytes) on_bytes(n);
+    }
+    std::fclose(in);
+    if (std::fclose(out) != 0) ok = false;
+    if (ok && hash != entry.hash) ok = false;  // corrupt archive
+    if (!ok) {
+        std::error_code ec;
+        std::filesystem::remove(dest, ec);
+    }
     return ok;
 }
 
