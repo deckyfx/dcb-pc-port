@@ -18,5 +18,7 @@ struct File {
 
 /// config/SLPS-03101/text/catalog*.txt and en*.tsv (the text catalog), sorted by name.
 std::span<const File> text_config();
+/// config/SLPS-03101/sprites.txt (the sprite sizes the US title art is drawn at).
+std::span<const File> art_config();
 
 }  // namespace patch::embedded

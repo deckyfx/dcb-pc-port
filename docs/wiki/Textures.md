@@ -56,7 +56,7 @@ With both games ripped (`assets/converted/SLPS-03101/` and `assets/converted/SLU
 `tools/assets/swap_us_images.py` makes the JP game show the US images wherever the layout is the
 same: attack names, mini cards, battle UI, card art, the opening, partner, friend and trade
 screens, the city menus and city-name plates, the card menu and the fusion screens, the VS and
-result screens (about 1110 images and 715 palettes).
+result screens, the title (about 1115 images and 715 palettes).
 
 The US data goes in exactly as the US disc has it: each changed image (and its palette, where the
 US build changed it) is written to `assets/converted/SLPS-03101/us/*.raw`, and the manifest entry
@@ -64,7 +64,7 @@ points there. A manifest path ending in `.raw` is uploaded as it is, with no pal
 colours and palette animation match the US game; the JP PNGs are not touched.
 
 Images pair by their layout on the disc, not by file name; the script lists what it leaves alone
-(the title, the MATCH/WIN name plates, attacks with no US version) and, where one JP image stands
+(the MATCH/WIN name plates, attacks with no US version) and, where one JP image stands
 for attacks the US build named differently, which one it picked. `SYSTEM.TIM` is never swapped (the
 JP text engine draws its font from it). The opponent name pictures on the VS screen are left to
 `tools/text/bigfont.py`, which grafts them into the MATCH archives.
@@ -83,6 +83,13 @@ A few images need more than a swap:
   palette as one 32-colour row, the JP one as two 16-colour rows (the game draws the banner with
   the first row and its fading trail with the second). The colours are the same, so the tool
   sends the US palette up in the JP shape and swaps the image.
+- **Title** (`B:\TITLE.ARC`, a different image list): the US subtitle (DIGITAL CARD BATTLE, 320x48),
+  copyright (256 wide) and NEW GAME / CONTINUE / Battle with Friend go into the JP images the
+  way the texture replacer fits a PNG (box-downsampled to the JP size, quantized to the JP
+  palette, which the logo and the D-1 Grand Prix label share). The copyright gets a 256-wide slot
+  (`"slot_w"`); `config/SLPS-03101/sprites.txt` draws it 1:1 from there and the subtitle smaller.
+  The JP logo stays. Hand-edited art in `assets/<serial>/custom/textures/` wins over this (and
+  over any US image); `pack.sh -r` puts `custom/sprites.txt` over ours when there is one.
 
 | Option | Effect |
 |---|---|

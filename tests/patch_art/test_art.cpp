@@ -166,6 +166,41 @@ void test_compose() {
     CHECK(pal[6] == (0x4969 & 0xFF));                // colours still in use are kept
 }
 
+void test_fit() {
+    // A JP 8x2 4-bit image whose palette holds red twice (entries 1 and 4).
+    std::vector<uint16_t> pal = {0x0000, 0x001F, 0x03E0, 0x7C00, 0x001F};
+    pal.resize(16, 0x7FFF);
+    Tim jp;
+    jp.bpp = 4;
+    jp.image = {704, 128, 2, 2};
+    jp.has_clut = true;
+    jp.clut = {704, 250, 16, 1};
+    jp.palette = le16(pal);
+    jp.pixels = pack4({{4, 1, 2, 3, 0, 0, 0, 0}, {4, 1, 2, 3, 0, 0, 0, 0}});
+    const auto px = [](uint8_t r, uint8_t g, uint8_t b, uint8_t a) { return std::vector<uint8_t>{r, g, b, a}; };
+    const std::vector<std::vector<uint8_t>> row = {px(255, 0, 0, 255), px(255, 0, 0, 255), px(0, 200, 0, 255),
+                                                   px(0, 0, 255, 255), px(0, 0, 0, 0),     px(255, 255, 255, 255),
+                                                   px(255, 0, 0, 255), px(255, 0, 0, 255)};
+    Bytes art;
+    for (int y = 0; y < 2; ++y)
+        for (const auto& p : row) art.insert(art.end(), p.begin(), p.end());
+    // The JP size: a red pixel keeps whichever red the JP image had; the rest is quantized.
+    auto out = patch::art::fit_image(jp, art, 8, 2);
+    CHECK(out && unpack4(*out, 8) == Rows({{4, 1, 2, 3, 0, 5, 1, 1}, {4, 1, 2, 3, 0, 5, 1, 1}}));
+    // Twice as large: box-downsampled (each pair of columns averaged) to the JP size.
+    Bytes wide;
+    for (size_t i = 0; i < art.size(); i += 4)
+        for (int k = 0; k < 2; ++k) wide.insert(wide.end(), art.begin() + static_cast<std::ptrdiff_t>(i),
+                                                art.begin() + static_cast<std::ptrdiff_t>(i + 4));
+    out = patch::art::fit_image(jp, wide, 16, 2);
+    CHECK(out && unpack4(*out, 8) == Rows({{4, 1, 2, 3, 0, 5, 1, 1}, {4, 1, 2, 3, 0, 5, 1, 1}}));
+    // Into a 16-wide slot: no JP index to keep, the first red wins.
+    out = patch::art::fit_image(jp, wide, 16, 2, 16);
+    CHECK(out && out->size() == 16 && unpack4(*out, 16)[0][0] == 1 && unpack4(*out, 16)[0][9] == 0);
+    CHECK(!patch::art::fit_image(jp, art, 4, 2));         // smaller art: never upscaled
+    CHECK(!patch::art::fit_image(jp, wide, 16, 2, 6));    // a slot narrower than the image
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -176,6 +211,7 @@ int main(int argc, char** argv) {
     else if (c == "reshape") test_reshape();
     else if (c == "read_tim") test_read_tim();
     else if (c == "compose") test_compose();
+    else if (c == "fit") test_fit();
     else return 2;
     return 0;
 }

@@ -416,5 +416,39 @@ class PaletteReshapeTest(unittest.TestCase):
         self.assertEqual((out[0][0].clut, out[0][1]), ((816, 497, 16, 2), []))
 
 
+class FitTest(unittest.TestCase):
+    """FIT (the title): US art fitted into a JP image and palette like the texture replacer does
+    (mirrors test_patch_art fit)."""
+    PAL = [0x0000, 0x001F, 0x03E0, 0x7C00, 0x001F] + [0x7FFF] * 11  # red twice (1 and 4)
+    ROW = [(255, 0, 0, 255), (255, 0, 0, 255), (0, 200, 0, 255), (0, 0, 255, 255), (0, 0, 0, 0),
+           (255, 255, 255, 255), (255, 0, 0, 255), (255, 0, 0, 255)]
+
+    def jp(self):
+        idx = [4, 1, 2, 3, 0, 0, 0, 0] * 2
+        pixels = bytes(idx[i] | idx[i + 1] << 4 for i in range(0, 16, 2))
+        return swap.Tim(0, 4, (704, 128, 2, 2), (704, 250, 16, 1), pixels, struct.pack("<16H", *self.PAL))
+
+    @staticmethod
+    def unpack(px, width):
+        idx = [(b >> s) & 15 for b in px for s in (0, 4)]
+        return [idx[i:i + width] for i in range(0, len(idx), width)]
+
+    def test_fit(self):
+        art = b"".join(bytes(p) for p in self.ROW * 2)
+        want = [[4, 1, 2, 3, 0, 5, 1, 1]] * 2
+        self.assertEqual(self.unpack(swap.fit_image(self.jp(), 8, 2, art), 8), want)  # JP reds kept
+        wide = b"".join(bytes(p) * 2 for p in self.ROW * 2)
+        self.assertEqual(self.unpack(swap.fit_image(self.jp(), 16, 2, wide), 8), want)  # box-downsampled
+        slot = self.unpack(swap.fit_image(self.jp(), 16, 2, wide, 16), 16)
+        self.assertEqual((len(slot[0]), slot[0][0], slot[0][9]), (16, 1, 0))  # no JP index to keep
+        self.assertIsNone(swap.fit_image(self.jp(), 4, 2, art))  # never upscaled
+        self.assertIsNone(swap.fit_image(self.jp(), 16, 2, wide, 6))  # slot narrower than the image
+
+    def test_fit_table_is_the_title(self):
+        for (drv, entry, jp), (us, slot) in swap.FIT.items():
+            self.assertEqual((drv, entry), ("B.DRV", "TITLE.ARC"))
+            self.assertTrue(slot == 0 or slot >= jp[2] * 4)
+
+
 if __name__ == "__main__":
     unittest.main()

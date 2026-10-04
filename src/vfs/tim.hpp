@@ -69,4 +69,12 @@ inline uint8_t expand5(uint16_t v) { return static_cast<uint8_t>((v << 3) | (v >
 inline constexpr uint8_t kStpAlpha = 254;
 uint16_t rgba_to_psx15(uint8_t r, uint8_t g, uint8_t b, uint8_t a);
 
+/// The index of `per` palette entries an RGBA pixel takes (the texture replacer's quantizer, also
+/// used to build replacement art offline, so both give the same indices). Exact 16-bit match
+/// first (RGB *and* STP, via rgba_to_psx15), so identity art, including transparent 0x0000
+/// wherever it sits, returns its original index. Then: a transparent pixel takes entry 0 when it
+/// is 0x0000, or any 0x0000 entry; otherwise the nearest colour among the entries that are not
+/// 0x0000, the STP bit only breaking ties.
+unsigned palette_index(const uint16_t* pal, size_t per, uint8_t r, uint8_t g, uint8_t b, uint8_t a);
+
 }  // namespace vfs
