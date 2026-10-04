@@ -42,6 +42,7 @@ text and art built from the player's own discs.*
 - [x] CD-ROM streaming from the original disc image; runs from the disc image alone (no BIOS, no extracted files)
 - [x] Runs from extracted game data alone (sectors rebuilt from files; verified identical to the disc)
 - [x] One-time asset import from the player's own dump: no disc needed afterwards, no copyrighted data in the download (`dcb --setup`, or a first-run window asking for both discs, checked against redump.org)
+- [x] Everything the game reads lives in `assets/` (game data at `assets/dump/<serial>/`), found next to the program whatever the working directory
 
 **Game**
 - [x] Boot FMV (MDEC, 24-bit), title screen (GPU renderer, SDL3 window)
@@ -53,6 +54,19 @@ text and art built from the player's own discs.*
 - [ ] Remaining game modes and overlays (EVOSEG, SAISEG, SUBSEG, SUGSEG, ENDSEG)
 - [ ] `PSX2.EXE` mode (`LoadExec`)
 
+**English build** (SLPS-03101 code + English assets from the player's US dump, SLUS-01328; [research and plan](docs/HYBRID_EN_ASSETS.md))
+- [x] English font, card/deck names and effect text, menus and dialogs (text catalog), city, tutorial and event scripts, VS-screen big names
+- [x] US art (1109 images, 717 palettes) and the US opening movie
+- [x] Built on the player's machine by the program itself (`src/patch`, C++): no Python or ffmpeg, identical to the offline pipeline (`tools/patch/compare_*.sh`)
+- [x] Community fixes (Effect Text Fix, Digi-Parts Fix) applied when the player supplies them
+- [ ] English title logo in the public build (the hand-edited one is made from game art and cannot ship)
+- [ ] D-1 Grand Prix (a Japan-only mode: no US text to take)
+
+**Distribution**
+- [x] Public: the program alone; the first run builds everything from the player's two discs
+- [x] Private: `pack.sh` zips a self-contained bundle (program + `assets/`) from your own dumps, for your own machines
+- [x] Private single file: `pack.sh -1`, the bundle appended to the program, unpacked next to it on first start
+
 **PC features**
 - [x] PC options: `settings.ini` (initial window size, filtering, aspect, key/gamepad rebinding, volume); resizable window, picture fits it (F8: fit / integer)
 - [x] Native pause menu: Esc / F1 (gamepad Start+Select) with save/load slots, settings, controls, memory-card backup/restore, about, quit with confirmation
@@ -62,9 +76,8 @@ text and art built from the player's own discs.*
 - [x] Trainer (F4, or the F1 menu): built-in presets (all cards, all Digi parts), your own GameShark-style codes (`cheats/<serial>.txt`), battle actions on F10/F11/F12, memory search
 - [x] Asset pipeline: rip textures/sound banks, pack them into one `.pak` the game loads (same-size edits today)
 - [ ] Windows x64 release build tested on Windows
-- [ ] English build: SLPS-03101 code + English assets from the player's US dump (SLUS-01328) ([research and plan](docs/HYBRID_EN_ASSETS.md))
 - [ ] Enhance / upscale assets (needs a renderer with higher internal resolution to show HD art)
-- [ ] Enhancements: widescreen, translation
+- [ ] Enhancements: widescreen
 - [ ] Network Battle
 - [ ] Custom Battle mode: pick the opponent and the arena
 - [ ] Rust port of the game logic
@@ -72,7 +85,9 @@ text and art built from the player's own discs.*
 ## Quick start
 
 You need your own dumps (raw `.cue`/`.bin`, Mode 2 / 2352-byte sectors) of the Japanese disc
-**SLPS-03101**, and optionally the US disc **SLUS-01328** for English text and art. Building from
+**SLPS-03101** and the US disc **SLUS-01328** (English text and art). The first-run window asks for
+both; only a start without a window (`DCB_HEADLESS=1`) runs in Japanese from the Japanese dump
+alone. Building from
 source recompiles the game code from your own disc, so the boot EXE is extracted first (Linux):
 
 ```bash
@@ -86,7 +101,9 @@ A built `dcb` only needs the game data, set up once from dumps of the Japanese a
 discs (`dcb --setup <jp.cue> <us.cue>`, or the first-run window): both are verified against
 redump.org and imported, and the English data is built from them. A Windows x64 `.exe`
 cross-compiles with `cmake --preset windows-cross && cmake --build --preset windows-cross`.
-English text, textures and movies are built from the imported dumps; see the wiki pages below.
+`./pack.sh` zips a ready-to-run bundle (program + `assets/`: the pak, the English files, the US
+movie override when the pak has no native movies, and the game data) from your dumps, for your own
+machines; see the wiki pages below.
 
 ## Documentation
 
