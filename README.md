@@ -88,7 +88,8 @@ You need your own dumps (raw `.cue`/`.bin`, Mode 2 / 2352-byte sectors) of the J
 **SLPS-03101** and the US disc **SLUS-01328** (English text and art). The first-run window asks for
 both; only a start without a window (`DCB_HEADLESS=1`) runs in Japanese from the Japanese dump
 alone. Building from
-source recompiles the game code from your own disc, so the boot EXE is extracted first (Linux):
+source recompiles the game code from your own disc, so the boot EXE is extracted first (Linux; the
+compiler and SDL3 development packages are listed in [Building](docs/wiki/Building.md#requirements-linux)):
 
 ```bash
 python3 tools/disc/extract_disc.py disc/SLPS-03101/dcb_jp.cue -o extracted/SLPS-03101
