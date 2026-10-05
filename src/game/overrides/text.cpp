@@ -350,6 +350,14 @@ bool jp_code_at(const Text& t, size_t s) {
     return (c == 'h' || c == 'w') && n == '-' && t.at(s + 2) >= '0' && t.at(s + 2) <= '9';
 }
 
+/// The value of a hex digit, or -1.
+int hex_digit(uint8_t c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
 /// One parser step over `*`-escaped US codes (US jump table at 0x800102c0). With `jp_codes`
 /// (English inside a JP message), bare JP codes count too. `s` advances past the consumed bytes.
 Item next_item(const Text& t, size_t& s, Cursor& cur, bool jp_codes = false) {
@@ -367,6 +375,17 @@ Item next_item(const Text& t, size_t& s, Cursor& cur, bool jp_codes = false) {
     if (c == 0x5C && t.at(s + 1) == 'n') {  // backslash-n (MSD scripts)
         s += 2;
         it.step = Step::Newline;
+        return it;
+    }
+    if (c == 0x5C && t.at(s + 1) == '0' && t.at(s + 2) == 'x' && hex_digit(t.at(s + 3)) >= 0 &&
+        hex_digit(t.at(s + 4)) >= 0) {
+        // "\0xHH": the character HH (the US scripts quote names as \0x22...\0x22, 104 times).
+        const uint8_t v = static_cast<uint8_t>(hex_digit(t.at(s + 3)) * 16 + hex_digit(t.at(s + 4)));
+        s += 5;
+        if (v >= 0x20 && v < 0x7F) {
+            it.step = Step::Glyph;
+            it.ch = v;
+        }
         return it;
     }
     const bool bare_code = c != '*' && jp_codes && jp_code_at(t, s);
