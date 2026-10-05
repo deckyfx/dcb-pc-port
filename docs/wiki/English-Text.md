@@ -66,9 +66,19 @@ The English text uses the US names; `[text] names` in `settings.ini` picks which
 | Izzy | Koushiro |
 | Joe | Jou |
 
-Ken, Sora and Mimi are the same in both. The list is `config/SLPS-03101/text/names-jp.tsv` (built
+Ken, Sora and Mimi are the same in both; the Digimon Emperor becomes the Digimon Kaiser.
+
+The Digimon take their Japanese card names too (53 of the 191 differ): Veemon -> V-mon, ExVeemon ->
+XV-mon, Gatomon -> Tailmon, Salamon -> Plotmon, Omnimon -> Omegamon, Myotismon -> Vamdemon,
+Piedmon -> Piemon, Puppetmon -> Pinocchimon, Machinedramon -> Mugendramon, ... Variants keep the
+Japanese suffix (R-Gatomon -> Tailmon R, J-Mojyamon -> JungleMojyamon); MasterTyrannomon keeps its
+US name. Every name fits where the longest US one (HerculesKabuterimon, 19 letters) does, and stays
+within the battle field's 20-letter card-name buffer (a longer one would keep the US name).
+
+The list is `config/SLPS-03101/text/names-jp.tsv` (built
 into the program): one `US<TAB>JP` pair per line, whole words only, so editing it changes the names
-everywhere the text shows them: dialogue and speaker lines, menus, deck owners. Lines that are typed
+everywhere the text shows them: dialogue and speaker lines, menus, card lists, the battle
+field's card names, Fusion Shop lines, deck owners. Lines that are typed
 out get the swapped name before they start, and the player's own name is never changed. On the VS
 screen a renamed opponent's name is drawn with the big font of the player's name (the US pictures
 are artwork with letters the Japanese names would need missing, such as Y).

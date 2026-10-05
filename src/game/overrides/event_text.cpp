@@ -134,7 +134,8 @@ std::string expand_names(PsxContext& ctx, const std::string& text) {
         } else if (n <= 3) {
             const auto index = static_cast<int16_t>(psx_read16(&ctx, kUnitCard));
             const uint32_t card = psx_read32(&ctx, kUnitCards + 4u * static_cast<uint32_t>(index));
-            const std::string name = read_string(ctx, card + 3, 21);
+            std::string name = read_string(ctx, card + 3, 21);
+            dcb::text_swap_names(name);  // a card name ([text] names); the player's (h0) is never swapped
             out += n == 1 ? name : masked(name);
         }
     }

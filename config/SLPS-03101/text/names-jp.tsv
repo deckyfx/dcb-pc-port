@@ -12,3 +12,58 @@ Tai	Taichi
 Matt	Yamato
 Izzy	Koushiro
 Joe	Jou
+Digimon Emperor	Digimon Kaiser
+# Digimon (card names, deck owners, dialogue): the Japanese card names, romanized. Every one fits
+# where the longest US name (HerculesKabuterimon, 19 letters) fits; a name stays within 20 letters
+# (the battle field's card-name buffer). Compounds are listed whole (ExVeemon is not "ExV-mon").
+Veemon	V-mon
+ExVeemon	XV-mon
+Veedramon	V-dramon
+AeroVeedramon	AeroV-dramon
+Flamedramon	Fladramon
+Raidramon	Lighdramon
+Gatomon	Tailmon
+BKGatomon	BlackTailmon
+R-Gatomon	Tailmon R
+Salamon	Plotmon
+Biyomon	Piyomon
+Halsemon	Holsmon
+Pegasusmon	Pegasmon
+Armadillomon	Armadimon
+Baronmon	Baromon
+Lillymon	Lilimon
+Omnimon	Omegamon
+Phoenixmon	Hououmon
+RealMetalGreymon	ShinMetalGreymon
+Meteormon	Insekimon
+Apemon	Hanumon
+Candlemon	Candmon
+Centarumon	Kentarumon
+Brachiomon	Brachimon
+Dolphmon	Rukamon
+Frigimon	Yukidarumon
+MudFrigimon	Tsuchidarumon
+Penguinmon	Penmon
+SnowAgumon	YukiAgumon
+DemiDevimon	PicoDevimon
+Thundermon	Thunderballmon
+ShellNumemon	KaratsukiNumemon
+Magnadramon	Holydramon
+MagnaAngemon	HolyAngemon
+HerculesKabuterimon	HerakleKabuterimon
+MegaKabuterimon	AtlurKabuterimon
+Piximon	Piccolomon
+Ninjamon	Igamon
+J-Mojyamon	JungleMojyamon
+Myotismon	Vamdemon
+VenomMyotismon	VenomVamdemon
+Piedmon	Piemon
+Machinedramon	Mugendramon
+Wizardmon	Wizarmon
+Puppetmon	Pinocchimon
+Rockmon	Golemon
+Vegiemon	Vegimon
+RedVegiemon	RedVegimon
+D-Otamamon	Otamamon D
+L-ToyAgumon	ToyAgumon L
+Vi-Elecmon	Elecmon Vi
