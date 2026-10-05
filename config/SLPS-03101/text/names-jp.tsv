@@ -1,0 +1,14 @@
+# Character names: the US name (as the English text has it) <TAB> the name shown instead when
+# [text] names = jp (settings.ini; the default). Whole words only; a colour code right before a
+# name ("*c4Cody*c7") counts as a word break. The player's own name is never changed.
+# Built into the program (cmake/EmbedFiles.cmake); src/game/overrides/text.cpp applies it.
+Davis	Daisuke
+Keely	Miyako
+Yolei	Miyako
+Cody	Iori
+T.K.	Takeru
+Kari	Hikari
+Tai	Taichi
+Matt	Yamato
+Izzy	Koushiro
+Joe	Jou

@@ -22,6 +22,7 @@
 //   the line slot holds a marker and a serial, and the reveal types two characters a frame through
 //   the text renderer. The first line of a page (the speaker's name) shows at once, as in JP.
 
+#include "text.hpp"
 #include "typewriter.hpp"
 
 #include <psx/recomp.h>
@@ -154,7 +155,9 @@ void dcb_tutorial_msg_show(PsxContext* ctx) {
     const std::string src = read_string(*ctx, ctx->r[kA1]);
     if (!is_english(src)) return psx_call_original(ctx, kTutorialShow);
     const uint32_t player = psx_read32(ctx, kPlayers);
-    const std::string text = expand_player(src, read_string(*ctx, player + 0x1CA, 32));
+    std::string swapped = src;
+    dcb::text_swap_names(swapped);  // before the player's own name goes in
+    const std::string text = expand_player(swapped, read_string(*ctx, player + 0x1CA, 32));
     const int16_t centre_y = static_cast<int16_t>(ctx->r[kA0]);
 
     // The original's frame (sp+16 stack arguments, sp+32 rect, sp+40 text), the text part as
@@ -206,7 +209,9 @@ void dcb_tutorial_msg_show(PsxContext* ctx) {
 void dcb_unit_msg_build(PsxContext* ctx) {
     const std::string src = read_string(*ctx, ctx->r[kA0]);
     if (!is_english(src)) return psx_call_original(ctx, kUnitBuild);
-    const std::string text = expand_names(*ctx, src);
+    std::string swapped = src;
+    dcb::text_swap_names(swapped);  // before the player's / card names go in
+    const std::string text = expand_names(*ctx, swapped);
 
     ctx->r[kA0] = kUnitLines;
     o_EVOSEG_801EBEC0(ctx);  // unit_msg_slot_alloc: in use, shown = -1 on the first line, else 0

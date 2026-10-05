@@ -319,6 +319,10 @@ IniDocument default_settings_ini() {
     doc.add_comment("audio", "Master volume, 0-100.");
     doc.set("audio", "volume", std::to_string(kVolumeMax));
 
+    doc.add_comment("text", "Character names: jp = the Japanese names (Daisuke, Miyako, Iori, Takeru, Hikari,");
+    doc.add_comment("text", "Taichi, Yamato, Koushiro, Jou), us = the US ones (Davis, Keely, Cody, T.K., ...).");
+    doc.set("text", "names", "jp");
+
     doc.add_comment("mods", "Gameplay mods. boss_rematch: beaten Battle Arena bosses (Wormmon, Stingmon,");
     doc.add_comment("mods", "Shadramon, the Digimon Emperor, A) can be fought again in their city's Battle Cafe.");
     doc.set("mods", "boss_rematch", "true");

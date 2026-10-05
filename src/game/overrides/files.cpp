@@ -188,11 +188,12 @@ bool resolve(const std::string& path, bool want_dir, uint32_t& id, Dir* dir_out)
             src.size = e->size;
         }
         bool modded = false;
-        if (dcb::mods::wants(key)) {
+        const bool vs_name = key.rfind("B/MATCH/", 0) == 0;  // the opponent's name picture
+        if (dcb::mods::wants(key) || vs_name) {
             std::vector<uint8_t> bytes = src.bytes;
             if (src.loose || read_sectors(src.lba, (src.size + 2047) / 2048, bytes)) {
                 bytes.resize(src.size);
-                if (dcb::mods::apply(key, bytes)) {
+                if (vs_name ? dcb::vs_name_picture(key, bytes) : dcb::mods::apply(key, bytes)) {
                     src.bytes = std::move(bytes);
                     src.size = static_cast<uint32_t>(src.bytes.size());
                     src.loose = modded = true;
