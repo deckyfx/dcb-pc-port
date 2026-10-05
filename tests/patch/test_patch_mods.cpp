@@ -98,13 +98,16 @@ void test_rematch() {
     for (const auto& rec : recs) starts.insert(rec.offset);
     bool battle = false, music = false, listed = false;
     for (const auto& rec : recs) {
-        if (rec.op == 5) CHECK(starts.count(target_of(*out, rec.offset)));  // every jump lands on a record
+        if (rec.op == 5) CHECK(starts.count(target_of(*out, rec.offset)) || target_of(*out, rec.offset) == out->size());  // on a record, or the end
         if (rec.offset < in.size()) continue;
         if (rec.op == 0x0B && patch::rd16(rec.raw, 2) == 2 && patch::rd16(rec.raw, 6) == 140) battle = true;
         if (rec.op == 0x0B && patch::rd16(rec.raw, 2) == 15 && patch::rd16(rec.raw, 6) == 99) music = true;
         if (rec.op == 0x0B && patch::rd16(rec.raw, 2) == 3 && patch::rd16(rec.raw, 6) == 5) listed = true;
     }
     CHECK(battle && music && listed);
+    // Running off the original last record still ends the script: the new code starts with a
+    // jump to the (new) end.
+    CHECK(patch::rd16(*out, in.size()) == 5 && target_of(*out, in.size()) == out->size());
     // The record falling into the menu is now a jump; the menu's own record is untouched; the
     // first dispatch test can no longer skip (r2 != r2) and the old jump to the menu moved on.
     CHECK(patch::rd16(*out, p_at) == 5 && target_of(*out, p_at) >= in.size());

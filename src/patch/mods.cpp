@@ -221,6 +221,11 @@ std::optional<Bytes> add_rematches(View script, const std::vector<Rematch>& list
     Bytes out(script.begin(), script.end());
     Assembler a(out);
 
+    // The scripts end by running off their last record (leaving a city: Jungle City's exit path
+    // plays the map music, sets r0 and falls off the end). The new code starts with a jump to the
+    // new end, so running off the old end still ends the script.
+    const size_t end_jump = a.jump();
+
     // The list: the record that fell into the menu (moved here), then each boss when unlocked.
     const size_t moved_before = a.here();
     if (redirect_before) a.raw(before.raw);
@@ -281,6 +286,8 @@ std::optional<Bytes> add_rematches(View script, const std::vector<Rematch>& list
         a.speak(r.name, r.player_lost);
         a.jump(after_menu);
     }
+
+    a.set_target(end_jump, a.here());
 
     // In place, same sizes: every way into the menu now goes through the list.
     for (const MsdRecord& r : recs) {

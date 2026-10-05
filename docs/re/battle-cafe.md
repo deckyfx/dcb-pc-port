@@ -20,6 +20,10 @@ is the script size (the VM stops there). Registers r12-r362 are saved as bits, r
 ([save-data.md](save-data.md#city-flags-0x23cc)); a save made in a city also stores the script
 position (host 0x0B cmd 6: `game_data + 0x30`), so a mod must not move existing records.
 
+A script ends by running off its last record: leaving a city (Cross at "Where do you want to go?",
+r1 = -1) jumps to the last few records (Jungle City: map music `cmd15(111)`, r0 = 0) and falls
+off the end. Code appended to a script must therefore start with a jump to the new end.
+
 ## City host commands (`city_event_host`, SAISEG `801E6618`)
 
 The ones the cafe uses:
