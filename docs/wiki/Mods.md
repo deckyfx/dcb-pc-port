@@ -9,6 +9,7 @@ English data, and each mod can be turned off in `settings.ini`:
 ```ini
 [mods]
 boss_rematch = true
+arena_save = true
 ```
 
 ## Boss rematch
@@ -33,6 +34,16 @@ his rematch entry. The cafe lines are the port's own.
 
 Saves are not changed: the mod only appends to the city script and keeps every existing record
 where it was, so a save made with it loads without it and the other way round.
+
+## Arena saves
+
+The Battle Arenas (Battle Arena, Extra Arena and the others) let you save only at a few battles
+(the 4th and the 7th). With this mod every battle's menu has **Save** (Battle / Deck Data / Save),
+in every city. Saving there resumes at that battle: its intro and menu again, the same opponent.
+A's fight in Infinity Tower keeps the game's own flow (it recolours the whole screen).
+
+A save made at one of these extra save points can only be loaded with the mod on (it resumes in
+code the mod adds). Saves made at the game's own save points load either way.
 
 How it works (the cafe's script structure, the flags): [battle-cafe.md](../re/battle-cafe.md).
 `dcb_patch --rematch <AREAnn.PAK> C/AREAnn.PAK <out>` applies it to one city file, for inspection.

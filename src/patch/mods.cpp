@@ -14,7 +14,7 @@ namespace {
 using text::MsdRecord;
 
 constexpr size_t kHeader = 16;        // jump targets are stored relative to the end of the header
-constexpr uint16_t kOpJump = 5, kOpText = 8, kOpSkipIf = 9, kOpCmd0 = 0x0A;
+constexpr uint16_t kOpJump = 5, kOpArith = 7, kOpText = 8, kOpSkipIf = 9, kOpCmd0 = 0x0A;
 constexpr uint16_t kCmpEq = 0, kCmpNe = 3;  // op 9 comparisons: skip the next record when true
 constexpr uint16_t kRegChoice = 1;    // r1: the Yes / No choice, then the battle result (0 = lost)
 constexpr uint16_t kRegPick = 2;      // r2: the cafe menu's pick
@@ -306,7 +306,103 @@ std::optional<Bytes> add_rematches(View script, const std::vector<Rematch>& list
     return out;
 }
 
-std::optional<Bytes> patch_city_pak(View pak, const std::vector<Rematch>& list, std::string* why) {
+std::optional<Bytes> add_arena_saves(View script, std::string* why) {
+    std::vector<MsdRecord> recs;
+    try {
+        recs = text::msd_walk(script);
+    } catch (const std::exception& e) {
+        if (why) *why = e.what();
+        return std::nullopt;
+    }
+    const auto op_cmd = [&](size_t i, uint16_t op, uint16_t c) { return i < recs.size() && recs[i].op == op && cmd_of(recs[i]) == c; };
+    const auto is_test = [&](size_t i, uint16_t reg, int32_t value) {
+        return i + 1 < recs.size() && recs[i].op == kOpSkipIf && rd16(recs[i].raw, 2) == reg && rd16(recs[i].raw, 4) == kCmpNe &&
+               rd16(recs[i].raw, 6) == 0 && static_cast<int32_t>(rd32(recs[i].raw, 8)) == value && recs[i + 1].op == kOpJump;
+    };
+    std::map<size_t, size_t> index;  // record offset -> index
+    for (size_t i = 0; i < recs.size(); ++i) index[recs[i].offset] = i;
+
+    Bytes out(script.begin(), script.end());
+    Assembler a(out);
+    const size_t end_jump = a.jump();  // running off the old end still ends the script
+    size_t added = 0;
+    for (size_t i = 0; i + 10 < recs.size(); ++i) {
+        // An arena battle menu: cmd0(97), the items Battle (13) and Deck info (14) only, the pick
+        // into r1, then tests for 1, 2 and -1 (cancel).
+        if (!(op_cmd(i, kOpCmd0 + 1, 0) && arg_of(recs[i], 0) == 97 && op_cmd(i + 1, kOpCmd0 + 1, 1) &&
+              arg_of(recs[i + 1], 0) == 13 && op_cmd(i + 2, kOpCmd0 + 1, 1) && arg_of(recs[i + 2], 0) == 14 &&
+              op_cmd(i + 3, kOpCmd0, 1) && is_test(i + 4, kRegChoice, 1) && is_test(i + 6, kRegChoice, 2) &&
+              is_test(i + 8, kRegChoice, -1)))
+            continue;
+        // Not A's fight (the Battle choice leads to deck 140 before the next record that leaves):
+        // it changes the whole screen's colours, so it keeps the game's own flow.
+        bool boss = false;
+        if (const auto it = index.find(jump_target(script, recs[i + 5])); it != index.end()) {
+            for (size_t k = it->second; k < recs.size() && k < it->second + 64; ++k) {
+                if (op_cmd(k, kOpCmd0 + 1, 2)) {
+                    boss = arg_of(recs[k], 0) == 140;
+                    break;
+                }
+            }
+        }
+        if (boss) continue;
+        // The battle's set-up (opponent number r10, name r9, the portrait host cmd 13): where a
+        // save made here resumes, as registers below r12 are not saved.
+        size_t setup = 0;
+        for (size_t k = i; k > 0 && k + 64 > i; --k) {
+            if (recs[k].op == kOpArith && rd16(recs[k].raw, 2) == 10 && rd16(recs[k].raw, 4) == 0) {
+                setup = k;
+                break;
+            }
+        }
+        if (setup == 0) continue;
+        while (setup > 0 && op_cmd(setup - 1, kOpCmd0 + 3, 0)) --setup;  // the name box positions before it
+        // The arena's own save block (its location code and music): the next one after the menu.
+        size_t save = i;
+        while (save < recs.size() && !(op_cmd(save, kOpCmd0 + 1, 6) && op_cmd(save - 1, kOpCmd0 + 1, 15) &&
+                                       arg_of(recs[save - 1], 0) == 110 && arg_of(recs[save], 0) != 1))
+            ++save;
+        if (save >= recs.size() || !op_cmd(save + 1, kOpCmd0 + 1, 15)) continue;
+        size_t save_start = save - 1;
+        while (save_start > 0 && (op_cmd(save_start - 1, kOpCmd0 + 3, 0) || op_cmd(save_start - 1, kOpCmd0, 6))) --save_start;
+
+        // Items: 13, 14, then 15 (Save), back to the pick.
+        const MsdRecord& item14 = recs[i + 2];
+        const size_t items_at = a.here();
+        a.raw(item14.raw);
+        a.cmd(1, {15});
+        a.jump(recs[i + 3].offset);
+        // Save: the arena's save records (cmd6(code) stores where a save resumes: right after it),
+        // the arena music, then the battle's set-up again.
+        const size_t save_at = a.here();
+        for (size_t k = save_start; k <= save + 1; ++k) a.raw(recs[k].raw);
+        a.jump(recs[setup].offset);
+        // Dispatch: the original first test, then r1 == 3 (Save), then the rest of the tests.
+        const size_t dispatch_at = a.here();
+        a.raw(recs[i + 4].raw);
+        a.jump(jump_target(script, recs[i + 5]));
+        a.skip_if(kRegChoice, kCmpNe, 3);
+        a.jump(save_at);
+        a.jump(recs[i + 6].offset);
+
+        put16(out, item14.offset, kOpJump);
+        put16(out, item14.offset + 2, 0);
+        put32(out, item14.offset + 4, static_cast<uint32_t>(items_at - kHeader));
+        put16(out, recs[i + 4].offset + 6, 1);  // the first test never skips (r1 != r1) ...
+        put32(out, recs[i + 4].offset + 8, kRegChoice);
+        put32(out, recs[i + 5].offset + 4, static_cast<uint32_t>(dispatch_at - kHeader));  // ... into the new dispatch
+        ++added;
+    }
+    if (added == 0) {
+        if (why) *why = "no arena battle menu";
+        return std::nullopt;
+    }
+    a.set_target(end_jump, a.here());
+    put32(out, 8, static_cast<uint32_t>(out.size()));
+    return out;
+}
+
+std::optional<Bytes> patch_city_pak(View pak, const CityMods& mods, std::string* why) {
     std::vector<PakChunk> chunks;
     try {
         chunks = read_pak(pak);
@@ -316,9 +412,29 @@ std::optional<Bytes> patch_city_pak(View pak, const std::vector<Rematch>& list, 
     }
     for (PakChunk& c : chunks) {
         if (c.data.size() < 4 || std::string_view(reinterpret_cast<const char*>(c.data.data()), 4) != "MSCD") continue;
-        std::optional<Bytes> script = add_rematches(c.data, list, why);
-        if (!script) return std::nullopt;
-        c.data = std::move(*script);
+        // Each mod on its own: one that does not fit this script leaves it to the others.
+        bool changed = false;
+        std::string reasons;
+        if (!mods.rematches.empty()) {
+            std::string w;
+            if (std::optional<Bytes> s = add_rematches(c.data, mods.rematches, &w)) {
+                c.data = std::move(*s);
+                changed = true;
+            } else {
+                reasons += "boss rematch: " + w;
+            }
+        }
+        if (mods.arena_saves) {
+            std::string w;
+            if (std::optional<Bytes> s = add_arena_saves(c.data, &w)) {
+                c.data = std::move(*s);
+                changed = true;
+            } else {
+                reasons += std::string(reasons.empty() ? "" : "; ") + "arena saves: " + w;
+            }
+        }
+        if (why) *why = reasons;
+        if (!changed) return std::nullopt;
         return write_pak(chunks);
     }
     if (why) *why = "no script chunk";

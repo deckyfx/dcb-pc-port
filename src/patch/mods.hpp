@@ -2,6 +2,9 @@
 // Gameplay mods applied to game files as the game loads them (src/game/mods/mods.cpp serves them
 // through the file API). Each one patches data the game already reads; nothing here is game data.
 //
+// Arena saves: the arenas offer Save only at a few battles (4th and 7th); this mod adds it to
+// every battle menu (add_arena_saves).
+//
 // Boss rematches: the Battle Arena bosses (the usurpers who take over an arena, and the story
 // bosses) can be fought once; afterwards they are gone. This mod adds them to the same city's
 // Battle Cafe once beaten:
@@ -54,7 +57,21 @@ const std::vector<Rematch>& rematches_for(const std::string& file);
 /// script does not have the expected cafe structure.
 std::optional<Bytes> add_rematches(View script, const std::vector<Rematch>& list, std::string* why = nullptr);
 
-/// A city PAK (C\AREAnn.PAK) with its script chunk passed through add_rematches; nullopt as above.
-std::optional<Bytes> patch_city_pak(View pak, const std::vector<Rematch>& list, std::string* why = nullptr);
+/// The MSD city script with a Save item in every arena battle menu (Battle / Deck info), not only
+/// at the battles the arena offers it: Save runs the arena's own save records (location code,
+/// music; a save resumes right after them) and then the battle's set-up, so a save made at any
+/// battle continues at that battle. A's fight keeps the game's flow (it recolours the screen).
+/// Appended only, like add_rematches. nullopt (with `why`) when the script has no arena menu.
+std::optional<Bytes> add_arena_saves(View script, std::string* why = nullptr);
+
+/// What to change in one city file.
+struct CityMods {
+    std::vector<Rematch> rematches;  ///< add_rematches (none: skipped)
+    bool arena_saves = false;        ///< add_arena_saves
+};
+
+/// A city PAK (C\AREAnn.PAK) with its script chunk passed through the mods in `mods`; nullopt
+/// when none applies (`why` says why each did not).
+std::optional<Bytes> patch_city_pak(View pak, const CityMods& mods, std::string* why = nullptr);
 
 }  // namespace patch::mods

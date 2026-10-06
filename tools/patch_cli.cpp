@@ -2,8 +2,8 @@
 //
 //   dcb_patch --jp <dump/SLPS-03101> --us <dump/SLUS-01328> --out <assets-root> [--fixes DIR]
 //             [--text-only | --art-only]
-//   dcb_patch --rematch <AREAnn.PAK> <C/AREAnn.PAK> <out.pak>   the boss-rematch mod on one city
-//             file (patch/mods.hpp), as the game applies it when loading
+//   dcb_patch --rematch <AREAnn.PAK> <C/AREAnn.PAK> <out.pak>   the gameplay mods (boss rematch,
+//             arena saves; patch/mods.hpp) on one city file, as the game applies them when loading
 //
 // For testing the C++ port against the Python pipeline (tools/patch/compare.sh).
 #include "patch/mods.hpp"
@@ -22,7 +22,8 @@ int rematch(const char* in_path, const std::string& file, const char* out_path) 
     std::ifstream in(in_path, std::ios::binary);
     const patch::Bytes pak((std::istreambuf_iterator<char>(in)), {});
     std::string why;
-    const auto out = patch::mods::patch_city_pak(pak, patch::mods::rematches_for(file), &why);
+    const auto out = patch::mods::patch_city_pak(pak, {patch::mods::rematches_for(file), true}, &why);
+    if (!why.empty()) std::fprintf(stderr, "dcb_patch: %s: not applied: %s\n", in_path, why.c_str());
     if (!out) {
         std::fprintf(stderr, "dcb_patch: %s: %s\n", in_path, why.c_str());
         return 1;

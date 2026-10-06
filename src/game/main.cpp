@@ -438,6 +438,8 @@ int main(int argc, char** argv) {
                 platform::IniDocument::parse(platform::read_text_file(ini_path).value_or(""));
             const std::optional<std::string> rematch = ini.get("mods", "boss_rematch");
             dcb::mods::set_boss_rematch(!rematch || (*rematch != "false" && *rematch != "0"));
+            const std::optional<std::string> arena = ini.get("mods", "arena_save");
+            dcb::mods::set_arena_saves(!arena || (*arena != "false" && *arena != "0"));
             const std::optional<std::string> names = ini.get("text", "names");
             dcb::text_set_jp_names(!names || *names != "us");
         }

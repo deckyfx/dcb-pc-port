@@ -69,3 +69,15 @@ Emperor, Infinity Tower cell 14 A (and cell 15 Rosemon, listed in the final chap
 | Junk City (AREA04) | Shadramon | 18 | `cmd2(18)` | r119 = 1 (likewise) |
 | Dark City (AREA05) | Digimon Emperor | 23 | `cmd2(23)` | r138 = 1 (set on the win; the city's dialogue tests it throughout) |
 | Infinity Tower (AREA11) | A | 140 | `cmd2(140)` | r185 = 1 (met him) and r184 = 0 (r184 = 1 while the final event runs; cleared on the win) |
+
+## Arenas
+
+An arena is a run of groups in the city script. Each group: per battle, a set-up (name boxes,
+r10 = the opponent number, r9 = its name, r5-r8 / r11 its stats, host 0x0A cmd 13 for the
+portrait), its lines, then the menu `cmd0(97); cmd1(13) Battle; cmd1(14) Deck info; cmd1()` with
+tests for r1 = 1, 2, -1 (cancel: "leave the Arena?"); then the group's save block:
+`cmd15(110)` (save music), `cmd6(code)` (save; the code is the location, 2 or 3 in arenas),
+`cmd15(arena music)` and a jump back to the group's start, which re-dispatches on r268 / r269 /
+r270 (set as battles are won). Only the battle that offers Save in its menu (item 15, the 4th;
+also the usurper's) reaches its group's save block. Registers below r12 are not saved, so a save
+must resume at a battle's set-up, not at its menu.

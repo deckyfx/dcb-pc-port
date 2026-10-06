@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <set>
 #include <string>
+#include <vector>
 
 #define CHECK(cond)                                                                       \
     do {                                                                                  \
@@ -131,6 +132,96 @@ void test_rematch() {
     CHECK(!patch::mods::add_rematches(plain, {r}, &why) && !why.empty());
 }
 
+void arith(Bytes& s, uint16_t reg, int32_t v) {
+    for (const uint16_t h : {uint16_t{7}, reg, uint16_t{0}, uint16_t{0}}) patch::wr16(s, h);
+    patch::wr32(s, static_cast<uint32_t>(v));
+}
+
+/// An arena group: per battle the set-up (name boxes, r10), a Battle / Deck info menu with its
+/// tests, and a battle (`deck`); then the group's save block (cmd6(3), music 125).
+Bytes arena_script(std::vector<size_t>& setups, std::vector<size_t>& item14s, const std::vector<uint16_t>& decks) {
+    Bytes s = {'M', 'S', 'C', 'D'};
+    patch::wr32(s, 3);
+    patch::wr32(s, 0);
+    patch::wr32(s, 372);
+    std::vector<size_t> fix;  // jumps to the record after the group (filled below)
+    for (const uint16_t deck : decks) {
+        setups.push_back(s.size());
+        cmd(s, 0, {0, 128, 10});
+        cmd(s, 0, {1, 128, 10});
+        arith(s, 10, 1);
+        cmd(s, 13);
+        cmd(s, 0, {97});
+        cmd(s, 1, {13});
+        item14s.push_back(s.size());
+        cmd(s, 1, {14});
+        cmd(s, 1);
+        skip_if(s, 1, 3, 1);
+        const size_t to_battle = s.size();
+        jump(s, 16);
+        skip_if(s, 1, 3, 2);
+        fix.push_back(s.size());
+        jump(s, 16);
+        skip_if(s, 1, 3, -1);
+        fix.push_back(s.size());
+        jump(s, 16);
+        const uint32_t rel = static_cast<uint32_t>(s.size() - 16);
+        for (int i = 0; i < 4; ++i) s[to_battle + 4 + i] = static_cast<uint8_t>(rel >> (8 * i));
+        cmd(s, 2, {deck});
+        fix.push_back(s.size());
+        jump(s, 16);
+    }
+    cmd(s, 0, {0, 128, 10});
+    cmd(s, 0, {1, 128, 10});
+    cmd(s, 6);
+    cmd(s, 15, {110});
+    cmd(s, 6, {3});
+    cmd(s, 15, {125});
+    jump(s, setups.front());
+    const uint32_t end = static_cast<uint32_t>(s.size() - 16);
+    cmd(s, 6);
+    for (const size_t f : fix)
+        for (int i = 0; i < 4; ++i) s[f + 4 + i] = static_cast<uint8_t>(end >> (8 * i));
+    for (int i = 0; i < 4; ++i) s[8 + i] = static_cast<uint8_t>(s.size() >> (8 * i));
+    return s;
+}
+
+void test_arena_saves() {
+    std::vector<size_t> setups, item14s;
+    const Bytes in = arena_script(setups, item14s, {7, 140});
+    std::string why;
+    const auto out = patch::mods::add_arena_saves(in, &why);
+    CHECK(out);
+    const auto recs = patch::text::msd_walk(*out);
+    std::set<size_t> starts;
+    for (const auto& rec : recs) starts.insert(rec.offset);
+    for (const auto& rec : recs)
+        if (rec.op == 5) CHECK(starts.count(target_of(*out, rec.offset)) || target_of(*out, rec.offset) == out->size());
+    // The first battle's Deck info item is now a jump to items 14 and 15 (Save); A's (deck 140)
+    // menu is untouched.
+    CHECK(patch::rd16(*out, item14s[0]) == 5);
+    const size_t items = target_of(*out, item14s[0]);
+    CHECK(patch::rd16(*out, items) == 0x0B && patch::rd16(*out, items + 6) == 14);
+    CHECK(patch::rd16(*out, items + 8) == 0x0B && patch::rd16(*out, items + 14) == 15);
+    CHECK(Bytes(out->begin() + item14s[1], out->begin() + item14s[1] + 8) ==
+          Bytes(in.begin() + item14s[1], in.begin() + item14s[1] + 8));
+    // Save: the group's save records (cmd6(3), music 125), then the battle's set-up.
+    bool saved = false;
+    for (size_t k = 0; k + 1 < recs.size(); ++k) {
+        const auto& r = recs[k];
+        if (r.offset < in.size() || !(r.op == 0x0B && patch::rd16(r.raw, 2) == 6 && patch::rd16(r.raw, 6) == 3)) continue;
+        CHECK(recs[k + 1].op == 0x0B && patch::rd16(recs[k + 1].raw, 6) == 125);
+        CHECK(recs[k + 2].op == 5 && target_of(*out, recs[k + 2].offset) == setups[0]);
+        saved = true;
+    }
+    CHECK(saved);
+    // A script without an arena menu is left alone.
+    Bytes plain(in.begin(), in.begin() + 16);
+    cmd(plain, 6);
+    for (int i = 0; i < 4; ++i) plain[8 + i] = static_cast<uint8_t>(plain.size() >> (8 * i));
+    CHECK(!patch::mods::add_arena_saves(plain, &why) && !why.empty());
+}
+
 void test_table() {
     CHECK(patch::mods::rematches_for("C/AREA05.PAK").size() == 1);
     CHECK(patch::mods::rematches_for("C/AREA11.PAK").front().deck == 140);
@@ -141,6 +232,7 @@ void test_table() {
 
 int main() {
     test_rematch();
+    test_arena_saves();
     test_table();
     std::puts("patch mods: all checks passed");
     return 0;
