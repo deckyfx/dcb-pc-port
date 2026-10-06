@@ -114,7 +114,7 @@ The wiki lives in [docs/wiki/](docs/wiki/Home.md):
 - [Building](docs/wiki/Building.md): layout, recompile workflow, presets, `dcb.sh`
 - [Game Data](docs/wiki/Game-Data.md): `dcb --setup`, `dcb --import`, first run, data lookup, file overrides
 - [Playing](docs/wiki/Playing.md): settings, hotkeys, pause menu, save states, memory cards,
-  Wizardmon's passwords (the Japanese ones; the US passwords do not work)
+  Wizardmon's passwords (US or Japanese) and the port's completion codes (CARDnnn, DIGIPARTnnn)
 - [Trainer](docs/wiki/Trainer.md): presets, battle actions, cheat file format, memory search
 - [Mods](docs/wiki/Mods.md): gameplay mods (boss rematches, arena saves, Player Rooms, post-game), turned on or off in `settings.ini`
 - [English Text](docs/wiki/English-Text.md): English font, card/deck text and text catalog from the US dump

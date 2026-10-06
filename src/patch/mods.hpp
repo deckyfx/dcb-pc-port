@@ -85,6 +85,13 @@ std::optional<Bytes> add_postgame_visitors(View script, std::string* why = nullp
 /// Infinity Tower arena, then BlackMetalGarurumon). nullopt (with `why`) for another city.
 std::optional<Bytes> drop_win_requirements(View script, std::string* why = nullptr);
 
+/// Sky City (C\AREA08.PAK): Wizardmon's spell answers the port's completion codes, which the game
+/// side (src/game/overrides/keyword.cpp) handles: after the keyword screen, r1 = 100 (a card was
+/// given), 101 (a Digi-Part) or 102 (already owned) get Wizardmon's lines, with `{gift}` /
+/// `{gift_more}` for the item; the keywords run the game's own tests. Appended only. nullopt
+/// (with `why`) when the script has no keyword spell.
+std::optional<Bytes> add_wizardmon_codes(View script, std::string* why = nullptr);
+
 /// What to change in one city file.
 struct CityMods {
     std::vector<Rematch> rematches;  ///< add_rematches (none: skipped)
@@ -92,6 +99,7 @@ struct CityMods {
     bool player_rooms = false;       ///< add_player_rooms
     bool postgame_visitors = false;    ///< add_postgame_visitors
     bool no_win_requirement = false; ///< drop_win_requirements
+    bool wizardmon_codes = false;    ///< add_wizardmon_codes
 };
 
 /// A city PAK (C\AREAnn.PAK) with its script chunk passed through the mods in `mods`; nullopt

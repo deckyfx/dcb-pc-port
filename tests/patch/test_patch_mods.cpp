@@ -382,6 +382,47 @@ void test_postgame() {
     }
 }
 
+void test_wizardmon_codes() {
+    // The spell: cmd15(), skip_if(r1 != -2) + jump cancel, skip_if(r1 != -1) + jump wrong, one
+    // keyword's gift (cmd1(card, -1, -1), wait, close, jump again).
+    Bytes s = {'M', 'S', 'C', 'D'};
+    patch::wr32(s, 3);
+    patch::wr32(s, 0);
+    patch::wr32(s, 372);
+    const size_t again = s.size();
+    cmd(s, 6);
+    cmd(s, 15);
+    const size_t cancel_test = s.size();
+    skip_if(s, 1, 3, -2);
+    jump(s, again);
+    const size_t wrong_test = s.size();
+    skip_if(s, 1, 3, -1);
+    jump(s, again);
+    cmd(s, 1, {1, 0xFFFF, 0xFFFF});
+    cmd(s, 14, {60});
+    cmd(s, 5);
+    jump(s, again);
+    for (int i = 0; i < 4; ++i) s[8 + i] = static_cast<uint8_t>(s.size() >> (8 * i));
+    std::string why;
+    const auto out = patch::mods::add_wizardmon_codes(s, &why);
+    CHECK(out && out->size() > s.size());
+    if (!out) return;
+    CHECK(patch::rd16(*out, cancel_test + 6) == 1 && patch::rd32(*out, cancel_test + 8) == 1);  // r1 != r1: always jumps ...
+    const size_t tests = target_of(*out, cancel_test + 12);
+    CHECK(tests == s.size());                                                              // ... to the new tests
+    CHECK(patch::rd32(*out, tests + 8) == static_cast<uint32_t>(-2) && target_of(*out, tests + 12) == again);  // cancel as before
+    CHECK(target_of(*out, tests + 80) == wrong_test);  // anything else: the game's own tests
+    for (const int32_t v : {100, 101, 102}) {
+        size_t at = tests + 20;
+        while (patch::rd32(*out, at + 8) != static_cast<uint32_t>(v)) at += 20;
+        size_t end = target_of(*out, at + 12);
+        while (!(patch::rd16(*out, end) == 5 && patch::rd16(*out, end + 2) == 0)) end += 4;  // its section's jump
+        CHECK(target_of(*out, end) == again);
+    }
+    CHECK(Bytes(out->begin(), out->begin() + cancel_test) == Bytes(s.begin(), s.begin() + cancel_test));
+    CHECK(!patch::mods::add_wizardmon_codes(Bytes(s.begin(), s.begin() + cancel_test), &why));
+}
+
 void test_table() {
     CHECK(patch::mods::rematches_for("C/AREA05.PAK").size() == 1);
     CHECK(patch::mods::rematches_for("C/AREA11.PAK").front().deck == 140);
@@ -395,6 +436,7 @@ int main() {
     test_arena_saves();
     test_player_rooms();
     test_postgame();
+    test_wizardmon_codes();
     test_table();
     std::puts("patch mods: all checks passed");
     return 0;

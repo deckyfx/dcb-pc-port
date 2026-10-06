@@ -9,3 +9,8 @@ add_executable(test_game_list_paging ${CMAKE_CURRENT_LIST_DIR}/test_list_paging.
 target_include_directories(test_game_list_paging PRIVATE ${CMAKE_SOURCE_DIR}/src/game/overrides)
 target_link_libraries(test_game_list_paging PRIVATE dcb::warnings)
 add_test(NAME game.list_paging COMMAND test_game_list_paging)
+
+add_executable(test_game_keyword_match ${CMAKE_CURRENT_LIST_DIR}/test_keyword_match.cpp)
+target_include_directories(test_game_keyword_match PRIVATE ${CMAKE_SOURCE_DIR}/src/game/overrides)
+target_link_libraries(test_game_keyword_match PRIVATE dcb::warnings)
+add_test(NAME game.keyword_match COMMAND test_game_keyword_match)

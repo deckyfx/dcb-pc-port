@@ -26,15 +26,32 @@ Deck Edit's count panel, the name cursor in name entry).
 
 ## Wizardmon's passwords
 
-In the second part of the game, Wizardmon in Sky City asks for a password and gives cards for the
-right ones. The port runs the Japanese game, so it takes the **Japanese** passwords; the US ones
-(JIJIMON, MTLETEMON, ...) do not work. Each is six full-width characters, typed on the name-entry
-grid; `ー` is the katakana long-vowel mark, not a dash:
+In the second part of the game, Wizardmon in Sky City asks for a magic spell (WORD INPUT) and
+gives a card for each right one, once. The port takes **both** the US and the Japanese spells,
+typed with the letters page (half-width, up to 12 letters). Case does not matter, and neither does
+the dash: the letters page has none, so type the word without it (HKBUTERIMON), or take the
+long-vowel mark `ー` from the katakana page, which types a dash.
 
-| Password | Password | Password | Password | Password |
-|---|---|---|---|---|
-| ＪＩ２ＭＯＮ | ＭＴＬＥＴＥ | ＰＩＥＭＯＮ | ＶＥＮＯＭＶ | ＨーＫＡＢＵ |
-| ＡＥＲＯーＶ | ＭＴＬＧＲＲ | ＯＭＥＧＡＳ | ＷＡＲＧＲＹ | ＯＭＥＧＡ１ |
+| US spell | Japanese spell | Card |
+|---|---|---|
+| JIJIMON | JI2MON | Jijimon |
+| MTLETEMON | MTLETE | MetalEtemon |
+| PIEDMON | PIEMON | Piedmon |
+| VENOMMYOTIS | VENOMV | VenomMyotismon |
+| H-KBUTERIMON | H-KABU | HerculesKabuterimon |
+| A-VEEDRAMON | AERO-V | AeroVeedramon |
+| MTLGARURUMON | MTLGRR | MetalGarurumon |
+| OMNIMON-2 | OMEGAS | Omnimon (2nd) |
+| WARGREYMON | WARGRY | WarGreymon |
+| OMNIMON-1 | OMEGA1 | Omnimon (1st) |
+
+### Completion codes
+
+The port adds codes for filling the collection, always on: **`CARDnnn`** gives card number `nnn`
+(0-300) and **`DIGIPARTnnn`** Digi-Part `nnn` (0-126), only when you have **none** of it (one copy
+of the card, or the part, and Wizardmon says you already have it). `CARD7`, `CARD007` and
+`CARD-007` all work. Card numbers 172-190 (the armor Digimon and the partners' cards) cannot be
+made this way, as the game never adds them to the collection; nor can a number out of range.
 
 ## Memory-card saves
 

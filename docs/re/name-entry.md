@@ -102,8 +102,17 @@ bytes as before, so up to 12 letters, and nothing downstream sees a longer strin
   sits under the character at the cursor (6 or 12 wide; at the end, as wide as the page's
   characters). SUBSEG's デック label stays at x + 76: 12 letters end at x + 73.
 
-The WORD INPUT keyword keeps full-width letters: the secret keywords it is compared with (after
-the row table: ＪＩ２ＭＯＮ, ＭＴＬＥＴＥ, ＨーＫＡＢＵ …) are full-width and 6 characters long.
+The WORD INPUT keyword (SAISEG) types half-width as well. Its state is at `801F7BB0` with the
+same fields shifted: column +0, row +4, name +10 (12 bytes + NUL), +23 the grid's row count,
+cursor +24, focus +25, tab +26 (8 = Cancel, the screen's extra slot), +28 the action that ends the
+screen (7 = OK); no first-edit flag. Overrides: its input `801ECF7C`, its box callback `801EE488`
+(underline cursor object `801F7B10`; the screen's sound call is `8002DCD8`); a dash or long-vowel
+mark from the kana pages types `-`. `keyword_check` (`801EE704`, a0 = buffer) runs the screen,
+strcpy's the keyword into the buffer and strcmp's it with the ten full-width keywords (pointer table
+`801F6D24`: ＯＭＥＧＡ１ first, the script's index 0), and writes the index, -1 (no match) or -2
+(cancelled) into the city script's r1 (`*(*(801F7E80) + 8) + 4`). The port's `keyword.cpp` runs it,
+then matches a -1 keyword as text against the JP keywords in half-width and the US ones (same
+order), and handles the completion codes (docs/wiki/Playing.md).
 
 Where names are drawn (checked with an ASCII player name "SuperEagle12" and deck names
 "FlameWarrior", "Aあ"; `DCB_TRACE_TEXT=hex` + snapshots): the name box, the reception's player-name panel, city lines with `*h0` (city_text.cpp: "Hi, I'm

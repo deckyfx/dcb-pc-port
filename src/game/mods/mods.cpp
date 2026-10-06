@@ -32,6 +32,7 @@ patch::mods::CityMods mods_for(const std::string& key) {
     m.player_rooms = g_player_rooms;
     m.postgame_visitors = g_postgame_visitors;
     m.no_win_requirement = g_no_win_requirement;
+    m.wizardmon_codes = true;  // always on: the completion codes need it (keyword.cpp)
     return m;
 }
 
@@ -39,7 +40,7 @@ patch::mods::CityMods mods_for(const std::string& key) {
 
 bool wants(const std::string& key) {
     const patch::mods::CityMods m = mods_for(key);
-    return !m.rematches.empty() || m.arena_saves || m.player_rooms || m.postgame_visitors || m.no_win_requirement;
+    return !m.rematches.empty() || m.arena_saves || m.player_rooms || m.postgame_visitors || m.no_win_requirement || m.wizardmon_codes;
 }
 
 bool apply(const std::string& key, std::vector<uint8_t>& bytes) {

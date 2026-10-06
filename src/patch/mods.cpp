@@ -613,6 +613,81 @@ std::optional<Bytes> add_postgame_visitors(View script, std::string* why) {
     return out;
 }
 
+std::optional<Bytes> add_wizardmon_codes(View script, std::string* why) {
+    std::vector<MsdRecord> recs;
+    try {
+        recs = text::msd_walk(script);
+    } catch (const std::exception& e) {
+        if (why) *why = e.what();
+        return std::nullopt;
+    }
+    const auto result_test = [&](size_t i, int32_t value) {
+        return i + 1 < recs.size() && recs[i].op == kOpSkipIf && rd16(recs[i].raw, 2) == kRegChoice &&
+               rd16(recs[i].raw, 4) == kCmpNe && rd16(recs[i].raw, 6) == 0 &&
+               static_cast<int32_t>(rd32(recs[i].raw, 8)) == value && recs[i + 1].op == kOpJump;
+    };
+    // The spell: `cmd15()` (the keyword screen; r1 = its result), `skip_if(r1 != -2); jump cancel`,
+    // `skip_if(r1 != -1); jump wrong`, then one test per keyword; each gift ends with `jump again`.
+    for (size_t i = 0; i + 4 < recs.size(); ++i) {
+        if (!(recs[i].op == kOpCmd0 && cmd_of(recs[i]) == 15 && result_test(i + 1, -2) && result_test(i + 3, -1))) continue;
+        size_t again = 0;
+        for (size_t k = i + 5; k + 1 < recs.size() && k < i + 200 && !again; ++k)
+            if (recs[k].op == kOpCmd0 + 3 && cmd_of(recs[k]) == 1 && recs[k + 1].op != kOpJump) {
+                for (size_t j = k + 1; j < recs.size() && j < k + 6 && !again; ++j)
+                    if (recs[j].op == kOpJump) again = jump_target(script, recs[j]);
+            }
+        if (!again) break;
+        Bytes out(script.begin(), script.end());
+        Assembler a(out);
+        const size_t start = a.here();
+        a.skip_if(kRegChoice, kCmpNe, -2);
+        a.jump(jump_target(script, recs[i + 2]));
+        a.skip_if(kRegChoice, kCmpNe, 100);
+        const size_t to_card = a.jump();
+        a.skip_if(kRegChoice, kCmpNe, 101);
+        const size_t to_part = a.jump();
+        a.skip_if(kRegChoice, kCmpNe, 102);
+        const size_t to_owned = a.jump();
+        a.jump(recs[i + 3].offset);  // a keyword: the game's own tests
+        const auto announce = [&](uint16_t sound, const std::string& said) {
+            a.cmd(0, {0, 48, 10});
+            a.cmd(0, {1, 128, 10});
+            a.cmd(6);
+            a.cmd(13, {sound});
+            a.line("*c4Wizardmon*c7");
+            size_t from = 0;
+            for (size_t nl; (nl = said.find('\n', from)) != std::string::npos; from = nl + 1) a.line(said.substr(from, nl - from));
+            a.line(said.substr(from));
+            a.cmd(5);
+        };
+        a.set_target(to_card, a.here());  // keyword.cpp gave the card; {gift} names it
+        announce(8, "Wow! Looks like you got a new Card!");
+        a.cmd(13, {9});
+        a.line("You got the *c6{gift}*c7.");
+        a.cmd(14, {60});
+        a.cmd(5);
+        a.jump(again);
+        a.set_target(to_part, a.here());  // a Digi-Part; {gift_more} is its effect
+        announce(8, "Wow! Looks like you got a new Digi-Part!");
+        a.cmd(13, {9});
+        a.line("You got *c3{gift}*c7:");
+        a.line("{gift_more}");
+        a.cmd(14, {60});
+        a.cmd(5);
+        a.jump(again);
+        a.set_target(to_owned, a.here());
+        announce(16, "Hmm... You already have that one.\nThis wand only makes what you're missing.");
+        a.jump(again);
+        // `skip_if(r1 != -2)` never skips now (r1 != r1): its jump, to the new tests, is always taken.
+        put16(out, recs[i + 1].offset + 6, 1);
+        put32(out, recs[i + 1].offset + 8, kRegChoice);
+        put32(out, recs[i + 2].offset + 4, static_cast<uint32_t>(start - kHeader));
+        return out;
+    }
+    if (why) *why = "no keyword spell";
+    return std::nullopt;
+}
+
 std::optional<Bytes> drop_win_requirements(View script, std::string* why) {
     std::vector<MsdRecord> recs;
     try {
@@ -682,6 +757,13 @@ std::optional<Bytes> patch_city_pak(View pak, const CityMods& mods, std::string*
         if (mods.postgame_visitors) {
             std::string w;
             if (std::optional<Bytes> s = add_postgame_visitors(c.data, &w)) {
+                c.data = std::move(*s);
+                changed = true;
+            }
+        }
+        if (mods.wizardmon_codes) {
+            std::string w;
+            if (std::optional<Bytes> s = add_wizardmon_codes(c.data, &w)) {
                 c.data = std::move(*s);
                 changed = true;
             }
