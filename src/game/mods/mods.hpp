@@ -17,6 +17,13 @@ void set_arena_saves(bool on);
 /// The Player Rooms mod ([mods] player_rooms, on by default): every city's menu lists Player Rooms,
 /// not only Beginner City's, Sky City's and Wiseman Tower's.
 void set_player_rooms(bool on);
+/// Post-game ([mods] postgame_visitors, on by default): Apokarimon stays in Infinity Tower's Battle
+/// Cafe and Nanimon in the desert city's, instead of a random city / a dice roll; both can be
+/// fought again without leaving the city.
+void set_postgame_visitors(bool on);
+/// Post-game ([mods] no_win_requirement, on by default): BlackMetalGarurumon and BlackWarGreymon
+/// without the 200 / 300 total wins (the story order stays).
+void set_no_win_requirement(bool on);
 
 /// True when a mod changes the game file `key` ("C/AREA11.PAK", as the file server names it).
 bool wants(const std::string& key);

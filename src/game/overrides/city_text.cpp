@@ -17,6 +17,7 @@
 // renderer. The shown count stays in the slot (+60) and the text is found by serial, so a save
 // state taken mid-line restores the right line at the right point. JP lines take the originals.
 
+#include "keyword.hpp"
 #include "text.hpp"
 #include "typewriter.hpp"
 
@@ -91,6 +92,7 @@ void dcb_city_msg_build(PsxContext* ctx) {
     static std::string previous;
     if (english) dcb::text_reword_line(text, previous);
     previous = src;
+    dcb::keyword_expand_gift(text);  // Wizardmon's completion codes (keyword.cpp), names swapped too
     dcb::text_swap_names(text);  // before the player's own name goes in
     text = expand_player_name(*ctx, text);
 

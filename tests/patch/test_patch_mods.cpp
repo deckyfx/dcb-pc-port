@@ -287,6 +287,148 @@ void test_player_rooms() {
     CHECK(!patch::mods::add_player_rooms(city_script({2, 3, 1, 0}, last, test), &why));
 }
 
+void test_postgame() {
+    // Beginner City's start: cmd16() (r1 = wins), skip_if(r1 >= 300), jump, the flag, r360 = 1.
+    Bytes s = {'M', 'S', 'C', 'D'};
+    patch::wr32(s, 3);
+    patch::wr32(s, 0);
+    patch::wr32(s, 372);
+    cmd(s, 16);
+    const size_t wins = s.size();
+    skip_if(s, 1, 5, 300);
+    jump(s, 16);
+    skip_if(s, 89, 3, 0);
+    jump(s, 16);
+    arith(s, 360, 1);
+    for (int i = 0; i < 4; ++i) s[8 + i] = static_cast<uint8_t>(s.size() >> (8 * i));
+    std::string why;
+    const auto out = patch::mods::drop_win_requirements(s, &why);
+    CHECK(out && out->size() == s.size());
+    CHECK(patch::rd32(*out, wins + 8) == 0);  // r1 >= 0: no wins needed
+    CHECK(Bytes(out->begin() + wins + 12, out->end()) == Bytes(s.begin() + wins + 12, s.end()));  // the story flag stays
+    // Not the desert city (no r355 test): left alone.
+    CHECK(!patch::mods::add_postgame_visitors(s, &why));
+
+    // The desert city's cafe: Apokarimon (roaming tests, cmd3(5)), Nanimon (unlock, dice, cmd3(6)),
+    // a visitor's menu (Battle dropped after a win until the city is re-entered), Nanimon's win.
+    Bytes d = {'M', 'S', 'C', 'D'};
+    patch::wr32(d, 3);
+    patch::wr32(d, 0);
+    patch::wr32(d, 372);
+    const size_t roam = d.size();
+    skip_if(d, 364, 5, 10);
+    jump(d, 16);
+    skip_if(d, 355, 3, 0);
+    jump(d, 16);
+    cmd(d, 3, {5});
+    skip_if(d, 245, 3, 0);
+    jump(d, 16);
+    const size_t dice = d.size();
+    skip_if(d, 349, 3, 1);
+    jump(d, 16);
+    arith(d, 3, 1);
+    const size_t nanimon = d.size();
+    cmd(d, 3, {6});
+    const size_t menu = d.size();
+    skip_if(d, 350, 3, 1);
+    jump(d, 16);
+    cmd(d, 1, {12});
+    skip_if(d, 349, 3, 1);  // the win: r363 += 1, r350 = 1, a prize, back to the cafe
+    jump(d, 16);
+    for (const uint16_t h : {uint16_t{7}, uint16_t{363}, uint16_t{1}, uint16_t{0}}) patch::wr16(d, h);
+    patch::wr32(d, 1);
+    arith(d, 350, 1);
+    cmd(d, 5);
+    const size_t back = d.size();
+    jump(d, roam);
+    for (int i = 0; i < 4; ++i) d[8 + i] = static_cast<uint8_t>(d.size() >> (8 * i));
+    const auto dv = patch::mods::add_postgame_visitors(d, &why);
+    CHECK(dv && dv->size() > d.size());
+    if (dv) {
+        CHECK(patch::rd32(*dv, 8) == dv->size());  // header: the new size
+        CHECK(patch::rd16(*dv, d.size()) == 5 && target_of(*dv, d.size()) == dv->size());  // the old end still ends
+        check_jumps(*dv);
+        CHECK(Bytes(dv->begin() + roam, dv->begin() + roam + 40) == Bytes(d.begin() + roam, d.begin() + roam + 40));  // Apokarimon roams on
+        CHECK(patch::rd16(*dv, dice + 6) == 1 && patch::rd32(*dv, dice + 8) == 349);  // r349 != r349: never skips ...
+        CHECK(target_of(*dv, dice + 12) == nanimon);                                  // ... the jump into cmd3(6)
+        CHECK(patch::rd16(*dv, menu + 4) == 0 && patch::rd16(*dv, menu + 6) == 1 && patch::rd32(*dv, menu + 8) == 350);  // always skips
+        // The way back goes through the 5th / 10th win prizes, which all end at the old target.
+        const size_t prizes = target_of(*dv, back);
+        CHECK(prizes == d.size() + 8);  // after the end jump
+        CHECK(patch::rd16(*dv, prizes + 2) == 363 && patch::rd32(*dv, prizes + 8) == 5);
+        CHECK(target_of(*dv, prizes + 40) == roam);  // neither: straight back
+        size_t ends = 0;
+        for (size_t at = prizes; at + 8 <= dv->size(); at += 4)
+            if (patch::rd16(*dv, at) == 5 && patch::rd16(*dv, at + 2) == 0 && target_of(*dv, at) == roam) ++ends;
+        CHECK(ends == 3);
+    }
+
+    // Infinity Tower: Apokarimon listed while r248 == 0, then the roaming tests; his menu.
+    Bytes it = {'M', 'S', 'C', 'D'};
+    patch::wr32(it, 3);
+    patch::wr32(it, 0);
+    patch::wr32(it, 372);
+    const size_t gate = it.size();
+    skip_if(it, 248, 3, 1);
+    jump(it, 16);
+    cmd(it, 3, {12});
+    const size_t apo_menu = it.size();
+    skip_if(it, 359, 3, 1);
+    jump(it, 16);
+    cmd(it, 1, {12});
+    for (int i = 0; i < 4; ++i) it[8 + i] = static_cast<uint8_t>(it.size() >> (8 * i));
+    const auto iv = patch::mods::add_postgame_visitors(it, &why);
+    CHECK(iv && iv->size() == it.size());
+    if (iv) {
+        CHECK(patch::rd16(*iv, gate + 4) == 0 && patch::rd16(*iv, gate + 6) == 1 && patch::rd32(*iv, gate + 8) == 248);  // always listed
+        CHECK(patch::rd16(*iv, apo_menu + 4) == 0 && patch::rd16(*iv, apo_menu + 6) == 1 && patch::rd32(*iv, apo_menu + 8) == 359);
+    }
+}
+
+void test_wizardmon_codes() {
+    // The spell: cmd15(), skip_if(r1 != -2) + jump cancel, skip_if(r1 != -1) + jump wrong, one
+    // keyword's gift (cmd1(card, -1, -1), wait, close, jump again).
+    Bytes s = {'M', 'S', 'C', 'D'};
+    patch::wr32(s, 3);
+    patch::wr32(s, 0);
+    patch::wr32(s, 372);
+    const size_t again = s.size();
+    cmd(s, 6);
+    cmd(s, 15);
+    const size_t cancel_test = s.size();
+    skip_if(s, 1, 3, -2);
+    jump(s, again);
+    const size_t wrong_test = s.size();
+    skip_if(s, 1, 3, -1);
+    jump(s, again);
+    cmd(s, 1, {1, 0xFFFF, 0xFFFF});
+    cmd(s, 14, {60});
+    cmd(s, 5);
+    jump(s, again);
+    for (int i = 0; i < 4; ++i) s[8 + i] = static_cast<uint8_t>(s.size() >> (8 * i));
+    std::string why;
+    const auto out = patch::mods::add_wizardmon_codes(s, &why);
+    CHECK(out && out->size() > s.size());
+    if (!out) return;
+    CHECK(patch::rd16(*out, cancel_test + 6) == 1 && patch::rd32(*out, cancel_test + 8) == 1);  // r1 != r1: always jumps ...
+    const size_t tests = target_of(*out, cancel_test + 12);
+    CHECK(tests == s.size() + 8);                                                          // ... to the new tests
+    CHECK(patch::rd32(*out, 8) == out->size());
+    CHECK(patch::rd16(*out, s.size()) == 5 && target_of(*out, s.size()) == out->size());  // the old end still ends
+    check_jumps(*out);
+    CHECK(patch::rd32(*out, tests + 8) == static_cast<uint32_t>(-2) && target_of(*out, tests + 12) == again);  // cancel as before
+    CHECK(target_of(*out, tests + 80) == wrong_test);  // anything else: the game's own tests
+    for (const int32_t v : {100, 101, 102}) {
+        size_t at = tests + 20;
+        while (patch::rd32(*out, at + 8) != static_cast<uint32_t>(v)) at += 20;
+        size_t end = target_of(*out, at + 12);
+        while (!(patch::rd16(*out, end) == 5 && patch::rd16(*out, end + 2) == 0)) end += 4;  // its section's jump
+        CHECK(target_of(*out, end) == again);
+    }
+    CHECK(Bytes(out->begin() + 16, out->begin() + cancel_test) == Bytes(s.begin() + 16, s.begin() + cancel_test));
+    CHECK(!patch::mods::add_wizardmon_codes(Bytes(s.begin(), s.begin() + cancel_test), &why));
+}
+
 void test_table() {
     CHECK(patch::mods::rematches_for("C/AREA05.PAK").size() == 1);
     CHECK(patch::mods::rematches_for("C/AREA11.PAK").front().deck == 140);
@@ -299,6 +441,8 @@ int main() {
     test_rematch();
     test_arena_saves();
     test_player_rooms();
+    test_postgame();
+    test_wizardmon_codes();
     test_table();
     std::puts("patch mods: all checks passed");
     return 0;

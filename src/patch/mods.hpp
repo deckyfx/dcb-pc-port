@@ -72,11 +72,34 @@ std::optional<Bytes> add_arena_saves(View script, std::string* why = nullptr);
 /// then the script's start). Appended only. nullopt (with `why`) when no menu lacks it.
 std::optional<Bytes> add_player_rooms(View script, std::string* why = nullptr);
 
+/// Post-game visitors, fought again without leaving the city (the menu keeps Battle after a win):
+/// Infinity Tower (C\AREA11.PAK): Apokarimon stays in the Battle Cafe after his arena (r248), where
+/// the game would send him to a random city every win. The desert city (AREA06): Nanimon is always
+/// listed once unlocked (r245), not on his city rotation and dice; his 5th / 10th win prizes (in
+/// Infinity Tower's handler only) are added to the desert's win handler. In-place test changes,
+/// plus appended prize code. nullopt (with `why`) for another city.
+std::optional<Bytes> add_postgame_visitors(View script, std::string* why = nullptr);
+
+/// Post-game: BlackMetalGarurumon (Igloo City) and BlackWarGreymon (Beginner City) without the
+/// 200 / 300 total wins they wait for; the story conditions stay (Apokarimon beaten in the
+/// Infinity Tower arena, then BlackMetalGarurumon). nullopt (with `why`) for another city.
+std::optional<Bytes> drop_win_requirements(View script, std::string* why = nullptr);
+
+/// Sky City (C\AREA08.PAK): Wizardmon's spell answers the port's completion codes, which the game
+/// side (src/game/overrides/keyword.cpp) handles: after the keyword screen, r1 = 100 (a card was
+/// given), 101 (a Digi-Part) or 102 (already owned) get Wizardmon's lines, with `{gift}` /
+/// `{gift_more}` for the item; the keywords run the game's own tests. Appended only. nullopt
+/// (with `why`) when the script has no keyword spell.
+std::optional<Bytes> add_wizardmon_codes(View script, std::string* why = nullptr);
+
 /// What to change in one city file.
 struct CityMods {
     std::vector<Rematch> rematches;  ///< add_rematches (none: skipped)
     bool arena_saves = false;        ///< add_arena_saves
     bool player_rooms = false;       ///< add_player_rooms
+    bool postgame_visitors = false;    ///< add_postgame_visitors
+    bool no_win_requirement = false; ///< drop_win_requirements
+    bool wizardmon_codes = false;    ///< add_wizardmon_codes
 };
 
 /// A city PAK (C\AREAnn.PAK) with its script chunk passed through the mods in `mods`; nullopt

@@ -11,6 +11,8 @@ English data, and each mod can be turned off in `settings.ini`:
 boss_rematch = true
 arena_save = true
 player_rooms = true
+postgame_visitors = true
+no_win_requirement = true
 ```
 
 ## Boss rematch
@@ -54,6 +56,45 @@ do you want to go?"). With this mod every city lists it, opened the way those th
 and you are back in the city afterwards. The menu box has five rows: a menu that already lists
 five places (Jungle City's once its Extra and Beet Arenas are open, and two other cities' at
 similar points) stays as it is.
+
+## Post-game visitors: Apokarimon and Nanimon
+
+**Apokarimon** first waits in Infinity Tower's Battle Cafe (after Wiseman Tower's arena course
+that ends with Omnimon); talking to him opens Infinity Tower's Battle Arena, which ends with him.
+Once he is beaten there he wanders: he sits in one of seven cities' cafes, picked at random, and
+only after ten more battles; beat him and he moves on.
+
+**Nanimon** is unlocked when A first challenges you in Infinity Tower (late in the story, before
+its last arena). From then on he goes round five cities' cafes (Junk City, Dark City, the desert city,
+Infinity Tower and one more), the city set by how many times you have beaten him, each visit on a
+coin flip. His 5th win gives a Digi-Part, his 10th the Grand Sevens and Nanimon cards; after that he
+stays in the desert city on a dice roll.
+
+After a win, either one refuses another battle until you leave the city.
+
+With this mod:
+
+- Apokarimon stays in **Infinity Tower's** Battle Cafe after his arena, like the bosses the
+  rematch mod keeps in their city's cafe (he still also turns up where the game sends him).
+- Nanimon is always in the **desert city's** Battle Cafe (Myotismon's city) once unlocked. His
+  5th and 10th win prizes come there too (the game only had them in Infinity Tower).
+- Both can be fought again right away. Their usual rewards stay (Apokarimon: an S-Black Pack every
+  win, his card the first time and now and then; Nanimon: an S-Option Pack).
+
+## No win grinding for the last opponents
+
+The post-game chain, in Infinity Tower and then two cities' Battle Cafes:
+
+1. Wiseman Tower's arena courses that end with WarGreymon and with Omnimon, and Sky City's that
+   ends with Magnadramon, bring **Diaboromon** and **Apokarimon** to Infinity Tower's Battle Cafe.
+   Talking to each opens an Infinity Tower Battle Arena course that ends with him.
+2. Beat both courses: **BlackMetalGarurumon** joins Igloo City's Battle Cafe (the game also waits
+   for 200 total wins).
+3. Beat him in Igloo City's arena: **BlackWarGreymon** joins Beginner City's Battle Cafe (the game
+   also waits for 300 total wins).
+
+This mod drops the win counts only; every story step above is still needed, so nothing can show up
+early. The city checks when you enter it: walk in (or out and back in) after the step.
 
 How it works (the cafe's script structure, the flags): [battle-cafe.md](../re/battle-cafe.md).
 `dcb_patch --rematch <AREAnn.PAK> C/AREAnn.PAK <out>` applies it to one city file, for inspection.

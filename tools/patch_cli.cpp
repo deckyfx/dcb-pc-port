@@ -22,7 +22,7 @@ int rematch(const char* in_path, const std::string& file, const char* out_path) 
     std::ifstream in(in_path, std::ios::binary);
     const patch::Bytes pak((std::istreambuf_iterator<char>(in)), {});
     std::string why;
-    const auto out = patch::mods::patch_city_pak(pak, {patch::mods::rematches_for(file), true, true}, &why);
+    const auto out = patch::mods::patch_city_pak(pak, {patch::mods::rematches_for(file), true, true, true, true, true}, &why);
     if (!why.empty()) std::fprintf(stderr, "dcb_patch: %s: not applied: %s\n", in_path, why.c_str());
     if (!out) {
         std::fprintf(stderr, "dcb_patch: %s: %s\n", in_path, why.c_str());

@@ -34,8 +34,9 @@
 //   - the name box callback (overridden) draws the name one character at a time (ASCII 6 px,
 //     Shift-JIS 12 px, fixed cells as before), moves the cursor with L1/R1 by whole characters,
 //     and puts the underline under the character at the cursor.
-// The WORD INPUT screen keeps full-width letters: the secret keywords it compares with are
-// full-width (ＪＩ２ＭＯＮ ...), and 6 characters is their length.
+// The WORD INPUT screen (Wizardmon's spell) types half-width too, so the US keywords fit (up to
+// 12 letters: MTLGARURUMON); a long-vowel mark or dash from the kana pages types '-'. The game
+// compares the result with its full-width keywords, so keyword.cpp matches it afterwards.
 
 #include "text.hpp"
 
@@ -49,6 +50,7 @@
 extern "C" {
 void f_8002ADC8(PsxContext* ctx);  // text_draw_grey(x, y, clut, prop, ot@sp16, str@sp20)
 void f_8002E398(PsxContext* ctx);  // menu sound (a0: 1 confirm, 2 move)
+void f_8002DCD8(PsxContext* ctx);  // the same sound call, as SAISEG makes it
 void f_800193CC(PsxContext* ctx);  // cursor_set_target(cursor, rect*): the box slides there
 void f_80019448(PsxContext* ctx);  // cursor_draw(cursor, ot)
 }
@@ -64,10 +66,8 @@ constexpr int kRotRows = kKanaPages * kPageRows;
 // Name entry state (g_name_entry; OPENSEG and SUBSEG share the layout).
 constexpr uint32_t kCol = 0;      // s16 grid column 0-9
 constexpr uint32_t kRow = 4;      // s16 grid row
-constexpr uint32_t kName = 9;     // 13 bytes
-constexpr uint32_t kCursor = 22;  // u8: JP character index; here a byte offset
-constexpr uint32_t kFocus = 23;   // u8: 0 grid, 1 tab list
-constexpr uint32_t kTab = 24;     // s8 tab cursor (7 = OK)
+// The name, cursor, focus and tab follow at per-screen offsets (Screen::at): OPENSEG and SUBSEG
+// {9, 22, 23, 24}; SAISEG's keyword {10, 24, 25, 26} (its +23 holds the grid's row count).
 constexpr size_t kNameMax = 12;   // bytes, without the NUL
 
 constexpr uint32_t kPadPtr = 0x8008C420u;  // pad state pointers (one per pad)
@@ -93,18 +93,29 @@ struct Screen {
     uint32_t deck_label;  // "デック" drawn after the name (SUBSEG), 0 = none
     int pad_index;        // state offset of the pad number, -1 = pad 0
     uint32_t edit_pad;    // pad field the grid edits (and cross in the tab list) read
-    uint32_t fresh;       // state offset: 1 until the first edit (circle at 0 then clears the rest)
+    uint32_t fresh;       // state offset: 1 until the first edit (circle at 0 then clears the rest); 0 = none
+    struct {
+        uint32_t name;    // 13 bytes
+        uint32_t cursor;  // u8: JP character index; here a byte offset
+        uint32_t focus;   // u8: 0 grid, 1 tab list
+        uint32_t tab;     // s8 tab cursor (7 = OK)
+    } at;
+    void (*sound)(PsxContext*);  // the menu sound call the screen makes (a0: 1 confirm, 2 move)
+    bool keyword;         // WORD INPUT: a long-vowel / dash from the kana pages types '-'
 };
 
 constexpr Screen kOpenseg{0x801EB5BCu, 0x801F5118u, 0x801E1BA0u, 0x801E19F0u,
                           {0x801E1BD8u, 0x801E1BE4u, 0x801E1BF0u}, 0x801E1BACu,
-                          true, 0x801F9E18u, 0x801EA910u, 0x801EBE18u, 0x801F9D78u, 0, -1, kPadNew, 27};
+                          true, 0x801F9E18u, 0x801EA910u, 0x801EBE18u, 0x801F9D78u, 0, -1, kPadNew, 27,
+                          {9, 22, 23, 24}, f_8002E398, false};
 constexpr Screen kSubseg{0x801E37B4u, 0x801F541Cu, 0x801E10E0u, 0x801E0F30u,
                          {0x801E1118u, 0x801E1124u, 0x801E1130u}, 0x801E10ECu,
-                         true, 0x801F6168u, 0x801E2960u, 0x801E417Cu, 0x801F60C8u, 0x801E116Cu, 27, kPadRepeat, 28};
+                         true, 0x801F6168u, 0x801E2960u, 0x801E417Cu, 0x801F60C8u, 0x801E116Cu, 27, kPadRepeat, 28,
+                         {9, 22, 23, 24}, f_8002E398, false};
 constexpr Screen kSaiseg{0x801EDC40u, 0x801F6C4Cu, 0x801E155Cu, 0x801E13ACu,
                          {0x801E1638u, 0x801E1644u, 0x801E1650u}, 0x801E160Cu,
-                         false, 0, 0, 0, 0, 0, -1, 0, 0};
+                         true, 0x801F7BB0u, 0x801ECF7Cu, 0x801EE488u, 0x801F7B10u, 0, -1, kPadRepeat, 0,
+                         {10, 24, 25, 26}, f_8002DCD8, true};
 
 /// Rotate the row table (idempotent: row 0 tells whether it is done). False when the table
 /// holds neither layout (not this screen's data), so the caller leaves everything alone.
@@ -166,19 +177,19 @@ void fit(std::string& s) {
     s.resize(i);
 }
 
-std::string read_name(PsxContext& ctx, uint32_t state) {
+std::string read_name(PsxContext& ctx, const Screen& s_) {
     std::string s;
     for (uint32_t i = 0; i < kNameMax; ++i) {
-        const uint8_t c = psx_read8(&ctx, state + kName + i);
+        const uint8_t c = psx_read8(&ctx, s_.state + s_.at.name + i);
         if (c == 0) break;
         s.push_back(static_cast<char>(c));
     }
     return s;
 }
 
-void write_name(PsxContext& ctx, uint32_t state, const std::string& s) {
+void write_name(PsxContext& ctx, const Screen& s_, const std::string& s) {
     for (uint32_t i = 0; i <= kNameMax; ++i)
-        psx_write8(&ctx, state + kName + i, i < s.size() ? static_cast<uint8_t>(s[i]) : 0);
+        psx_write8(&ctx, s_.state + s_.at.name + i, i < s.size() ? static_cast<uint8_t>(s[i]) : 0);
 }
 
 /// A full-width letter, digit or space of the ABC page as ASCII (0: keep it full-width).
@@ -203,14 +214,16 @@ std::string grid_char(PsxContext& ctx, const Screen& s) {
     const uint32_t str = psx_read32(&ctx, s.grid + 8u * static_cast<uint32_t>(row) + 4u * static_cast<uint32_t>(col / 5));
     const uint32_t at = str + 2u * static_cast<uint32_t>(col % 5);
     const uint8_t hi = psx_read8(&ctx, at), lo = psx_read8(&ctx, at + 1);
+    const auto c = static_cast<uint16_t>(hi << 8 | lo);
     if (on_letters(ctx, s))
-        if (const char a = half_width(static_cast<uint16_t>(hi << 8 | lo))) return std::string(1, a);
+        if (const char a = half_width(c)) return std::string(1, a);
+    if (s.keyword && (c == 0x815B || c == 0x815C || c == 0x815D || c == 0x817C)) return "-";  // ー ― ‐ －
     return std::string{static_cast<char>(hi), static_cast<char>(lo)};
 }
 
-void sound(PsxContext& ctx, uint32_t id) {
+void sound(PsxContext& ctx, const Screen& s, uint32_t id) {
     ctx.r[kA0] = id;
-    f_8002E398(&ctx);
+    s.sound(&ctx);
 }
 
 uint32_t pad(PsxContext& ctx, const Screen& s) {
@@ -219,24 +232,24 @@ uint32_t pad(PsxContext& ctx, const Screen& s) {
 }
 
 void to_ok(PsxContext& ctx, const Screen& s) {
-    psx_write8(&ctx, s.state + kFocus, 1);
-    psx_write8(&ctx, s.state + kTab, 7);
+    psx_write8(&ctx, s.state + s.at.focus, 1);
+    psx_write8(&ctx, s.state + s.at.tab, 7);
 }
 
 /// Circle (overwrite) or triangle (insert) on the grid: the character under the grid cursor goes
 /// in at the name cursor, which moves past it; a full name sends the focus to OK (as the game
 /// does after the sixth character).
 void type_char(PsxContext& ctx, const Screen& s, bool insert) {
-    std::string name = read_name(ctx, s.state);
-    size_t c = snap(name, psx_read8(&ctx, s.state + kCursor));
+    std::string name = read_name(ctx, s);
+    size_t c = snap(name, psx_read8(&ctx, s.state + s.at.cursor));
     const std::string ch = grid_char(ctx, s);
-    sound(ctx, 1);
+    sound(ctx, s, 1);
     if (insert) {
         name.insert(c, ch);
         fit(name);
     } else {
         std::string out = name.substr(0, c) + ch;
-        const bool fresh = c == 0 && psx_read8(&ctx, s.state + s.fresh) == 1;  // the first key replaces the name
+        const bool fresh = s.fresh && c == 0 && psx_read8(&ctx, s.state + s.fresh) == 1;  // the first key replaces the name
         if (!fresh) out += name.substr(c + char_len(name, c));
         fit(out);
         name = out;
@@ -244,24 +257,24 @@ void type_char(PsxContext& ctx, const Screen& s, bool insert) {
     if (name.size() < c + ch.size() || name.compare(c, ch.size(), ch) != 0) {
         to_ok(ctx, s);  // no room for it
     } else {
-        write_name(ctx, s.state, name);
+        write_name(ctx, s, name);
         if (c + ch.size() < kNameMax) c += ch.size();
         else to_ok(ctx, s);
     }
-    psx_write8(&ctx, s.state + kCursor, static_cast<uint8_t>(c));
-    psx_write8(&ctx, s.state + s.fresh, 0);
+    psx_write8(&ctx, s.state + s.at.cursor, static_cast<uint8_t>(c));
+    if (s.fresh) psx_write8(&ctx, s.state + s.fresh, 0);
 }
 
 /// Cross: deletes the character before the cursor (at the start: the first one).
 void delete_char(PsxContext& ctx, const Screen& s) {
-    std::string name = read_name(ctx, s.state);
-    size_t c = snap(name, psx_read8(&ctx, s.state + kCursor));
-    if (!name.empty()) sound(ctx, 1);
+    std::string name = read_name(ctx, s);
+    size_t c = snap(name, psx_read8(&ctx, s.state + s.at.cursor));
+    if (!name.empty()) sound(ctx, s, 1);
     const size_t at = c == 0 ? 0 : prev_char(name, c);
     name.erase(at, char_len(name, at));
-    write_name(ctx, s.state, name);
-    psx_write8(&ctx, s.state + kCursor, static_cast<uint8_t>(at));
-    psx_write8(&ctx, s.state + s.fresh, 0);
+    write_name(ctx, s, name);
+    psx_write8(&ctx, s.state + s.at.cursor, static_cast<uint8_t>(at));
+    if (s.fresh) psx_write8(&ctx, s.state + s.fresh, 0);
 }
 
 // Pad words hidden from the frame callback's own editing, put back when it returns.
@@ -278,7 +291,7 @@ void input(PsxContext* ctx, const Screen& s) {
     g_hidden = {p, psx_read16(ctx, p + kPadNew), psx_read16(ctx, p + kPadRepeat)};
     const uint16_t keys = psx_read16(ctx, p + s.edit_pad);
     uint16_t hide = 0;
-    if (psx_read8(ctx, s.state + kFocus) == 0) {
+    if (psx_read8(ctx, s.state + s.at.focus) == 0) {
         if (keys & kCircle) type_char(*ctx, s, false);
         else if (keys & kTriangle) type_char(*ctx, s, true);
         else if (keys & kCross) delete_char(*ctx, s);
@@ -321,23 +334,23 @@ void name_box(PsxContext* ctx, const Screen& s) {
     const int x = static_cast<int16_t>(psx_read16(ctx, win)) + 1;
     const int y = static_cast<int16_t>(psx_read16(ctx, win + 2));
     const int ot = static_cast<int16_t>(psx_read16(ctx, win + 58));
-    const std::string name = read_name(*ctx, s.state);
+    const std::string name = read_name(*ctx, s);
     std::vector<int> xs;
     dcb::text_draw_verbatim(*ctx, x, y, 7, 0, kGrey, ot, name, &xs);
     if (s.deck_label) draw_grey(*ctx, x + 76, y, 6, 1, ot, s.deck_label);
 
-    size_t c = snap(name, psx_read8(ctx, s.state + kCursor));
+    size_t c = snap(name, psx_read8(ctx, s.state + s.at.cursor));
     const uint16_t keys = psx_read16(ctx, pad(*ctx, s) + kPadRepeat);
     if (keys & kL1) {
         if (c != 0) {
-            sound(*ctx, 2);
+            sound(*ctx, s, 2);
             c = prev_char(name, c);
         }
     } else if ((keys & kR1) && c < name.size() && c + char_len(name, c) < kNameMax) {
         c += char_len(name, c);
-        sound(*ctx, 2);
+        sound(*ctx, s, 2);
     }
-    psx_write8(ctx, s.state + kCursor, static_cast<uint8_t>(c));
+    psx_write8(ctx, s.state + s.at.cursor, static_cast<uint8_t>(c));
 
     // The underline: under the character at the cursor, or where the next one goes.
     size_t index = 0;
@@ -388,9 +401,11 @@ void dcb_name_entry_frame_sai(PsxContext* ctx) { run(ctx, kSaiseg); }
 // OPENSEG 801EA910 / SUBSEG 801E2960: pad input, then the name edits on bytes.
 void dcb_name_entry_input_open(PsxContext* ctx) { input(ctx, kOpenseg); }
 void dcb_name_entry_input_sub(PsxContext* ctx) { input(ctx, kSubseg); }
+void dcb_name_entry_input_sai(PsxContext* ctx) { input(ctx, kSaiseg); }  // SAISEG 801ECF7C
 
 // OPENSEG 801EBE18 / SUBSEG 801E417C: the name box window callback.
 void dcb_name_box_open(PsxContext* ctx) { name_box(ctx, kOpenseg); }
 void dcb_name_box_sub(PsxContext* ctx) { name_box(ctx, kSubseg); }
+void dcb_name_box_sai(PsxContext* ctx) { name_box(ctx, kSaiseg); }  // SAISEG 801EE488 (the keyword)
 
 }  // extern "C"

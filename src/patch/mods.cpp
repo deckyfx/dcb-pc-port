@@ -18,6 +18,9 @@ constexpr uint16_t kOpJump = 5, kOpArith = 7, kOpText = 8, kOpSkipIf = 9, kOpCmd
 constexpr uint16_t kCmpEq = 0, kCmpNe = 3;  // op 9 comparisons: skip the next record when true
 constexpr uint16_t kRegChoice = 1;    // r1: the Yes / No choice, then the battle result (0 = lost)
 constexpr uint16_t kRegPick = 2;      // r2: the cafe menu's pick
+constexpr uint16_t kRegApokarimonBeaten = 248;  // set when Apokarimon is beaten in the Infinity Tower arena
+constexpr uint16_t kRegNanimonWins = 363;       // Nanimon's defeats (his city, his prizes)
+constexpr uint16_t kRegNanimonDone = 349;       // set with the 10th defeat's prize
 
 uint16_t cmd_of(const MsdRecord& r) { return r.op >= kOpCmd0 ? rd16(r.raw, 2) : 0xFFFF; }
 uint16_t arg_of(const MsdRecord& r, size_t i) { return rd16(r.raw, 6 + 4 * i); }
@@ -72,6 +75,14 @@ public:
         wr16(s_, 0);
         wr32(s_, static_cast<uint32_t>(target - kHeader));
         return at;
+    }
+    /// r`reg` = `value`.
+    void set(uint16_t reg, int32_t value) {
+        wr16(s_, kOpArith);
+        wr16(s_, reg);
+        wr16(s_, 0);
+        wr16(s_, 0);
+        wr32(s_, static_cast<uint32_t>(value));
     }
     void set_target(size_t jump_at, size_t target) { put32(s_, jump_at + 4, static_cast<uint32_t>(target - kHeader)); }
     void raw(View record) { s_.insert(s_.end(), record.begin(), record.end()); }
@@ -480,6 +491,243 @@ std::optional<Bytes> add_player_rooms(View script, std::string* why) {
     return out;
 }
 
+std::optional<Bytes> add_postgame_visitors(View script, std::string* why) {
+    std::vector<MsdRecord> recs;
+    try {
+        recs = text::msd_walk(script);
+    } catch (const std::exception& e) {
+        if (why) *why = e.what();
+        return std::nullopt;
+    }
+    const auto test_is = [&](size_t i, uint16_t reg, uint16_t cmp, int32_t value) {
+        return i + 1 < recs.size() && recs[i].op == kOpSkipIf && rd16(recs[i].raw, 2) == reg && rd16(recs[i].raw, 4) == cmp &&
+               rd16(recs[i].raw, 6) == 0 && static_cast<int32_t>(rd32(recs[i].raw, 8)) == value && recs[i + 1].op == kOpJump;
+    };
+    const auto set_test = [](Bytes& b, const MsdRecord& r, uint16_t reg, uint16_t cmp, uint16_t is_reg, int32_t value) {
+        put16(b, r.offset + 2, reg);
+        put16(b, r.offset + 4, cmp);
+        put16(b, r.offset + 6, is_reg);
+        put32(b, r.offset + 8, static_cast<uint32_t>(value));
+    };
+    const auto is_cmd = [&](size_t i, uint16_t c, uint16_t arg) {
+        return i < recs.size() && recs[i].op == kOpCmd0 + 1 && cmd_of(recs[i]) == c && arg_of(recs[i], 0) == arg;
+    };
+    // After a win the visitor's menu drops Battle until the city is re-entered: `skip_if(r != 1)`,
+    // a jump to the Talk / Deck info menu, then the full menu (`cmd1(12)` Battle ...). The test
+    // becomes `r == r` (always true): the full menu every time.
+    const auto always_battle = [&](Bytes& out, uint16_t reg) {
+        bool done = false;
+        for (size_t i = 0; i < recs.size(); ++i) {
+            if (!test_is(i, reg, kCmpNe, 1)) continue;
+            for (size_t k = i + 2; k <= i + 4 && k < recs.size(); ++k) {
+                if (is_cmd(k, 1, 12)) {
+                    set_test(out, recs[i], reg, kCmpEq, 1, reg);
+                    done = true;
+                    break;
+                }
+            }
+        }
+        return done;
+    };
+
+    // Infinity Tower: its cafe lists Apokarimon (cmd3(12)) while r248 == 0 (before his arena), then
+    // `skip_if(r248 != 1); jump` to the roaming tests (r364 >= 10 and his turn, r351). The test
+    // becomes `r248 == r248`: never jumps, so he is listed from then on too. r359: beaten this visit.
+    for (size_t i = 0; i + 2 < recs.size(); ++i) {
+        if (!(test_is(i, kRegApokarimonBeaten, kCmpNe, 1) && is_cmd(i + 2, 3, 12))) continue;
+        Bytes out(script.begin(), script.end());
+        set_test(out, recs[i], kRegApokarimonBeaten, kCmpEq, 1, kRegApokarimonBeaten);
+        always_battle(out, 359);
+        return out;
+    }
+
+    // The desert city: the only cafe that tests r355 (Apokarimon's turn there; he keeps roaming).
+    bool desert = false;
+    for (size_t i = 0; i + 1 < recs.size() && !desert; ++i) desert = test_is(i, 355, kCmpNe, 0);
+    if (!desert) {
+        if (why) *why = "not Infinity Tower or the desert city";
+        return std::nullopt;
+    }
+    Bytes out(script.begin(), script.end());
+    bool listed = false, milestones = false;
+    for (size_t i = 2; i < recs.size(); ++i) {
+        // Nanimon's listing: after `skip_if(r245 != 0)` (unlocked), `skip_if(r349 != 1)` and dice
+        // (r363, rand) decide whether cmd3(6) runs. The r349 test never skips now (r349 != r349) and
+        // its jump goes straight to the first cmd3(6).
+        if (!listed && test_is(i, kRegNanimonDone, kCmpNe, 1) && test_is(i - 2, 245, kCmpNe, 0)) {
+            for (size_t k = i + 2; k < recs.size() && k < i + 40; ++k) {
+                if (is_cmd(k, 3, 6)) {
+                    set_test(out, recs[i], kRegNanimonDone, kCmpNe, 1, kRegNanimonDone);
+                    put32(out, recs[i + 1].offset + 4, static_cast<uint32_t>(recs[k].offset - kHeader));
+                    listed = true;
+                    break;
+                }
+            }
+        }
+        // His win: `skip_if(r349 != 1); jump; r363 += 1; r350 = 1; S-Option Pack ...; jump back`.
+        // His prizes for the 5th and 10th win are in Infinity Tower's handler only (where the
+        // rotation brings him for those wins); here he can be beaten at any count, so the jump back
+        // goes through the same prizes, appended.
+        if (!milestones && test_is(i, kRegNanimonDone, kCmpNe, 1) && i + 2 < recs.size() && recs[i + 2].op == kOpArith &&
+            rd16(recs[i + 2].raw, 2) == kRegNanimonWins && rd16(recs[i + 2].raw, 4) == 1) {
+            size_t back = 0;
+            for (size_t k = i + 3; k < recs.size() && k < i + 16 && !back; ++k)
+                if (recs[k].op == kOpJump) back = k;
+            if (!back) continue;
+            const size_t done = jump_target(script, recs[back]);
+            Assembler a(out);
+            const size_t end_jump = a.jump();  // running off the old end still ends the script
+            const size_t start = a.here();
+            a.skip_if(kRegNanimonWins, kCmpNe, 5);
+            const size_t to_part = a.jump();
+            a.skip_if(kRegNanimonWins, kCmpNe, 10);
+            const size_t to_sevens = a.jump();
+            a.jump(done);
+            a.set_target(to_part, a.here());  // 5th win: Digi-Part 45
+            a.cmd(13, {9});
+            a.line("You got a *c3Digi-Part*c7.");
+            a.cmd(14, {30});
+            a.cmd(16, {45});
+            a.cmd(14, {60});
+            a.set(341, 1);
+            a.cmd(5);
+            a.jump(done);
+            a.set_target(to_sevens, a.here());  // 10th win: Grand Sevens and Nanimon cards
+            a.set(kRegNanimonDone, 1);
+            a.cmd(13, {9});
+            a.line("You got a *c3Grand Sevens Card*c7.");
+            a.line("You got a *c6Nanimon Card*c7.");
+            a.cmd(1, {288, 156, 0xFFFF});
+            a.cmd(14, {60});
+            a.set(336, 1);
+            a.cmd(5);
+            a.jump(done);
+            a.set_target(end_jump, a.here());
+            put32(out, 8, static_cast<uint32_t>(out.size()));  // header: script size
+            put32(out, recs[back].offset + 4, static_cast<uint32_t>(start - kHeader));
+            milestones = true;
+        }
+    }
+    const bool rematch = always_battle(out, 350);
+    if (!listed && !milestones && !rematch) {
+        if (why) *why = "no desert cafe visitors";
+        return std::nullopt;
+    }
+    return out;
+}
+
+std::optional<Bytes> add_wizardmon_codes(View script, std::string* why) {
+    std::vector<MsdRecord> recs;
+    try {
+        recs = text::msd_walk(script);
+    } catch (const std::exception& e) {
+        if (why) *why = e.what();
+        return std::nullopt;
+    }
+    const auto result_test = [&](size_t i, int32_t value) {
+        return i + 1 < recs.size() && recs[i].op == kOpSkipIf && rd16(recs[i].raw, 2) == kRegChoice &&
+               rd16(recs[i].raw, 4) == kCmpNe && rd16(recs[i].raw, 6) == 0 &&
+               static_cast<int32_t>(rd32(recs[i].raw, 8)) == value && recs[i + 1].op == kOpJump;
+    };
+    // The spell: `cmd15()` (the keyword screen; r1 = its result), `skip_if(r1 != -2); jump cancel`,
+    // `skip_if(r1 != -1); jump wrong`, then one test per keyword; each gift ends with `jump again`.
+    for (size_t i = 0; i + 4 < recs.size(); ++i) {
+        if (!(recs[i].op == kOpCmd0 && cmd_of(recs[i]) == 15 && result_test(i + 1, -2) && result_test(i + 3, -1))) continue;
+        size_t again = 0;
+        for (size_t k = i + 5; k + 1 < recs.size() && k < i + 200 && !again; ++k)
+            if (recs[k].op == kOpCmd0 + 3 && cmd_of(recs[k]) == 1 && recs[k + 1].op != kOpJump) {
+                for (size_t j = k + 1; j < recs.size() && j < k + 6 && !again; ++j)
+                    if (recs[j].op == kOpJump) again = jump_target(script, recs[j]);
+            }
+        if (!again) break;
+        Bytes out(script.begin(), script.end());
+        Assembler a(out);
+        const size_t end_jump = a.jump();  // running off the old end still ends the script
+        const size_t start = a.here();
+        a.skip_if(kRegChoice, kCmpNe, -2);
+        a.jump(jump_target(script, recs[i + 2]));
+        a.skip_if(kRegChoice, kCmpNe, 100);
+        const size_t to_card = a.jump();
+        a.skip_if(kRegChoice, kCmpNe, 101);
+        const size_t to_part = a.jump();
+        a.skip_if(kRegChoice, kCmpNe, 102);
+        const size_t to_owned = a.jump();
+        a.jump(recs[i + 3].offset);  // a keyword: the game's own tests
+        const auto announce = [&](uint16_t sound, const std::string& said) {
+            a.cmd(0, {0, 48, 10});
+            a.cmd(0, {1, 128, 10});
+            a.cmd(6);
+            a.cmd(13, {sound});
+            a.line("*c4Wizardmon*c7");
+            size_t from = 0;
+            for (size_t nl; (nl = said.find('\n', from)) != std::string::npos; from = nl + 1) a.line(said.substr(from, nl - from));
+            a.line(said.substr(from));
+            a.cmd(5);
+        };
+        a.set_target(to_card, a.here());  // keyword.cpp gave the card; {gift} names it
+        announce(8, "Wow! Looks like you got a new Card!");
+        a.cmd(13, {9});
+        a.line("You got the *c6{gift}*c7.");
+        a.cmd(14, {60});
+        a.cmd(5);
+        a.jump(again);
+        a.set_target(to_part, a.here());  // a Digi-Part; {gift_more} is its effect
+        announce(8, "Wow! Looks like you got a new Digi-Part!");
+        a.cmd(13, {9});
+        a.line("You got *c3{gift}*c7:");
+        a.line("{gift_more}");
+        a.cmd(14, {60});
+        a.cmd(5);
+        a.jump(again);
+        a.set_target(to_owned, a.here());
+        announce(16, "Hmm... You already have that one.\nThis wand only makes what you're missing.");
+        a.jump(again);
+        a.set_target(end_jump, a.here());
+        put32(out, 8, static_cast<uint32_t>(out.size()));  // header: script size
+        // `skip_if(r1 != -2)` never skips now (r1 != r1): its jump, to the new tests, is always taken.
+        put16(out, recs[i + 1].offset + 6, 1);
+        put32(out, recs[i + 1].offset + 8, kRegChoice);
+        put32(out, recs[i + 2].offset + 4, static_cast<uint32_t>(start - kHeader));
+        return out;
+    }
+    if (why) *why = "no keyword spell";
+    return std::nullopt;
+}
+
+std::optional<Bytes> drop_win_requirements(View script, std::string* why) {
+    std::vector<MsdRecord> recs;
+    try {
+        recs = text::msd_walk(script);
+    } catch (const std::exception& e) {
+        if (why) *why = e.what();
+        return std::nullopt;
+    }
+    Bytes out(script.begin(), script.end());
+    size_t changed = 0;
+    for (size_t i = 0; i + 1 < recs.size(); ++i) {
+        // `cmd16()` (r1 = total wins), `skip_if(r1 >= N); jump past` and, a few records on, the
+        // flag that lists the opponent: r360 (BlackWarGreymon, Beginner City, N = 300) or r361
+        // (BlackMetalGarurumon, Igloo City, N = 200). Now N = 0: only the story condition is left.
+        if (!(recs[i].op == kOpCmd0 && cmd_of(recs[i]) == 16)) continue;
+        const MsdRecord& test = recs[i + 1];
+        if (test.op != kOpSkipIf || rd16(test.raw, 2) != kRegChoice || rd16(test.raw, 4) != 5 || rd16(test.raw, 6) != 0) continue;
+        bool unlock = false;
+        for (size_t k = i + 2; k < recs.size() && k < i + 8; ++k) {
+            if (recs[k].op == kOpArith && rd16(recs[k].raw, 4) == 0 && (rd16(recs[k].raw, 2) == 360 || rd16(recs[k].raw, 2) == 361) &&
+                static_cast<int32_t>(rd32(recs[k].raw, 8)) == 1)
+                unlock = true;
+        }
+        if (!unlock) continue;
+        put32(out, test.offset + 8, 0);
+        ++changed;
+    }
+    if (changed == 0) {
+        if (why) *why = "no win-count unlock";
+        return std::nullopt;
+    }
+    return out;
+}
+
 std::optional<Bytes> patch_city_pak(View pak, const CityMods& mods, std::string* why) {
     std::vector<PakChunk> chunks;
     try {
@@ -509,6 +757,28 @@ std::optional<Bytes> patch_city_pak(View pak, const CityMods& mods, std::string*
                 changed = true;
             } else if (w != "no city menu without Player Rooms") {  // the three cities that have it
                 reasons += std::string(reasons.empty() ? "" : "; ") + "player rooms: " + w;
+            }
+        }
+        // Post-game shortcuts: in-place test changes only (no code appended).
+        if (mods.postgame_visitors) {
+            std::string w;
+            if (std::optional<Bytes> s = add_postgame_visitors(c.data, &w)) {
+                c.data = std::move(*s);
+                changed = true;
+            }
+        }
+        if (mods.wizardmon_codes) {
+            std::string w;
+            if (std::optional<Bytes> s = add_wizardmon_codes(c.data, &w)) {
+                c.data = std::move(*s);
+                changed = true;
+            }
+        }
+        if (mods.no_win_requirement) {
+            std::string w;
+            if (std::optional<Bytes> s = drop_win_requirements(c.data, &w)) {
+                c.data = std::move(*s);
+                changed = true;
             }
         }
         if (mods.arena_saves) {

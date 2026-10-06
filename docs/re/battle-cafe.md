@@ -81,3 +81,41 @@ tests for r1 = 1, 2, -1 (cancel: "leave the Arena?"); then the group's save bloc
 r270 (set as battles are won). Only the battle that offers Save in its menu (item 15, the 4th;
 also the usurper's) reaches its group's save block. Registers below r12 are not saved, so a save
 must resume at a battle's set-up, not at its menu.
+
+## Post-game
+
+- **Apokarimon** (cafe slot 12 in Infinity Tower, AREA11) is listed while r226 (Wiseman Tower's
+  arena course ending with Omnimon, deck 113, AREA10) and r248 == 0. Talking sets r264, which opens
+  an Infinity Tower arena course ending with him (deck 114); the win sets r248 and r351. From then
+  on he roams: r351-r358 pick the city (one each), and a cafe lists him (`cmd3(5)` elsewhere) when
+  its register is set and r364 (+1 per battle) >= 10; a cafe win clears r351-r358 and r364 and
+  picks the next city at random. The desert city (AREA06, Myotismon's cafe; the one that tests
+  r355) lists him when `r364 >= 10` and `r355 != 0`. Infinity Tower's cafe tests
+  `skip_if(r248 != 1); jump roaming; cmd3(12)`; the `postgame_visitors` mod makes that test
+  `r248 == r248` (always skips the jump), so he stays listed there. A cafe win (AREA11 `0x9200`):
+  r359 = 1, an S-Black Pack, his card the first time (r265) or on a 1-in-10 roll, then the next
+  city.
+- **Nanimon** is unlocked by r245, set when A first challenges the player in Infinity Tower (AREA11
+  `0xe528`, the "?????????" scene before the last arena of the story; every city's Nanimon
+  listing starts with `skip_if(r245 != 0)`). r363 counts his defeats and picks the city: Junk City (0, 7),
+  AREA09 (1, 6), AREA06 (2, 5), Dark City (3, 8), Infinity Tower (4, 9), each on `rand(1)`; prizes
+  at 5 and 10, the 10th sets r349 (Grand Sevens), after which only AREA06 lists him, on `rand(4)`.
+  Every city's win handler does `r363 += 1`, r350 = 1 and an S-Option Pack (with r349: a 1-in-10
+  S-Option Pack instead); only Infinity Tower's (where the rotation has him at 4 and 9) then
+  gives the 5th win's Digi-Part 45 (`0x0B cmd16(45)`, r341) and the 10th's cards
+  (`0x0D cmd1(288, 156, -1)`, r349, r336). The mod appends those two prizes to AREA06's handler
+  and sends its jump back through them.
+  The mod makes AREA06's r349 test never true (`r349 != r349`) and points its jump at the
+  `cmd3(6)`: listed whenever r245.
+- **After a win** a visitor's menu drops Battle until the city is re-entered: `skip_if(r359 != 1)`
+  (Apokarimon) / `skip_if(r350 != 1)` (Nanimon) before a jump to the short menu; both registers are
+  cleared at the script's start. The mod makes the test always true (`r == r`): r359 in AREA11,
+  r350 in AREA06.
+- **Diaboromon** (slot 11, AREA11) is listed when r225 (Wiseman Tower's course ending with
+  WarGreymon, deck 137) and r189 (Sky City's ending with Magnadramon, deck 107, AREA08) and not
+  r247. Talking sets r262 (an arena course ending with him, deck 109); the win sets r247.
+- **The Black chain:** Igloo City (AREA03) reads the total wins at its start (`0x0A cmd16`, r1 =
+  game_data+0x18) and sets r361 when r248 and `r1 >= 200`; its cafe lists BlackMetalGarurumon when
+  r247 and r361. Beating him in Igloo City's arena (deck 116) sets r89; Beginner City (AREA00) sets
+  r360 at its start when r89 and `r1 >= 300`, which lists BlackWarGreymon (deck 115, cafe slot 7).
+  The `no_win_requirement` mod changes the `skip_if(r1 >= N)` before the r360 / r361 set to N = 0.
