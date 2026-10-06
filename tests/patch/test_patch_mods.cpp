@@ -345,13 +345,16 @@ void test_postgame() {
     const auto dv = patch::mods::add_postgame_visitors(d, &why);
     CHECK(dv && dv->size() > d.size());
     if (dv) {
+        CHECK(patch::rd32(*dv, 8) == dv->size());  // header: the new size
+        CHECK(patch::rd16(*dv, d.size()) == 5 && target_of(*dv, d.size()) == dv->size());  // the old end still ends
+        check_jumps(*dv);
         CHECK(Bytes(dv->begin() + roam, dv->begin() + roam + 40) == Bytes(d.begin() + roam, d.begin() + roam + 40));  // Apokarimon roams on
         CHECK(patch::rd16(*dv, dice + 6) == 1 && patch::rd32(*dv, dice + 8) == 349);  // r349 != r349: never skips ...
         CHECK(target_of(*dv, dice + 12) == nanimon);                                  // ... the jump into cmd3(6)
         CHECK(patch::rd16(*dv, menu + 4) == 0 && patch::rd16(*dv, menu + 6) == 1 && patch::rd32(*dv, menu + 8) == 350);  // always skips
         // The way back goes through the 5th / 10th win prizes, which all end at the old target.
         const size_t prizes = target_of(*dv, back);
-        CHECK(prizes == d.size());
+        CHECK(prizes == d.size() + 8);  // after the end jump
         CHECK(patch::rd16(*dv, prizes + 2) == 363 && patch::rd32(*dv, prizes + 8) == 5);
         CHECK(target_of(*dv, prizes + 40) == roam);  // neither: straight back
         size_t ends = 0;
@@ -409,7 +412,10 @@ void test_wizardmon_codes() {
     if (!out) return;
     CHECK(patch::rd16(*out, cancel_test + 6) == 1 && patch::rd32(*out, cancel_test + 8) == 1);  // r1 != r1: always jumps ...
     const size_t tests = target_of(*out, cancel_test + 12);
-    CHECK(tests == s.size());                                                              // ... to the new tests
+    CHECK(tests == s.size() + 8);                                                          // ... to the new tests
+    CHECK(patch::rd32(*out, 8) == out->size());
+    CHECK(patch::rd16(*out, s.size()) == 5 && target_of(*out, s.size()) == out->size());  // the old end still ends
+    check_jumps(*out);
     CHECK(patch::rd32(*out, tests + 8) == static_cast<uint32_t>(-2) && target_of(*out, tests + 12) == again);  // cancel as before
     CHECK(target_of(*out, tests + 80) == wrong_test);  // anything else: the game's own tests
     for (const int32_t v : {100, 101, 102}) {
@@ -419,7 +425,7 @@ void test_wizardmon_codes() {
         while (!(patch::rd16(*out, end) == 5 && patch::rd16(*out, end + 2) == 0)) end += 4;  // its section's jump
         CHECK(target_of(*out, end) == again);
     }
-    CHECK(Bytes(out->begin(), out->begin() + cancel_test) == Bytes(s.begin(), s.begin() + cancel_test));
+    CHECK(Bytes(out->begin() + 16, out->begin() + cancel_test) == Bytes(s.begin() + 16, s.begin() + cancel_test));
     CHECK(!patch::mods::add_wizardmon_codes(Bytes(s.begin(), s.begin() + cancel_test), &why));
 }
 

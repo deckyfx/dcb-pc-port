@@ -576,6 +576,7 @@ std::optional<Bytes> add_postgame_visitors(View script, std::string* why) {
             if (!back) continue;
             const size_t done = jump_target(script, recs[back]);
             Assembler a(out);
+            const size_t end_jump = a.jump();  // running off the old end still ends the script
             const size_t start = a.here();
             a.skip_if(kRegNanimonWins, kCmpNe, 5);
             const size_t to_part = a.jump();
@@ -601,6 +602,8 @@ std::optional<Bytes> add_postgame_visitors(View script, std::string* why) {
             a.set(336, 1);
             a.cmd(5);
             a.jump(done);
+            a.set_target(end_jump, a.here());
+            put32(out, 8, static_cast<uint32_t>(out.size()));  // header: script size
             put32(out, recs[back].offset + 4, static_cast<uint32_t>(start - kHeader));
             milestones = true;
         }
@@ -639,6 +642,7 @@ std::optional<Bytes> add_wizardmon_codes(View script, std::string* why) {
         if (!again) break;
         Bytes out(script.begin(), script.end());
         Assembler a(out);
+        const size_t end_jump = a.jump();  // running off the old end still ends the script
         const size_t start = a.here();
         a.skip_if(kRegChoice, kCmpNe, -2);
         a.jump(jump_target(script, recs[i + 2]));
@@ -678,6 +682,8 @@ std::optional<Bytes> add_wizardmon_codes(View script, std::string* why) {
         a.set_target(to_owned, a.here());
         announce(16, "Hmm... You already have that one.\nThis wand only makes what you're missing.");
         a.jump(again);
+        a.set_target(end_jump, a.here());
+        put32(out, 8, static_cast<uint32_t>(out.size()));  // header: script size
         // `skip_if(r1 != -2)` never skips now (r1 != r1): its jump, to the new tests, is always taken.
         put16(out, recs[i + 1].offset + 6, 1);
         put32(out, recs[i + 1].offset + 8, kRegChoice);
