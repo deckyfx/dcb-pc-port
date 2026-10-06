@@ -64,7 +64,7 @@ target_link_libraries(dcb_patch PUBLIC dcb_vfs PRIVATE dcb::warnings)
 # The text catalog (config/SLPS-03101/text) built into the program: the public build ships no
 # config/. The files stay the source of truth; cmake/EmbedFiles.cmake turns them into C++.
 file(GLOB DCB_PATCH_TEXT_CONFIG CONFIGURE_DEPENDS
-     config/SLPS-03101/text/catalog*.txt config/SLPS-03101/text/en*.tsv)
+     config/SLPS-03101/text/catalog*.txt config/SLPS-03101/text/en*.tsv config/SLPS-03101/text/names*.tsv)
 set(DCB_PATCH_TEXT_EMBED ${CMAKE_CURRENT_BINARY_DIR}/generated/patch_text_config.cpp)
 string(REPLACE ";" "|" DCB_PATCH_TEXT_FILES "${DCB_PATCH_TEXT_CONFIG}")
 add_custom_command(OUTPUT ${DCB_PATCH_TEXT_EMBED}

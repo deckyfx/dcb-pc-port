@@ -26,11 +26,14 @@
 #include "text_catalog.hpp"
 #include "text_codes.hpp"
 
+#include "patch/embed.hpp"
+
 #include <psx/backtrace.hpp>
 #include <psx/recomp.h>
 #include <psx/runtime.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -171,6 +174,94 @@ void load_names() {
     std::fclose(f);
 }
 
+// Character names ([text] names in settings.ini, "jp" by default): the US names of the English
+// text (Cody, Keely...) swapped for the Japanese ones (Iori, Miyako...), from
+// config/<serial>/text/names-jp.tsv (built into the program). Whole words: a letter or digit right
+// before or after is no match, except a code like "*c4" right before ("*c4Cody*c7").
+struct NameSwap {
+    std::string us, jp;
+};
+bool g_jp_names = true;
+
+const std::vector<NameSwap>& name_swaps() {
+    static const std::vector<NameSwap> swaps = [] {
+        std::vector<NameSwap> out;
+        for (const patch::embedded::File& f : patch::embedded::text_config()) {
+            if (std::string_view(f.name) != "names-jp.tsv") continue;
+            const std::string_view text = f.text();
+            for (size_t a = 0; a < text.size();) {
+                size_t e = text.find('\n', a);
+                if (e == std::string_view::npos) e = text.size();
+                std::string_view line = text.substr(a, e - a);
+                a = e + 1;
+                if (!line.empty() && line.back() == '\r') line.remove_suffix(1);
+                const size_t tab = line.find('\t');
+                if (line.empty() || line.front() == '#' || tab == std::string_view::npos) continue;
+                out.push_back({std::string(line.substr(0, tab)), std::string(line.substr(tab + 1))});
+            }
+        }
+        // Longer names first, so one that contains another is matched whole.
+        std::sort(out.begin(), out.end(), [](const NameSwap& x, const NameSwap& y) { return x.us.size() > y.us.size(); });
+        return out;
+    }();
+    return swaps;
+}
+
+bool alnum(char c) { return std::isalnum(static_cast<unsigned char>(c)) != 0; }
+
+void swap_part(std::string& s) {
+    for (const NameSwap& n : name_swaps()) {
+        for (size_t p = s.find(n.us); p != std::string::npos;) {
+            const size_t end = p + n.us.size();
+            const bool code_before = p >= 3 && s[p - 3] == '*' && std::isalpha(static_cast<unsigned char>(s[p - 2])) &&
+                                     std::isdigit(static_cast<unsigned char>(s[p - 1]));
+            const bool start = p == 0 || !alnum(s[p - 1]) || code_before;
+            const bool stop = end >= s.size() || !std::isalpha(static_cast<unsigned char>(s[end]));
+            if (start && stop) {
+                s.replace(p, n.us.size(), n.jp);
+                p = s.find(n.us, p + n.jp.size());
+            } else {
+                p = s.find(n.us, p + 1);
+            }
+        }
+    }
+}
+
+/// swap_part on `s` except where `keep` (the player's name) occurs: a player named "Cody" stays
+/// "Cody", also in a line that already has the name in it and is drawn (swapped) again.
+void swap_names(std::string& s, const std::string& keep = {}) {
+    if (!g_jp_names) return;
+    if (keep.empty()) {
+        swap_part(s);
+        return;
+    }
+    std::string out;
+    size_t from = 0;
+    for (size_t p = s.find(keep); ; p = s.find(keep, from)) {
+        std::string part = s.substr(from, p == std::string::npos ? std::string::npos : p - from);
+        swap_part(part);
+        out += part;
+        if (p == std::string::npos) break;
+        out += keep;
+        from = p + keep.size();
+    }
+    s = std::move(out);
+}
+
+constexpr uint32_t kGameDataPtr = 0x80070C2Cu;  // -> game_data (+0: the player's name, 12 bytes)
+
+/// The player's name, for swap_names (empty before a game is loaded).
+std::string player_name(PsxContext& ctx) {
+    const uint32_t data = psx_read32(&ctx, kGameDataPtr);
+    std::string name;
+    for (uint32_t i = 0; data != 0 && i < 12; ++i) {
+        const char c = static_cast<char>(psx_read8(&ctx, data + i));
+        if (c == 0) break;
+        name.push_back(c);
+    }
+    return name;
+}
+
 // The text catalog (assets/<serial>/text: source.tsv + <lang>.tsv, built by tools/text/en_text.py
 // from config/<serial>/text/catalog.txt): whole game strings by template, e.g. the load screen's
 // messages. DCB_LANG=<lang> picks the language file (default en).
@@ -209,6 +300,7 @@ Text load_text(PsxContext& ctx, uint32_t str) {
     for (const LongName& n : g_names)
         for (size_t p = s.find(n.key); p != std::string::npos; p = s.find(n.key, p + n.full.size()))
             s.replace(p, n.key.size(), n.full);
+    swap_names(s, player_name(ctx));
     // The deck label: "<name>デック" from "%sデック" formats (EXE 800114E0, patched at load; three
     // more in overlays), or "デック" alone (name entry). The name before it is left as typed.
     static const std::string kDeck = "\x83\x66\x83\x62\x83\x4e";  // デック
@@ -350,6 +442,14 @@ bool jp_code_at(const Text& t, size_t s) {
     return (c == 'h' || c == 'w') && n == '-' && t.at(s + 2) >= '0' && t.at(s + 2) <= '9';
 }
 
+/// The value of a hex digit, or -1.
+int hex_digit(uint8_t c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
 /// One parser step over `*`-escaped US codes (US jump table at 0x800102c0). With `jp_codes`
 /// (English inside a JP message), bare JP codes count too. `s` advances past the consumed bytes.
 Item next_item(const Text& t, size_t& s, Cursor& cur, bool jp_codes = false) {
@@ -367,6 +467,18 @@ Item next_item(const Text& t, size_t& s, Cursor& cur, bool jp_codes = false) {
     if (c == 0x5C && t.at(s + 1) == 'n') {  // backslash-n (MSD scripts)
         s += 2;
         it.step = Step::Newline;
+        return it;
+    }
+    if (c == 0x5C && t.at(s + 1) == '0' && t.at(s + 2) == 'x' && hex_digit(t.at(s + 3)) >= 0 &&
+        hex_digit(t.at(s + 4)) >= 0) {
+        // "\0xHH": the character HH (the US scripts quote names as \0x22...\0x22, 104 times).
+        const uint8_t v = static_cast<uint8_t>(hex_digit(t.at(s + 3)) * 16 + hex_digit(t.at(s + 4)));
+        s += 5;
+        if (v >= 0x20 && v < 0x7F) {
+            it.step = Step::Glyph;
+            it.ch = v;
+            it.advance = advance_of(v, cur.prop);
+        }
         return it;
     }
     const bool bare_code = c != '*' && jp_codes && jp_code_at(t, s);
@@ -694,6 +806,10 @@ void dispatch(PsxContext* ctx, uint32_t jp_addr, bool draw, int x, int y, int cl
 bool dcb::text_translate(PsxContext& ctx, const std::string& in, std::string& out) {
     return load_font(ctx) && g_catalog.translate(in, out);
 }
+
+void dcb::text_set_jp_names(bool on) { g_jp_names = on; }
+
+void dcb::text_swap_names(std::string& s) { swap_names(s); }
 
 void dcb::text_draw_verbatim(PsxContext& ctx, int x, int y, int clut, int prop, uint32_t rgb, int ot,
                              const std::string& s, std::vector<int>* x_of) {

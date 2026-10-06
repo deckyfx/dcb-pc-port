@@ -14,6 +14,13 @@ namespace dcb {
 /// False when there is none, or no English assets.
 bool text_translate(PsxContext& ctx, const std::string& in, std::string& out);
 
+/// [text] names (settings.ini): true ("jp", the default) shows the Japanese character names
+/// (Iori, Miyako...) instead of the US ones (config/<serial>/text/names-jp.tsv).
+void text_set_jp_names(bool on);
+/// The character names in `s` as that setting asks (whole words). For lines kept host-side and
+/// typed out (city_text.cpp, event_text.cpp): swap before the player's own name goes in.
+void text_swap_names(std::string& s);
+
 /// A string address the text engine reads somewhere else: a draw (8002AE00) of the string at
 /// `from` draws the one at `to`.
 struct TextAlias {

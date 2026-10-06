@@ -21,6 +21,8 @@
 #include "platform.hpp"
 #include "save_states.hpp"
 #include "settings.hpp"
+#include "mods/mods.hpp"
+#include "overrides/text.hpp"
 #include "trainer.hpp"
 
 #include <psx/coverage.h>
@@ -422,6 +424,36 @@ int main(int argc, char** argv) {
                 platform::current_settings_locations().exe_dir / "assets" / DCB_GAME_ID;
             std::error_code ea_ec;
             if (std::filesystem::is_directory(p, ea_ec)) exe_assets = p.string();
+        }
+        // Gameplay mods ([mods] in settings.ini) and the character names ([text] names); read here,
+        // as the headless build has no settings host. Mods patch files as the file server opens
+        // them, so before the game opens any.
+        {
+            const std::filesystem::path ini_path = platform::resolve_settings_path(
+                platform::current_settings_locations(), [](const std::filesystem::path& p) {
+                    std::error_code ini_ec;
+                    return std::filesystem::exists(p, ini_ec);
+                });
+            const platform::IniDocument ini =
+                platform::IniDocument::parse(platform::read_text_file(ini_path).value_or(""));
+            // An invalid value keeps the default, with a warning like the other settings.
+            const auto invalid = [](const char* section, const char* key, const std::string& value, const char* expected,
+                                    const char* fallback) {
+                std::fprintf(stderr, "settings: [%s] %s = \"%s\" is invalid (expected %s); using %s\n", section, key,
+                             value.c_str(), expected, fallback);
+            };
+            const auto flag = [&](const char* key) {
+                const std::optional<std::string> v = ini.get("mods", key);
+                if (!v) return true;
+                if (const std::optional<bool> b = platform::parse_setting_bool(*v)) return *b;
+                invalid("mods", key, *v, "true or false", "true");
+                return true;
+            };
+            dcb::mods::set_boss_rematch(flag("boss_rematch"));
+            dcb::mods::set_arena_saves(flag("arena_save"));
+            const std::optional<std::string> names = ini.get("text", "names");
+            if (names && *names != "jp" && *names != "us") invalid("text", "names", *names, "jp or us", "jp");
+            dcb::text_set_jp_names(!names || *names != "us");
         }
         dcb::attach_native_files(mmio.disc(), DCB_GAME_ID, exe_assets);
         hle::HdTextures* hd_textures = nullptr;  // for the exit summary

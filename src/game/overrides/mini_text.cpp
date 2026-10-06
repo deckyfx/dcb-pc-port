@@ -468,6 +468,9 @@ void dcb_sjis_to_mini(PsxContext* ctx) {
     std::string name;
     for (size_t i = 0; i < std::min(n, kNameMax); ++i)
         name += static_cast<char>(psx_read8(ctx, src + static_cast<uint32_t>(i)));
+    // [text] names: the JP Digimon names (all within the US names' 19 letters); one longer than
+    // the 21-byte name buffer the result is written to keeps the US name.
+    if (std::string swapped = name; (dcb::text_swap_names(swapped), swapped.size() <= kNameMax)) name = swapped;
 
     std::string out = ascii_to_mini(name);
     g_pending = {};

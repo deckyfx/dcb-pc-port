@@ -87,6 +87,7 @@ void dcb_city_msg_build(PsxContext* ctx) {
     const bool english = is_english(src);
     if (english) text = src;
     else if (!dcb::text_translate(*ctx, src, text)) return psx_call_original(ctx, kBuild);
+    dcb::text_swap_names(text);  // before the player's own name goes in
     text = expand_player_name(*ctx, text);
 
     ctx->r[kA0] = kSlots;

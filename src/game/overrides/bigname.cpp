@@ -28,11 +28,14 @@
 // step, stack argument and global write mirrors the MIPS routine.
 
 #include "native_files.hpp"
+#include "text.hpp"
 
 #include <psx/recomp.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <cstdlib>
 #include <initializer_list>
 #include <string>
@@ -191,7 +194,84 @@ uint32_t sleep(PsxContext& ctx, uint32_t frame, uint32_t frames) {
 
 void task_id(PsxContext& ctx) { f_800149E4(&ctx); }
 
+/// The deck owner names of DECK2.DEK (the English one in assets/<serial>/files/B; JP stride 104,
+/// owner at +73, 21 bytes), by deck number; empty when there is none.
+const std::vector<std::string>& deck_owners() {
+    static const std::vector<std::string> owners = [] {
+        std::vector<std::string> out;
+        const std::string path = dcb::asset_path("files/B/DECK2.DEK");
+        FILE* in = path.empty() ? nullptr : std::fopen(path.c_str(), "rb");
+        if (!in) return out;
+        std::vector<uint8_t> dek(8 + 159 * 104);
+        const bool ok = std::fread(dek.data(), 1, dek.size(), in) == dek.size();
+        std::fclose(in);
+        for (size_t i = 0; ok && i < 159; ++i) {
+            const char* owner = reinterpret_cast<const char*>(dek.data() + 8 + i * 104 + 73);
+            out.emplace_back(owner, strnlen(owner, 21));
+        }
+        return out;
+    }();
+    return owners;
+}
+
+/// A name picture as the US MATCH archives hold one: a 4-bpp TIM at (704, 480), 16 px per
+/// character from the US big font, its CLUT at (752, 472).
+std::vector<uint8_t> name_picture(const std::string& name) {
+    const BigFont& f = font();
+    const size_t n = std::min<size_t>(name.size(), 16);  // the US pictures are at most 64 halfwords
+    const uint32_t w = static_cast<uint32_t>(n) * 4, rows = 32, pixels = w * 2 * rows;
+    std::vector<uint8_t> tim;
+    const auto u16 = [&](uint32_t v) { tim.push_back(static_cast<uint8_t>(v)); tim.push_back(static_cast<uint8_t>(v >> 8)); };
+    const auto u32 = [&](uint32_t v) { u16(v & 0xFFFF); u16(v >> 16); };
+    u32(0x10);
+    u32(8);  // 4 bpp with a CLUT
+    u32(12 + 32);
+    for (const uint32_t v : {752u, 472u, 16u, 1u}) u16(v);
+    tim.insert(tim.end(), f.clut, f.clut + 32);
+    u32(12 + pixels);
+    for (const uint32_t v : {704u, 480u, w, rows}) u16(v);
+    for (uint32_t y = 0; y < rows; ++y) {
+        for (size_t i = 0; i < n; ++i) {
+            const int c = static_cast<uint8_t>(name[i]);
+            const int g = c >= kFirst && c < kFirst + kCount && f.present[c - kFirst] ? c - kFirst : 0;
+            const uint8_t* row = f.pixels.data() + static_cast<size_t>(g) * kGlyphBytes + y * 8;
+            tim.insert(tim.end(), row, row + 8);
+        }
+    }
+    return tim;
+}
+
 }  // namespace
+
+bool dcb::vs_name_picture(const std::string& key, std::vector<uint8_t>& arc) {
+    // B/MATCH/NNN.ARC: NNN is the opponent's deck; its owner's name, with the character names
+    // swapped ([text] names), replaces the US picture when the swap changed it.
+    if (key.rfind("B/MATCH/", 0) != 0 || key.size() != 15 || !font().ok) return false;
+    const int deck = std::atoi(key.c_str() + 8);
+    const std::vector<std::string>& owners = deck_owners();
+    if (deck < 0 || static_cast<size_t>(deck) >= owners.size()) return false;
+    std::string name = owners[static_cast<size_t>(deck)];
+    dcb::text_swap_names(name);
+    if (name == owners[static_cast<size_t>(deck)] || arc.size() < 8) return false;
+    // The archive: u32 offsets (count = first / 4), the last one the end of the file.
+    const uint32_t first = arc[0] | arc[1] << 8 | arc[2] << 16 | static_cast<uint32_t>(arc[3]) << 24;
+    if (first % 4 != 0 || first < 8 || first > arc.size()) return false;
+    const size_t count = first / 4;
+    std::vector<uint32_t> offs(count);
+    for (size_t i = 0; i < count; ++i)
+        offs[i] = arc[i * 4] | arc[i * 4 + 1] << 8 | arc[i * 4 + 2] << 16 | static_cast<uint32_t>(arc[i * 4 + 3]) << 24;
+    // In order, past the table, the last one the end of the file: a malformed archive stays as it is.
+    if (offs.back() != arc.size() || offs.front() < first) return false;
+    for (size_t i = 1; i < count; ++i)
+        if (offs[i] < offs[i - 1]) return false;
+    const std::vector<uint8_t> picture = name_picture(name);
+    std::vector<uint8_t> out(arc.begin(), arc.begin() + offs[count - 2]);  // up to the last TIM
+    out.insert(out.end(), picture.begin(), picture.end());
+    const uint32_t end = static_cast<uint32_t>(out.size());
+    for (int i = 0; i < 4; ++i) out[(count - 1) * 4 + i] = static_cast<uint8_t>(end >> (8 * i));
+    arc = std::move(out);
+    return true;
+}
 
 extern "C" {
 

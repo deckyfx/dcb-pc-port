@@ -235,6 +235,9 @@ private:
 
 /// Read a whole file; nullopt if it cannot be opened.
 std::optional<std::string> read_text_file(const std::filesystem::path& path);
+/// A settings.ini boolean (true / false, yes / no, on / off, 1 / 0); nullopt when it is none, for
+/// keys read outside the Settings parser ([mods], [text] names in main.cpp).
+std::optional<bool> parse_setting_bool(std::string_view value);
 /// Write `text` via a temporary file + rename, creating parent directories. False on failure.
 bool write_text_file(const std::filesystem::path& path, std::string_view text);
 

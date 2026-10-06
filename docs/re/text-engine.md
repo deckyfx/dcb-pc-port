@@ -59,6 +59,7 @@ data), **L** low (a guess).
 | `81 40` (full-width space) | advance only (12 px, or the fixed cell width), nothing drawn | `FUN_8002aa30` returns 1 for `0x8140` | H |
 | `0A` | newline: x = start, y += 13 + `h` | `case 10` | H |
 | `5C 6E` (`\` `n`, 2 chars) | newline, same as `0A`. MSD scripts use this form. | `case 0x5c` | H |
+| `5C 30 78 H H` (`\0xHH`, US scripts) | the character `HH`: the US city scripts quote names as `\0x22`...`\0x22` (104 times, only `22`); the port's renderer draws the `"` (src/game/overrides/text.cpp) | US data | H (data), M (US renderer not traced) |
 | `20` | space: 6 px, or 12 px after `z` (condensed renderer 4/8) | `case 0x20`, `local_2c` | H |
 | `30`–`39` | full-width digit ０–９ via the table at `0x80070a68` (10 SJIS codes, `82 4F`…`82 58`) | `default:` branch, `-0x7ff8f598` = `0x80070a68` | H |
 | any other byte | skipped (1 byte, no advance) | `default:` falls through to `s = pbVar4 + 1` | H |

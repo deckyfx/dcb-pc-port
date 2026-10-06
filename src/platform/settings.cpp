@@ -319,6 +319,16 @@ IniDocument default_settings_ini() {
     doc.add_comment("audio", "Master volume, 0-100.");
     doc.set("audio", "volume", std::to_string(kVolumeMax));
 
+    doc.add_comment("text", "Character names: jp = the Japanese names (Daisuke, Miyako, Iori, Takeru, Hikari,");
+    doc.add_comment("text", "Taichi, Yamato, Koushiro, Jou), us = the US ones (Davis, Keely, Cody, T.K., ...).");
+    doc.set("text", "names", "jp");
+
+    doc.add_comment("mods", "Gameplay mods. boss_rematch: beaten Battle Arena bosses (Wormmon, Stingmon,");
+    doc.add_comment("mods", "Shadramon, the Digimon Emperor, A) can be fought again in their city's Battle Cafe.");
+    doc.set("mods", "boss_rematch", "true");
+    doc.add_comment("mods", "arena_save: Save in every Battle Arena battle menu, not only at the 4th and 7th.");
+    doc.set("mods", "arena_save", "true");
+
     doc.add_comment("keyboard", "SDL scancode names (e.g. Z, Return, Space, Left Shift, Keypad 8, Comma);");
     doc.add_comment("keyboard", "separate several keys with commas; leave empty to unbind.");
     doc.add_comment("keyboard", "Escape always quits and Alt+Enter always toggles fullscreen.");
@@ -483,6 +493,8 @@ SettingsLocations current_settings_locations() {
 #endif
     return where;
 }
+
+std::optional<bool> parse_setting_bool(std::string_view value) { return parse_bool(value); }
 
 std::optional<std::string> read_text_file(const std::filesystem::path& path) {
     std::ifstream in(path, std::ios::binary);
