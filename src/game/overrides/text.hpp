@@ -20,6 +20,9 @@ void text_set_jp_names(bool on);
 /// The character names in `s` as that setting asks (whole words). For lines kept host-side and
 /// typed out (city_text.cpp, event_text.cpp): swap before the player's own name goes in.
 void text_swap_names(std::string& s);
+/// A US line the port rewords (config/<serial>/text/lines-en.tsv), given the line before it (some
+/// rewordings apply only after a given line). For lines kept host-side (city_text.cpp).
+void text_reword_line(std::string& line, const std::string& previous);
 
 /// A string address the text engine reads somewhere else: a draw (8002AE00) of the string at
 /// `from` draws the one at `to`.

@@ -326,6 +326,7 @@ std::optional<Bytes> add_arena_saves(View script, std::string* why) {
     Assembler a(out);
     const size_t end_jump = a.jump();  // running off the old end still ends the script
     size_t added = 0;
+    size_t prev_menu = 0;  // the previous arena battle menu: a battle's set-up lies after it
     for (size_t i = 0; i + 10 < recs.size(); ++i) {
         // An arena battle menu: cmd0(97), the items Battle (13) and Deck info (14) only, the pick
         // into r1, then tests for 1, 2 and -1 (cancel).
@@ -334,11 +335,13 @@ std::optional<Bytes> add_arena_saves(View script, std::string* why) {
               op_cmd(i + 3, kOpCmd0, 1) && is_test(i + 4, kRegChoice, 1) && is_test(i + 6, kRegChoice, 2) &&
               is_test(i + 8, kRegChoice, -1)))
             continue;
+        const size_t lower = prev_menu;
+        prev_menu = i;
         // Not A's fight (the Battle choice leads to deck 140 before the next record that leaves):
         // it changes the whole screen's colours, so it keeps the game's own flow.
         bool boss = false;
         if (const auto it = index.find(jump_target(script, recs[i + 5])); it != index.end()) {
-            for (size_t k = it->second; k < recs.size() && k < it->second + 64; ++k) {
+            for (size_t k = it->second; k < recs.size(); ++k) {  // however long the lines before it
                 if (op_cmd(k, kOpCmd0 + 1, 2)) {
                     boss = arg_of(recs[k], 0) == 140;
                     break;
@@ -348,8 +351,10 @@ std::optional<Bytes> add_arena_saves(View script, std::string* why) {
         if (boss) continue;
         // The battle's set-up (opponent number r10, name r9, the portrait host cmd 13): where a
         // save made here resumes, as registers below r12 are not saved.
+        // Searched back to the previous battle menu, however long the lines in between (a story
+        // fight such as Sky City's Tailmon has dozens).
         size_t setup = 0;
-        for (size_t k = i; k > 0 && k + 64 > i; --k) {
+        for (size_t k = i; k > lower; --k) {
             if (recs[k].op == kOpArith && rd16(recs[k].raw, 2) == 10 && rd16(recs[k].raw, 4) == 0) {
                 setup = k;
                 break;
@@ -402,6 +407,79 @@ std::optional<Bytes> add_arena_saves(View script, std::string* why) {
     return out;
 }
 
+std::optional<Bytes> add_player_rooms(View script, std::string* why) {
+    std::vector<MsdRecord> recs;
+    try {
+        recs = text::msd_walk(script);
+    } catch (const std::exception& e) {
+        if (why) *why = e.what();
+        return std::nullopt;
+    }
+    const auto item = [&](size_t i) { return recs[i].op == kOpCmd0 + 1 && cmd_of(recs[i]) == 1; };
+    Bytes out(script.begin(), script.end());
+    Assembler a(out);
+    const size_t end_jump = a.jump();  // running off the old end still ends the script
+    size_t added = 0;
+    for (size_t i = 0; i + 1 < recs.size(); ++i) {
+        // A city menu ("Where do you want to go?"): cmd0(120), the places (Battle Cafe 2, Battle
+        // Arena 3, Menu 1, ...), the pick into r1 (its 1-based position), then a test per position
+        // and for -1 (the map). One that lists Player Rooms (item 0) already is left alone.
+        if (!(recs[i].op == kOpCmd0 + 1 && cmd_of(recs[i]) == 0 && arg_of(recs[i], 0) == 120)) continue;
+        size_t k = i + 1;
+        std::vector<uint16_t> places;
+        while (k < recs.size() && item(k)) places.push_back(arg_of(recs[k++], 0));
+        const auto has = [&](uint16_t v) { return std::find(places.begin(), places.end(), v) != places.end(); };
+        // The menu box has five rows (the most any city lists, Player Rooms included): a menu with
+        // five places already (Jungle City once its Extra and Beet Arenas open) stays as it is.
+        constexpr size_t kMenuRows = 5;
+        if (!has(1) || !has(2) || !has(3) || has(0) || places.size() >= kMenuRows || k >= recs.size() ||
+            !(recs[k].op == kOpCmd0 && cmd_of(recs[k]) == 1))
+            continue;
+        const size_t pick = k, last_item = k - 1;
+        const size_t first_test = pick + 1;
+        if (first_test + 1 >= recs.size() || recs[first_test].op != kOpSkipIf || rd16(recs[first_test].raw, 2) != kRegChoice ||
+            rd16(recs[first_test].raw, 4) != kCmpNe || rd16(recs[first_test].raw, 6) != 0 || recs[first_test + 1].op != kOpJump ||
+            recs[last_item - 1].op == kOpSkipIf)
+            continue;
+        const int32_t position = static_cast<int32_t>(places.size()) + 1;
+
+        // The places, then Player Rooms (item 0), back to the pick.
+        const size_t items_at = a.here();
+        a.raw(recs[last_item].raw);
+        a.cmd(1, {0});
+        a.jump(recs[pick].offset);
+        // Player Rooms, as Beginner City, Sky City and Wiseman Tower open it: scene 0, the rooms
+        // (host 0x0A cmd 7), then the script's start (back in the city).
+        const size_t rooms_at = a.here();
+        a.cmd(8, {0});
+        a.cmd(6);
+        a.cmd(7);
+        a.jump(kHeader);
+        // The dispatch: the original first test, then the new position, then the other tests.
+        const size_t dispatch_at = a.here();
+        a.raw(recs[first_test].raw);
+        a.jump(jump_target(script, recs[first_test + 1]));
+        a.skip_if(kRegChoice, kCmpNe, position);
+        a.jump(rooms_at);
+        a.jump(recs[first_test + 2].offset);
+
+        put16(out, recs[last_item].offset, kOpJump);
+        put16(out, recs[last_item].offset + 2, 0);
+        put32(out, recs[last_item].offset + 4, static_cast<uint32_t>(items_at - kHeader));
+        put16(out, recs[first_test].offset + 6, 1);  // the first test never skips (r1 != r1) ...
+        put32(out, recs[first_test].offset + 8, kRegChoice);
+        put32(out, recs[first_test + 1].offset + 4, static_cast<uint32_t>(dispatch_at - kHeader));  // ... into the new dispatch
+        ++added;
+    }
+    if (added == 0) {
+        if (why) *why = "no city menu without Player Rooms";
+        return std::nullopt;
+    }
+    a.set_target(end_jump, a.here());
+    put32(out, 8, static_cast<uint32_t>(out.size()));
+    return out;
+}
+
 std::optional<Bytes> patch_city_pak(View pak, const CityMods& mods, std::string* why) {
     std::vector<PakChunk> chunks;
     try {
@@ -422,6 +500,15 @@ std::optional<Bytes> patch_city_pak(View pak, const CityMods& mods, std::string*
                 changed = true;
             } else {
                 reasons += "boss rematch: " + w;
+            }
+        }
+        if (mods.player_rooms) {
+            std::string w;
+            if (std::optional<Bytes> s = add_player_rooms(c.data, &w)) {
+                c.data = std::move(*s);
+                changed = true;
+            } else if (w != "no city menu without Player Rooms") {  // the three cities that have it
+                reasons += std::string(reasons.empty() ? "" : "; ") + "player rooms: " + w;
             }
         }
         if (mods.arena_saves) {

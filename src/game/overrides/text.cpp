@@ -207,6 +207,38 @@ const std::vector<NameSwap>& name_swaps() {
     return swaps;
 }
 
+// Reworded lines (config/<serial>/text/lines-en.tsv, built in): a whole US line replaced, some
+// only right after a given line (the same words said elsewhere stay).
+struct LineSwap {
+    std::string us, shown, after;
+};
+
+const std::vector<LineSwap>& line_swaps() {
+    static const std::vector<LineSwap> swaps = [] {
+        std::vector<LineSwap> out;
+        for (const patch::embedded::File& f : patch::embedded::text_config()) {
+            if (std::string_view(f.name) != "lines-en.tsv") continue;
+            const std::string_view text = f.text();
+            for (size_t a = 0; a < text.size();) {
+                size_t e = text.find('\n', a);
+                if (e == std::string_view::npos) e = text.size();
+                std::string_view line = text.substr(a, e - a);
+                a = e + 1;
+                if (!line.empty() && line.back() == '\r') line.remove_suffix(1);
+                if (line.empty() || line.front() == '#') continue;
+                const size_t t1 = line.find('\t');
+                if (t1 == std::string_view::npos) continue;
+                const size_t t2 = line.find('\t', t1 + 1);
+                out.push_back({std::string(line.substr(0, t1)),
+                               std::string(line.substr(t1 + 1, t2 == std::string_view::npos ? std::string_view::npos : t2 - t1 - 1)),
+                               t2 == std::string_view::npos ? std::string() : std::string(line.substr(t2 + 1))});
+            }
+        }
+        return out;
+    }();
+    return swaps;
+}
+
 bool alnum(char c) { return std::isalnum(static_cast<unsigned char>(c)) != 0; }
 
 void swap_part(std::string& s) {
@@ -810,6 +842,15 @@ bool dcb::text_translate(PsxContext& ctx, const std::string& in, std::string& ou
 void dcb::text_set_jp_names(bool on) { g_jp_names = on; }
 
 void dcb::text_swap_names(std::string& s) { swap_names(s); }
+
+void dcb::text_reword_line(std::string& line, const std::string& previous) {
+    for (const LineSwap& r : line_swaps()) {
+        if (line == r.us && (r.after.empty() || previous == r.after)) {
+            line = r.shown;
+            return;
+        }
+    }
+}
 
 void dcb::text_draw_verbatim(PsxContext& ctx, int x, int y, int clut, int prop, uint32_t rgb, int ot,
                              const std::string& s, std::vector<int>* x_of) {

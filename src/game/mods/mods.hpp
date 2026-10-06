@@ -14,6 +14,9 @@ void set_boss_rematch(bool on);
 /// The arena-save mod ([mods] arena_save, on by default): Save in every arena battle menu, not
 /// only at the 4th and 7th battles.
 void set_arena_saves(bool on);
+/// The Player Rooms mod ([mods] player_rooms, on by default): every city's menu lists Player Rooms,
+/// not only Beginner City's, Sky City's and Wiseman Tower's.
+void set_player_rooms(bool on);
 
 /// True when a mod changes the game file `key` ("C/AREA11.PAK", as the file server names it).
 bool wants(const std::string& key);

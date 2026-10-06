@@ -87,6 +87,10 @@ void dcb_city_msg_build(PsxContext* ctx) {
     const bool english = is_english(src);
     if (english) text = src;
     else if (!dcb::text_translate(*ctx, src, text)) return psx_call_original(ctx, kBuild);
+    // A line the port rewords; some only right after a given line, so the previous US line is kept.
+    static std::string previous;
+    if (english) dcb::text_reword_line(text, previous);
+    previous = src;
     dcb::text_swap_names(text);  // before the player's own name goes in
     text = expand_player_name(*ctx, text);
 

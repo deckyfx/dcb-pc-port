@@ -5,6 +5,9 @@
 // Arena saves: the arenas offer Save only at a few battles (4th and 7th); this mod adds it to
 // every battle menu (add_arena_saves).
 //
+// Player Rooms: only Beginner City, Sky City and Wiseman Tower list it in their city menu; this mod
+// adds it to every city's (add_player_rooms).
+//
 // Boss rematches: the Battle Arena bosses (the usurpers who take over an arena, and the story
 // bosses) can be fought once; afterwards they are gone. This mod adds them to the same city's
 // Battle Cafe once beaten:
@@ -64,10 +67,16 @@ std::optional<Bytes> add_rematches(View script, const std::vector<Rematch>& list
 /// Appended only, like add_rematches. nullopt (with `why`) when the script has no arena menu.
 std::optional<Bytes> add_arena_saves(View script, std::string* why = nullptr);
 
+/// The MSD city script with Player Rooms (item 0) in every city menu ("Where do you want to go?")
+/// that lacks it and has a free row (the box shows five; a full menu is left as it is), opened as Beginner City, Sky City and Wiseman Tower do (scene 0, host 0x0A cmd 7,
+/// then the script's start). Appended only. nullopt (with `why`) when no menu lacks it.
+std::optional<Bytes> add_player_rooms(View script, std::string* why = nullptr);
+
 /// What to change in one city file.
 struct CityMods {
     std::vector<Rematch> rematches;  ///< add_rematches (none: skipped)
     bool arena_saves = false;        ///< add_arena_saves
+    bool player_rooms = false;       ///< add_player_rooms
 };
 
 /// A city PAK (C\AREAnn.PAK) with its script chunk passed through the mods in `mods`; nullopt

@@ -152,6 +152,8 @@ Bytes arena_script(std::vector<size_t>& setups, std::vector<size_t>& item14s, co
         cmd(s, 0, {1, 128, 10});
         arith(s, 10, 1);
         cmd(s, 13);
+        if (deck == 9)  // a story fight: a long intro between the set-up and the menu
+            for (int k = 0; k < 100; ++k) cmd(s, 4);
         cmd(s, 0, {97});
         cmd(s, 1, {13});
         item14s.push_back(s.size());
@@ -228,7 +230,7 @@ void test_arena_saves() {
     const auto out = patch::mods::add_arena_saves(in, &why);
     CHECK(out);
     check_jumps(*out);
-    // Both regular battles get Save; A's (deck 140) menu is untouched.
+    // Both regular battles get Save, also the one with a long intro; A's (deck 140) is untouched.
     CHECK(has_save_item(*out, item14s[0]) && has_save_item(*out, item14s[1]));
     CHECK(Bytes(out->begin() + item14s[2], out->begin() + item14s[2] + 8) ==
           Bytes(in.begin() + item14s[2], in.begin() + item14s[2] + 8));
@@ -239,6 +241,50 @@ void test_arena_saves() {
     cmd(plain, 6);
     for (int i = 0; i < 4; ++i) plain[8 + i] = static_cast<uint8_t>(plain.size() >> (8 * i));
     CHECK(!patch::mods::add_arena_saves(plain, &why) && !why.empty());
+}
+
+/// A city menu (cmd0(120), the places, the pick, a test per position and -1) for `places`.
+Bytes city_script(const std::vector<uint16_t>& places, size_t& last_item, size_t& first_test) {
+    Bytes s = {'M', 'S', 'C', 'D'};
+    patch::wr32(s, 3);
+    patch::wr32(s, 0);
+    patch::wr32(s, 372);
+    cmd(s, 6);
+    cmd(s, 0, {120});
+    for (const uint16_t v : places) {
+        last_item = s.size();
+        cmd(s, 1, {v});
+    }
+    cmd(s, 1);
+    first_test = s.size();
+    for (int32_t v = 1; v <= static_cast<int32_t>(places.size()); ++v) {
+        skip_if(s, 1, 3, v);
+        jump(s, 16);
+    }
+    skip_if(s, 1, 3, -1);
+    jump(s, 16);
+    for (int i = 0; i < 4; ++i) s[8 + i] = static_cast<uint8_t>(s.size() >> (8 * i));
+    return s;
+}
+
+void test_player_rooms() {
+    size_t last = 0, test = 0;
+    const Bytes in = city_script({2, 3, 1}, last, test);
+    std::string why;
+    const auto out = patch::mods::add_player_rooms(in, &why);
+    CHECK(out);
+    check_jumps(*out);
+    // The last place is a jump to it and Player Rooms (item 0); the new 4th position opens them.
+    CHECK(patch::rd16(*out, last) == 5);
+    const size_t items = target_of(*out, last);
+    CHECK(patch::rd16(*out, items + 6) == 1 && patch::rd16(*out, items + 8) == 0x0B && patch::rd16(*out, items + 14) == 0);
+    bool rooms = false;
+    for (const auto& rec : patch::text::msd_walk(*out))
+        if (rec.offset >= in.size() && rec.op == 0x0A && patch::rd16(rec.raw, 2) == 7) rooms = true;
+    CHECK(rooms);
+    // A full menu (five rows) and one that lists Player Rooms already are left alone.
+    CHECK(!patch::mods::add_player_rooms(city_script({2, 3, 5, 4, 1}, last, test), &why));
+    CHECK(!patch::mods::add_player_rooms(city_script({2, 3, 1, 0}, last, test), &why));
 }
 
 void test_table() {
@@ -252,6 +298,7 @@ void test_table() {
 int main() {
     test_rematch();
     test_arena_saves();
+    test_player_rooms();
     test_table();
     std::puts("patch mods: all checks passed");
     return 0;
