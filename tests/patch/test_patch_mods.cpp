@@ -307,10 +307,10 @@ void test_postgame() {
     CHECK(patch::rd32(*out, wins + 8) == 0);  // r1 >= 0: no wins needed
     CHECK(Bytes(out->begin() + wins + 12, out->end()) == Bytes(s.begin() + wins + 12, s.end()));  // the story flag stays
     // Not the desert city (no r355 test): left alone.
-    CHECK(!patch::mods::add_desert_visitors(s, &why));
+    CHECK(!patch::mods::add_postgame_visitors(s, &why));
 
     // The desert city's cafe: Apokarimon (roaming tests, cmd3(5)), Nanimon (unlock, dice, cmd3(6)),
-    // and a visitor's menu (Battle dropped after a win until the city is re-entered).
+    // a visitor's menu (Battle dropped after a win until the city is re-entered), Nanimon's win.
     Bytes d = {'M', 'S', 'C', 'D'};
     patch::wr32(d, 3);
     patch::wr32(d, 0);
@@ -330,19 +330,55 @@ void test_postgame() {
     const size_t nanimon = d.size();
     cmd(d, 3, {6});
     const size_t menu = d.size();
-    skip_if(d, 359, 3, 1);
+    skip_if(d, 350, 3, 1);
     jump(d, 16);
     cmd(d, 1, {12});
+    skip_if(d, 349, 3, 1);  // the win: r363 += 1, r350 = 1, a prize, back to the cafe
+    jump(d, 16);
+    for (const uint16_t h : {uint16_t{7}, uint16_t{363}, uint16_t{1}, uint16_t{0}}) patch::wr16(d, h);
+    patch::wr32(d, 1);
+    arith(d, 350, 1);
+    cmd(d, 5);
+    const size_t back = d.size();
+    jump(d, roam);
     for (int i = 0; i < 4; ++i) d[8 + i] = static_cast<uint8_t>(d.size() >> (8 * i));
-    const auto dv = patch::mods::add_desert_visitors(d, &why);
-    CHECK(dv && dv->size() == d.size());
+    const auto dv = patch::mods::add_postgame_visitors(d, &why);
+    CHECK(dv && dv->size() > d.size());
     if (dv) {
-        for (const size_t at : {roam, roam + 20}) {  // both: r248 == 1 (Apokarimon beaten in Infinity Tower)
-            CHECK(patch::rd16(*dv, at + 2) == 248 && patch::rd16(*dv, at + 4) == 0 && patch::rd32(*dv, at + 8) == 1);
-        }
+        CHECK(Bytes(dv->begin() + roam, dv->begin() + roam + 40) == Bytes(d.begin() + roam, d.begin() + roam + 40));  // Apokarimon roams on
         CHECK(patch::rd16(*dv, dice + 6) == 1 && patch::rd32(*dv, dice + 8) == 349);  // r349 != r349: never skips ...
         CHECK(target_of(*dv, dice + 12) == nanimon);                                  // ... the jump into cmd3(6)
-        CHECK(patch::rd16(*dv, menu + 4) == 0 && patch::rd16(*dv, menu + 6) == 1 && patch::rd32(*dv, menu + 8) == 359);  // always skips
+        CHECK(patch::rd16(*dv, menu + 4) == 0 && patch::rd16(*dv, menu + 6) == 1 && patch::rd32(*dv, menu + 8) == 350);  // always skips
+        // The way back goes through the 5th / 10th win prizes, which all end at the old target.
+        const size_t prizes = target_of(*dv, back);
+        CHECK(prizes == d.size());
+        CHECK(patch::rd16(*dv, prizes + 2) == 363 && patch::rd32(*dv, prizes + 8) == 5);
+        CHECK(target_of(*dv, prizes + 40) == roam);  // neither: straight back
+        size_t ends = 0;
+        for (size_t at = prizes; at + 8 <= dv->size(); at += 4)
+            if (patch::rd16(*dv, at) == 5 && patch::rd16(*dv, at + 2) == 0 && target_of(*dv, at) == roam) ++ends;
+        CHECK(ends == 3);
+    }
+
+    // Infinity Tower: Apokarimon listed while r248 == 0, then the roaming tests; his menu.
+    Bytes it = {'M', 'S', 'C', 'D'};
+    patch::wr32(it, 3);
+    patch::wr32(it, 0);
+    patch::wr32(it, 372);
+    const size_t gate = it.size();
+    skip_if(it, 248, 3, 1);
+    jump(it, 16);
+    cmd(it, 3, {12});
+    const size_t apo_menu = it.size();
+    skip_if(it, 359, 3, 1);
+    jump(it, 16);
+    cmd(it, 1, {12});
+    for (int i = 0; i < 4; ++i) it[8 + i] = static_cast<uint8_t>(it.size() >> (8 * i));
+    const auto iv = patch::mods::add_postgame_visitors(it, &why);
+    CHECK(iv && iv->size() == it.size());
+    if (iv) {
+        CHECK(patch::rd16(*iv, gate + 4) == 0 && patch::rd16(*iv, gate + 6) == 1 && patch::rd32(*iv, gate + 8) == 248);  // always listed
+        CHECK(patch::rd16(*iv, apo_menu + 4) == 0 && patch::rd16(*iv, apo_menu + 6) == 1 && patch::rd32(*iv, apo_menu + 8) == 359);
     }
 }
 

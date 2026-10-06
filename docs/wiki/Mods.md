@@ -11,7 +11,7 @@ English data, and each mod can be turned off in `settings.ini`:
 boss_rematch = true
 arena_save = true
 player_rooms = true
-desert_visitors = true
+postgame_visitors = true
 no_win_requirement = true
 ```
 
@@ -57,20 +57,29 @@ and you are back in the city afterwards. The menu box has five rows: a menu that
 five places (Jungle City's once its Extra and Beet Arenas are open, and two other cities' at
 similar points) stays as it is.
 
-## Post-game visitors in the desert city
+## Post-game visitors: Apokarimon and Nanimon
 
 **Apokarimon** first waits in Infinity Tower's Battle Cafe (after Wiseman Tower's arena course
 that ends with Omnimon); talking to him opens Infinity Tower's Battle Arena, which ends with him.
 Once he is beaten there he wanders: he sits in one of seven cities' cafes, picked at random, and
-only after ten more battles; beat him and he moves on. **Nanimon** goes round five cities' cafes in
-turn (one more city per win, each visit on a coin flip) from the point A challenges you in
-Infinity Tower, and after his tenth defeat he stays in the desert city on a dice roll. After a win,
-either one refuses another battle until you leave the city.
+only after ten more battles; beat him and he moves on.
 
-With this mod both are always in the desert city's Battle Cafe (the city with Myotismon):
-Apokarimon from the moment he is beaten in Infinity Tower's arena, Nanimon from the point the game
-unlocks him, and both can be fought again right away. The rest of the game is unchanged (they also
-still show up where the game sends them; Nanimon's prizes at 5 and 10 wins still come).
+**Nanimon** is unlocked when A first challenges you in Infinity Tower (late in the story, before
+its last arena). From then on he goes round five cities' cafes (Junk City, Dark City, the desert city,
+Infinity Tower and one more), the city set by how many times you have beaten him, each visit on a
+coin flip. His 5th win gives a Digi-Part, his 10th the Grand Sevens and Nanimon cards; after that he
+stays in the desert city on a dice roll.
+
+After a win, either one refuses another battle until you leave the city.
+
+With this mod:
+
+- Apokarimon stays in **Infinity Tower's** Battle Cafe after his arena, like the bosses the
+  rematch mod keeps in their city's cafe (he still also turns up where the game sends him).
+- Nanimon is always in the **desert city's** Battle Cafe (Myotismon's city) once unlocked. His
+  5th and 10th win prizes come there too (the game only had them in Infinity Tower).
+- Both can be fought again right away. Their usual rewards stay (Apokarimon: an S-Black Pack every
+  win, his card the first time and now and then; Nanimon: an S-Option Pack).
 
 ## No win grinding for the last opponents
 
