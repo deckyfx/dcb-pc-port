@@ -10,6 +10,7 @@ English data, and each mod can be turned off in `settings.ini`:
 [mods]
 boss_rematch = true
 arena_save = true
+player_rooms = true
 ```
 
 ## Boss rematch
@@ -39,11 +40,20 @@ where it was, so a save made with it loads without it and the other way round.
 
 The Battle Arenas (Battle Arena, Extra Arena and the others) let you save only at a few battles
 (the 4th and the 7th). With this mod every battle's menu has **Save** (Battle / Deck Data / Save),
-in every city. Saving there resumes at that battle: its intro and menu again, the same opponent.
+in every city, story fights included (Sky City's Tailmon, the Digimon Kaiser). Saving there resumes
+at that battle: its intro and menu again, the same opponent.
 A's fight in Infinity Tower keeps the game's own flow (it recolours the whole screen).
 
 A save made at one of these extra save points can only be loaded with the mod on (it resumes in
 code the mod adds). Saves made at the game's own save points load either way.
+
+## Player Rooms everywhere
+
+Only Beginner City, Sky City and Wiseman Tower list **Player's Room** in their city menu ("Where
+do you want to go?"). With this mod every city lists it, opened the way those three cities do,
+and you are back in the city afterwards. The menu box has five rows: a menu that already lists
+five places (Jungle City's once its Extra and Beet Arenas are open, and two other cities' at
+similar points) stays as it is.
 
 How it works (the cafe's script structure, the flags): [battle-cafe.md](../re/battle-cafe.md).
 `dcb_patch --rematch <AREAnn.PAK> C/AREAnn.PAK <out>` applies it to one city file, for inspection.

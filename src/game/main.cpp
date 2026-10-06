@@ -451,6 +451,7 @@ int main(int argc, char** argv) {
             };
             dcb::mods::set_boss_rematch(flag("boss_rematch"));
             dcb::mods::set_arena_saves(flag("arena_save"));
+            dcb::mods::set_player_rooms(flag("player_rooms"));
             const std::optional<std::string> names = ini.get("text", "names");
             if (names && *names != "jp" && *names != "us") invalid("text", "names", *names, "jp or us", "jp");
             dcb::text_set_jp_names(!names || *names != "us");

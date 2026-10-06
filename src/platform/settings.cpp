@@ -328,6 +328,8 @@ IniDocument default_settings_ini() {
     doc.set("mods", "boss_rematch", "true");
     doc.add_comment("mods", "arena_save: Save in every Battle Arena battle menu, not only at the 4th and 7th.");
     doc.set("mods", "arena_save", "true");
+    doc.add_comment("mods", "player_rooms: every city's menu lists Player Rooms, not only three cities'.");
+    doc.set("mods", "player_rooms", "true");
 
     doc.add_comment("keyboard", "SDL scancode names (e.g. Z, Return, Space, Left Shift, Keypad 8, Comma);");
     doc.add_comment("keyboard", "separate several keys with commas; leave empty to unbind.");
