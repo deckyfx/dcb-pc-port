@@ -83,5 +83,14 @@ out get the swapped name before they start, and the player's own name is never c
 screen a renamed opponent's name is drawn with the big font of the player's name (the US pictures
 are artwork with letters the Japanese names would need missing, such as Y).
 
+## Reworded lines
+
+A few US lines say less than they should; `config/SLPS-03101/text/lines-en.tsv` (built in) replaces
+them: `US line<TAB>shown instead[<TAB>only after this US line]`, whole lines as the script has them.
+The third column limits a rewording to one place when the same words are said elsewhere. For now:
+Gatomon's Special Fusion Data (Sky City) explains what it does, "At Fusion Shops, it tells you when
+two cards will make a special fusion.", instead of "I think it's used at Fusion Shops. I hope it
+comes in handy." City lines only (src/game/overrides/city_text.cpp).
+
 Notes: [docs/re/text-engine.md](../re/text-engine.md). Research and plan for the full English
 build: [HYBRID_EN_ASSETS.md](../HYBRID_EN_ASSETS.md).
