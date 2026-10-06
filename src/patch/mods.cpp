@@ -18,6 +18,7 @@ constexpr uint16_t kOpJump = 5, kOpArith = 7, kOpText = 8, kOpSkipIf = 9, kOpCmd
 constexpr uint16_t kCmpEq = 0, kCmpNe = 3;  // op 9 comparisons: skip the next record when true
 constexpr uint16_t kRegChoice = 1;    // r1: the Yes / No choice, then the battle result (0 = lost)
 constexpr uint16_t kRegPick = 2;      // r2: the cafe menu's pick
+constexpr uint16_t kRegApokarimonBeaten = 248;  // set when Apokarimon is beaten in the Infinity Tower arena
 
 uint16_t cmd_of(const MsdRecord& r) { return r.op >= kOpCmd0 ? rd16(r.raw, 2) : 0xFFFF; }
 uint16_t arg_of(const MsdRecord& r, size_t i) { return rd16(r.raw, 6 + 4 * i); }
@@ -507,15 +508,29 @@ std::optional<Bytes> add_desert_visitors(View script, std::string* why) {
         return std::nullopt;
     }
     Bytes out(script.begin(), script.end());
-    bool apokarimon = false, nanimon = false;
+    bool apokarimon = false, nanimon = false, rematch = false;
     for (size_t i = 4; i < recs.size(); ++i) {
         // Apokarimon: `skip_if(r364 >= 10); jump past; skip_if(r355 != 0); jump past; cmd3(5)` (ten
-        // cafe wins since he last moved, and the city's turn). Now: once A is beaten.
+        // battles since he last moved, and the city's turn). He roams only once beaten in the
+        // Infinity Tower arena (r248); now he is here from then on.
         if (!apokarimon && recs[i].op == kOpCmd0 + 1 && cmd_of(recs[i]) == 3 && test_is(i - 4, 364, 5, 10) &&
             test_is(i - 2, 355, kCmpNe, 0)) {
-            set_test(out, recs[i - 4], 185, kCmpEq, 0, 1);  // has met A ...
-            set_test(out, recs[i - 2], 184, kCmpEq, 0, 0);  // ... and the final event is over
+            set_test(out, recs[i - 4], kRegApokarimonBeaten, kCmpEq, 0, 1);
+            set_test(out, recs[i - 2], kRegApokarimonBeaten, kCmpEq, 0, 1);
             apokarimon = true;
+        }
+        // After a win the visitor's menu drops Battle until the city is re-entered: `skip_if(r359 != 1)`
+        // (Apokarimon) / `skip_if(r350 != 1)` (Nanimon), then a jump to the Talk / Deck info menu, then
+        // the full menu (`cmd1(12)` Battle ...). Now the test always skips: the full menu every time.
+        if ((test_is(i, 359, kCmpNe, 1) || test_is(i, 350, kCmpNe, 1))) {
+            for (size_t k = i + 2; k <= i + 4 && k < recs.size(); ++k) {
+                if (recs[k].op == kOpCmd0 + 1 && cmd_of(recs[k]) == 1 && arg_of(recs[k], 0) == 12) {
+                    const uint16_t reg = rd16(recs[i].raw, 2);
+                    set_test(out, recs[i], reg, kCmpEq, 1, reg);  // r == r: always true
+                    rematch = true;
+                    break;
+                }
+            }
         }
         // Nanimon: after `skip_if(r245 != 0)` (he is unlocked), dice (r3 = rand) decide whether
         // cmd3(6) runs. Now the first test jumps straight to the first cmd3(6).
@@ -530,7 +545,7 @@ std::optional<Bytes> add_desert_visitors(View script, std::string* why) {
             }
         }
     }
-    if (!apokarimon && !nanimon) {
+    if (!apokarimon && !nanimon && !rematch) {
         if (why) *why = "no desert cafe visitors";
         return std::nullopt;
     }

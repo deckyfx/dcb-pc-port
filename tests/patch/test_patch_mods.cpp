@@ -308,6 +308,42 @@ void test_postgame() {
     CHECK(Bytes(out->begin() + wins + 12, out->end()) == Bytes(s.begin() + wins + 12, s.end()));  // the story flag stays
     // Not the desert city (no r355 test): left alone.
     CHECK(!patch::mods::add_desert_visitors(s, &why));
+
+    // The desert city's cafe: Apokarimon (roaming tests, cmd3(5)), Nanimon (unlock, dice, cmd3(6)),
+    // and a visitor's menu (Battle dropped after a win until the city is re-entered).
+    Bytes d = {'M', 'S', 'C', 'D'};
+    patch::wr32(d, 3);
+    patch::wr32(d, 0);
+    patch::wr32(d, 372);
+    const size_t roam = d.size();
+    skip_if(d, 364, 5, 10);
+    jump(d, 16);
+    skip_if(d, 355, 3, 0);
+    jump(d, 16);
+    cmd(d, 3, {5});
+    skip_if(d, 245, 3, 0);
+    jump(d, 16);
+    const size_t dice = d.size();
+    skip_if(d, 349, 3, 1);
+    jump(d, 16);
+    arith(d, 3, 1);
+    const size_t nanimon = d.size();
+    cmd(d, 3, {6});
+    const size_t menu = d.size();
+    skip_if(d, 359, 3, 1);
+    jump(d, 16);
+    cmd(d, 1, {12});
+    for (int i = 0; i < 4; ++i) d[8 + i] = static_cast<uint8_t>(d.size() >> (8 * i));
+    const auto dv = patch::mods::add_desert_visitors(d, &why);
+    CHECK(dv && dv->size() == d.size());
+    if (dv) {
+        for (const size_t at : {roam, roam + 20}) {  // both: r248 == 1 (Apokarimon beaten in Infinity Tower)
+            CHECK(patch::rd16(*dv, at + 2) == 248 && patch::rd16(*dv, at + 4) == 0 && patch::rd32(*dv, at + 8) == 1);
+        }
+        CHECK(patch::rd16(*dv, dice + 6) == 1 && patch::rd32(*dv, dice + 8) == 349);  // r349 != r349: never skips ...
+        CHECK(target_of(*dv, dice + 12) == nanimon);                                  // ... the jump into cmd3(6)
+        CHECK(patch::rd16(*dv, menu + 4) == 0 && patch::rd16(*dv, menu + 6) == 1 && patch::rd32(*dv, menu + 8) == 359);  // always skips
+    }
 }
 
 void test_table() {

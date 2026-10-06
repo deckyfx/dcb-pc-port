@@ -73,8 +73,9 @@ std::optional<Bytes> add_arena_saves(View script, std::string* why = nullptr);
 std::optional<Bytes> add_player_rooms(View script, std::string* why = nullptr);
 
 /// Post-game: Apokarimon and Nanimon always in the desert city's Battle Cafe (AREA06), instead of
-/// a random city / a dice roll; Apokarimon once A is beaten, Nanimon when the game unlocks him
-/// (r245). In-place test changes only. nullopt (with `why`) for another city.
+/// a random city / a dice roll, and fightable again without leaving the city; Apokarimon once
+/// beaten in the Infinity Tower arena (r248, when he starts to roam), Nanimon when the game unlocks
+/// him (r245). In-place test changes only. nullopt (with `why`) for another city.
 std::optional<Bytes> add_desert_visitors(View script, std::string* why = nullptr);
 
 /// Post-game: BlackMetalGarurumon (Igloo City) and BlackWarGreymon (Beginner City) without the
