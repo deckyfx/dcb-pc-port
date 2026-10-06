@@ -27,10 +27,11 @@ struct CallSite {
 
 /// The card lists. Each is a single column (Up/Down, L2/R2 page) and nothing on its screen
 /// reads Left/Right while the list has the focus (checked in the game, docs/re/card-lists.md).
-inline constexpr std::array<CallSite, 3> kCardLists{{
+inline constexpr std::array<CallSite, 4> kCardLists{{
     {0x801EAD84u, 0x26045CC4u, "SUBSEG Card Menu card list (801EA7DC, list 801F5CC4)"},
     {0x801F2824u, 0x26045CC4u, "SUBSEG Deck Edit card selection (801F22DC, list 801F5CC4)"},
     {0x801EA030u, 0x24842AC8u, "EVOSEG Fusion Shop card list (801E9C08, list 801F2AC8)"},
+    {0x801E8190u, 0x24845C40u, "SUBSEG Edit Partner Digi-Parts list (801E8188, list 801F5C40)"},
 }};
 
 /// True when a call returning to `ra`, whose jal and delay-slot words are `jal_word` /

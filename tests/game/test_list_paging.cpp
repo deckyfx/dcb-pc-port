@@ -30,6 +30,8 @@ int main() {
     CHECK(is_card_list_call(0x801EAD84u, kJalListCursorUpdate, 0x26045CC4u));  // Card Menu
     CHECK(is_card_list_call(0x801F2824u, kJalListCursorUpdate, 0x26045CC4u));  // Deck Edit
     CHECK(is_card_list_call(0x801EA030u, kJalListCursorUpdate, 0x24842AC8u));  // Fusion Shop
+    CHECK(is_card_list_call(0x801E8190u, kJalListCursorUpdate, 0x24845C40u));  // Edit Partner Digi-Parts
+    CHECK(!is_card_list_call(0x801E7F40u, kJalListCursorUpdate, 0x24845C6Cu));  // Edit Partner equipment
     // Another overlay at the same address (other words), or other lists: no.
     CHECK(!is_card_list_call(0x801EAD84u, 0x00000000u, 0x26045CC4u));
     CHECK(!is_card_list_call(0x801EAD84u, kJalListCursorUpdate, 0x24842AC8u));

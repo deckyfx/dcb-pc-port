@@ -21,7 +21,9 @@ only `+14` of its pad: up / down one row, **L2 / R2 one page** (the window scrol
 Right are never read. (H, disassembly; M for the field names)
 
 Callers (return address → list): SUBSEG `801EAD84` Card Menu list and `801F2824` Deck Edit card
-selection (both list `801F5CC4`), EVOSEG `801EA030` Fusion Shop card list (`801F2AC8`); the other
+selection (both list `801F5CC4`), EVOSEG `801EA030` Fusion Shop card list (`801F2AC8`), SUBSEG
+`801E8190` Edit Partner Digi-Parts list (`801F5C40`, found with `DCB_TRACE_LISTS=1`; `801E7F40` on
+the same screen is the 3-row equipment list); the other
 callers are short menus (sort orders, each followed by the card sort `8001C2EC`: SUBSEG `801EA6F8`
 and `801EBA54`, EVOSEG `801E9B54`, OPENSEG `801E49FC`), other SUBSEG menus (`801E4A1C`,
 `801E7F40`, `801E8190`), KAWSEG `801F0AB0` /

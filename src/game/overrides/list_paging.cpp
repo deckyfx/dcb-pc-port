@@ -1,10 +1,11 @@
-// Card lists: Left/Right page like L2/R2.
+// Card lists (and the Edit Partner Digi-Parts list): Left/Right page like L2/R2.
 //
 // Every scrolling list of the game steps its cursor with list_cursor_update (EXE 800199F4, once a
 // frame while the list has the focus): Up/Down move one row, L2/R2 a page, all read from the
 // auto-repeat word (+14) of the list's pad. The card lists are single columns, so Left/Right do
 // nothing there. This override runs the original; for the calls listed in list_paging.hpp only
-// (the Card Menu list, the Deck Edit card selection, the Fusion Shop card list) it first adds
+// (the Card Menu list, the Deck Edit card selection, the Fusion Shop card list, the Edit Partner
+// Digi-Parts list) it first adds
 // L2/R2 to the pad's auto-repeat word when Left/Right are in it, and puts the word back after.
 // Nothing else sees the added bits: other lists, the Card Menu's L1/R1 type panel, name entry,
 // deck edit and battle keep their own buttons. docs/re/card-lists.md.
@@ -14,6 +15,10 @@
 #include <psx/recomp.h>
 
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <set>
+#include <utility>
 
 namespace {
 
@@ -28,11 +33,19 @@ bool in_ram(uint32_t addr) { return addr >= 0x80000000u && addr < 0x80200000u; }
 
 extern "C" {
 
-// 800199F4: list_cursor_update(list).
+// 800199F4: list_cursor_update(list). DCB_TRACE_LISTS=1 logs each call site once (its return
+// address, the delay-slot word and the list), to find a list to add to kCardLists.
 void dcb_list_cursor_update(PsxContext* ctx) {
     using namespace dcb::list_paging;
     const uint32_t ra = ctx->r[31];
     const uint32_t list = ctx->r[4];
+    static const bool trace = std::getenv("DCB_TRACE_LISTS") != nullptr;
+    if (trace && in_ram(ra - 8)) {
+        static std::set<std::pair<uint32_t, uint32_t>> seen;
+        const uint32_t delay = psx_read32(ctx, ra - 4);
+        if (seen.insert({ra, delay}).second)
+            std::fprintf(stderr, "[lists] list_cursor_update from ra=%08X delay=%08X list=%08X\n", ra, delay, list);
+    }
     uint32_t pad = 0;
     uint16_t saved = 0;
     if (in_ram(ra - 8) && in_ram(list) &&
