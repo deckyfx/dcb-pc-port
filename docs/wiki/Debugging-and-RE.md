@@ -78,6 +78,7 @@ Everything the runtime reads from the environment, with the page that explains i
 | `DCB_TRACE_CHEATS=1` | log each frame's cheat writes |
 | `DCB_LANG=<lang>` | text catalog language, default `en` ([English Text](English-Text.md#behaviour)) |
 | `DCB_TRACE_TEXT=1\|hex` | log strings drawn by the text engine |
+| `DCB_TRACE_LISTS=1` | log each call site of the list cursor routine once (return address, list): to add a list to Left/Right paging (src/game/overrides/list_paging.hpp) |
 | `DCB_HD_PACK=<.pak\|folder>`, `DCB_HD_MANIFEST=<file>` | replacement textures ([Textures](Textures.md#replacement-textures)) |
 | `DCB_LOG_HD=1`, `DCB_TRACE_HD=<n>`, `DCB_LOG_TEX=1`, `DCB_TRACE_PRIMS=1` | texture diagnostics ([Textures](Textures.md)) |
 | `DCB_TRACE_MOVIE=1` | native movie timing ([Movies](Movies.md)) |
