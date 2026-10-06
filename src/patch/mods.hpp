@@ -72,11 +72,23 @@ std::optional<Bytes> add_arena_saves(View script, std::string* why = nullptr);
 /// then the script's start). Appended only. nullopt (with `why`) when no menu lacks it.
 std::optional<Bytes> add_player_rooms(View script, std::string* why = nullptr);
 
+/// Post-game: Apokarimon and Nanimon always in the desert city's Battle Cafe (AREA06), instead of
+/// a random city / a dice roll; Apokarimon once A is beaten, Nanimon when the game unlocks him
+/// (r245). In-place test changes only. nullopt (with `why`) for another city.
+std::optional<Bytes> add_desert_visitors(View script, std::string* why = nullptr);
+
+/// Post-game: BlackMetalGarurumon (Igloo City) and BlackWarGreymon (Beginner City) without the
+/// 200 / 300 total wins they wait for; the story conditions stay (Apokarimon beaten in the
+/// Infinity Tower arena, then BlackMetalGarurumon). nullopt (with `why`) for another city.
+std::optional<Bytes> drop_win_requirements(View script, std::string* why = nullptr);
+
 /// What to change in one city file.
 struct CityMods {
     std::vector<Rematch> rematches;  ///< add_rematches (none: skipped)
     bool arena_saves = false;        ///< add_arena_saves
     bool player_rooms = false;       ///< add_player_rooms
+    bool desert_visitors = false;    ///< add_desert_visitors
+    bool no_win_requirement = false; ///< drop_win_requirements
 };
 
 /// A city PAK (C\AREAnn.PAK) with its script chunk passed through the mods in `mods`; nullopt

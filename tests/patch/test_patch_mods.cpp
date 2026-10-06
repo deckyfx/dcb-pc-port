@@ -287,6 +287,29 @@ void test_player_rooms() {
     CHECK(!patch::mods::add_player_rooms(city_script({2, 3, 1, 0}, last, test), &why));
 }
 
+void test_postgame() {
+    // Beginner City's start: cmd16() (r1 = wins), skip_if(r1 >= 300), jump, the flag, r360 = 1.
+    Bytes s = {'M', 'S', 'C', 'D'};
+    patch::wr32(s, 3);
+    patch::wr32(s, 0);
+    patch::wr32(s, 372);
+    cmd(s, 16);
+    const size_t wins = s.size();
+    skip_if(s, 1, 5, 300);
+    jump(s, 16);
+    skip_if(s, 89, 3, 0);
+    jump(s, 16);
+    arith(s, 360, 1);
+    for (int i = 0; i < 4; ++i) s[8 + i] = static_cast<uint8_t>(s.size() >> (8 * i));
+    std::string why;
+    const auto out = patch::mods::drop_win_requirements(s, &why);
+    CHECK(out && out->size() == s.size());
+    CHECK(patch::rd32(*out, wins + 8) == 0);  // r1 >= 0: no wins needed
+    CHECK(Bytes(out->begin() + wins + 12, out->end()) == Bytes(s.begin() + wins + 12, s.end()));  // the story flag stays
+    // Not the desert city (no r355 test): left alone.
+    CHECK(!patch::mods::add_desert_visitors(s, &why));
+}
+
 void test_table() {
     CHECK(patch::mods::rematches_for("C/AREA05.PAK").size() == 1);
     CHECK(patch::mods::rematches_for("C/AREA11.PAK").front().deck == 140);
@@ -299,6 +322,7 @@ int main() {
     test_rematch();
     test_arena_saves();
     test_player_rooms();
+    test_postgame();
     test_table();
     std::puts("patch mods: all checks passed");
     return 0;

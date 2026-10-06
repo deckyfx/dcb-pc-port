@@ -11,6 +11,8 @@ English data, and each mod can be turned off in `settings.ini`:
 boss_rematch = true
 arena_save = true
 player_rooms = true
+desert_visitors = true
+no_win_requirement = true
 ```
 
 ## Boss rematch
@@ -54,6 +56,23 @@ do you want to go?"). With this mod every city lists it, opened the way those th
 and you are back in the city afterwards. The menu box has five rows: a menu that already lists
 five places (Jungle City's once its Extra and Beet Arenas are open, and two other cities' at
 similar points) stays as it is.
+
+## Post-game visitors in the desert city
+
+After A is beaten, Apokarimon wanders: each time, he is in one of seven cities' Battle Cafes at
+random, and once beaten he is gone until he moves on. Nanimon shows up in the desert city's cafe
+only on a dice roll. With this mod both are always in the desert city's Battle Cafe (the city
+with Myotismon), Apokarimon from the moment A is beaten and Nanimon from the point the game
+unlocks him, and both can be fought again right away. The other cities' cafes no longer list
+Apokarimon.
+
+## No win grinding for the last opponents
+
+The post-game chain is: beat **Apokarimon** in the Infinity Tower Battle Arena, and Diaboromon
+there, then **BlackMetalGarurumon** joins Igloo City's Battle Cafe; beat him in Igloo City's
+arena, then **BlackWarGreymon** joins Beginner City's Battle Cafe. The game also waits for 200
+total wins (BlackMetalGarurumon) and 300 (BlackWarGreymon). This mod drops the win counts; the
+story conditions stay.
 
 How it works (the cafe's script structure, the flags): [battle-cafe.md](../re/battle-cafe.md).
 `dcb_patch --rematch <AREAnn.PAK> C/AREAnn.PAK <out>` applies it to one city file, for inspection.

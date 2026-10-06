@@ -81,3 +81,18 @@ tests for r1 = 1, 2, -1 (cancel: "leave the Arena?"); then the group's save bloc
 r270 (set as battles are won). Only the battle that offers Save in its menu (item 15, the 4th;
 also the usurper's) reaches its group's save block. Registers below r12 are not saved, so a save
 must resume at a battle's set-up, not at its menu.
+
+## Post-game
+
+- **Apokarimon** roams: r351-r358 pick the city whose cafe lists him (`cmd3(5)`), once r364 >= 10.
+  The desert city (AREA06, Myotismon's cafe; the one that tests r355) lists him when
+  `r364 >= 10` and `r355 != 0`; the `desert_visitors` mod rewrites those two tests in place to
+  `r185 == 1` (A beaten) and `r184 == 0` (the condition the A rematch uses).
+- **Nanimon** (`cmd3(6)`, AREA06) is listed when r245 != 0 and then a dice register r349 == 1; the
+  mod makes the r349 test never true (`r349 != r349`) and points its jump at the `cmd3(6)`.
+- **The Black chain:** Apokarimon beaten in the Infinity Tower arena (deck 114) sets r248;
+  Diaboromon beaten there sets r247. Igloo City (AREA03) reads the total wins (`0x0A cmd16`, r1 =
+  game_data+0x18) and sets r361 when r248 and `r1 >= 200`; its cafe lists BlackMetalGarurumon
+  when r247 and r361. Beating him in Igloo City's arena (deck 116) sets r89; Beginner City (AREA00)
+  sets r360 when r89 and `r1 >= 300`, which lists BlackWarGreymon (deck 115, cafe slot 7). The
+  `no_win_requirement` mod changes the `skip_if(r1 >= N)` before the r360 / r361 set to N = 0.

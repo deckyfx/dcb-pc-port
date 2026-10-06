@@ -330,6 +330,10 @@ IniDocument default_settings_ini() {
     doc.set("mods", "arena_save", "true");
     doc.add_comment("mods", "player_rooms: every city's menu lists Player Rooms, not only three cities'.");
     doc.set("mods", "player_rooms", "true");
+    doc.add_comment("mods", "desert_visitors: after the story, Apokarimon and Nanimon always wait in the desert city's cafe.");
+    doc.set("mods", "desert_visitors", "true");
+    doc.add_comment("mods", "no_win_requirement: BlackMetalGarurumon and BlackWarGreymon without 200 / 300 total wins.");
+    doc.set("mods", "no_win_requirement", "true");
 
     doc.add_comment("keyboard", "SDL scancode names (e.g. Z, Return, Space, Left Shift, Keypad 8, Comma);");
     doc.add_comment("keyboard", "separate several keys with commas; leave empty to unbind.");

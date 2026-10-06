@@ -24,6 +24,18 @@ which these lists do not use otherwise. Everywhere else Left / Right keep their 
 entry grid, Deck Edit grid, menus, battle), and L1 / R1 keep theirs (the Card Menu's type panel,
 Deck Edit's count panel, the name cursor in name entry).
 
+## Wizardmon's passwords
+
+In the second part of the game, Wizardmon in Sky City asks for a password and gives cards for the
+right ones. The port runs the Japanese game, so it takes the **Japanese** passwords; the US ones
+(JIJIMON, MTLETEMON, ...) do not work. Each is six full-width characters, typed on the name-entry
+grid; `ー` is the katakana long-vowel mark, not a dash:
+
+| Password | Password | Password | Password | Password |
+|---|---|---|---|---|
+| ＪＩ２ＭＯＮ | ＭＴＬＥＴＥ | ＰＩＥＭＯＮ | ＶＥＮＯＭＶ | ＨーＫＡＢＵ |
+| ＡＥＲＯーＶ | ＭＴＬＧＲＲ | ＯＭＥＧＡＳ | ＷＡＲＧＲＹ | ＯＭＥＧＡ１ |
+
 ## Memory-card saves
 
 Memory-card saves go to `saves/<serial>/card1.mcd` under the current directory: a raw 128 KB card

@@ -480,6 +480,97 @@ std::optional<Bytes> add_player_rooms(View script, std::string* why) {
     return out;
 }
 
+std::optional<Bytes> add_desert_visitors(View script, std::string* why) {
+    std::vector<MsdRecord> recs;
+    try {
+        recs = text::msd_walk(script);
+    } catch (const std::exception& e) {
+        if (why) *why = e.what();
+        return std::nullopt;
+    }
+    const auto test_is = [&](size_t i, uint16_t reg, uint16_t cmp, int32_t value) {
+        return i + 1 < recs.size() && recs[i].op == kOpSkipIf && rd16(recs[i].raw, 2) == reg && rd16(recs[i].raw, 4) == cmp &&
+               rd16(recs[i].raw, 6) == 0 && static_cast<int32_t>(rd32(recs[i].raw, 8)) == value && recs[i + 1].op == kOpJump;
+    };
+    const auto set_test = [](Bytes& b, const MsdRecord& r, uint16_t reg, uint16_t cmp, uint16_t is_reg, int32_t value) {
+        put16(b, r.offset + 2, reg);
+        put16(b, r.offset + 4, cmp);
+        put16(b, r.offset + 6, is_reg);
+        put32(b, r.offset + 8, static_cast<uint32_t>(value));
+    };
+    // The desert city: the only one whose cafe tests r355 (Apokarimon's turn there). Other cafes
+    // have the same Nanimon dice and stay as they are.
+    bool desert = false;
+    for (size_t i = 0; i + 1 < recs.size() && !desert; ++i) desert = test_is(i, 355, kCmpNe, 0);
+    if (!desert) {
+        if (why) *why = "not the desert city";
+        return std::nullopt;
+    }
+    Bytes out(script.begin(), script.end());
+    bool apokarimon = false, nanimon = false;
+    for (size_t i = 4; i < recs.size(); ++i) {
+        // Apokarimon: `skip_if(r364 >= 10); jump past; skip_if(r355 != 0); jump past; cmd3(5)` (ten
+        // cafe wins since he last moved, and the city's turn). Now: once A is beaten.
+        if (!apokarimon && recs[i].op == kOpCmd0 + 1 && cmd_of(recs[i]) == 3 && test_is(i - 4, 364, 5, 10) &&
+            test_is(i - 2, 355, kCmpNe, 0)) {
+            set_test(out, recs[i - 4], 185, kCmpEq, 0, 1);  // has met A ...
+            set_test(out, recs[i - 2], 184, kCmpEq, 0, 0);  // ... and the final event is over
+            apokarimon = true;
+        }
+        // Nanimon: after `skip_if(r245 != 0)` (he is unlocked), dice (r3 = rand) decide whether
+        // cmd3(6) runs. Now the first test jumps straight to the first cmd3(6).
+        if (!nanimon && test_is(i, 349, kCmpNe, 1) && i >= 2 && test_is(i - 2, 245, kCmpNe, 0)) {
+            for (size_t k = i + 2; k < recs.size() && k < i + 40; ++k) {
+                if (recs[k].op == kOpCmd0 + 1 && cmd_of(recs[k]) == 3 && arg_of(recs[k], 0) == 6) {
+                    set_test(out, recs[i], 349, kCmpNe, 1, 349);  // never skips (r349 != r349) ...
+                    put32(out, recs[i + 1].offset + 4, static_cast<uint32_t>(recs[k].offset - kHeader));  // ... into cmd3(6)
+                    nanimon = true;
+                    break;
+                }
+            }
+        }
+    }
+    if (!apokarimon && !nanimon) {
+        if (why) *why = "no desert cafe visitors";
+        return std::nullopt;
+    }
+    return out;
+}
+
+std::optional<Bytes> drop_win_requirements(View script, std::string* why) {
+    std::vector<MsdRecord> recs;
+    try {
+        recs = text::msd_walk(script);
+    } catch (const std::exception& e) {
+        if (why) *why = e.what();
+        return std::nullopt;
+    }
+    Bytes out(script.begin(), script.end());
+    size_t changed = 0;
+    for (size_t i = 0; i + 1 < recs.size(); ++i) {
+        // `cmd16()` (r1 = total wins), `skip_if(r1 >= N); jump past` and, a few records on, the
+        // flag that lists the opponent: r360 (BlackWarGreymon, Beginner City, N = 300) or r361
+        // (BlackMetalGarurumon, Igloo City, N = 200). Now N = 0: only the story condition is left.
+        if (!(recs[i].op == kOpCmd0 && cmd_of(recs[i]) == 16)) continue;
+        const MsdRecord& test = recs[i + 1];
+        if (test.op != kOpSkipIf || rd16(test.raw, 2) != kRegChoice || rd16(test.raw, 4) != 5 || rd16(test.raw, 6) != 0) continue;
+        bool unlock = false;
+        for (size_t k = i + 2; k < recs.size() && k < i + 8; ++k) {
+            if (recs[k].op == kOpArith && rd16(recs[k].raw, 4) == 0 && (rd16(recs[k].raw, 2) == 360 || rd16(recs[k].raw, 2) == 361) &&
+                static_cast<int32_t>(rd32(recs[k].raw, 8)) == 1)
+                unlock = true;
+        }
+        if (!unlock) continue;
+        put32(out, test.offset + 8, 0);
+        ++changed;
+    }
+    if (changed == 0) {
+        if (why) *why = "no win-count unlock";
+        return std::nullopt;
+    }
+    return out;
+}
+
 std::optional<Bytes> patch_city_pak(View pak, const CityMods& mods, std::string* why) {
     std::vector<PakChunk> chunks;
     try {
@@ -509,6 +600,21 @@ std::optional<Bytes> patch_city_pak(View pak, const CityMods& mods, std::string*
                 changed = true;
             } else if (w != "no city menu without Player Rooms") {  // the three cities that have it
                 reasons += std::string(reasons.empty() ? "" : "; ") + "player rooms: " + w;
+            }
+        }
+        // Post-game shortcuts: in-place test changes only (no code appended).
+        if (mods.desert_visitors) {
+            std::string w;
+            if (std::optional<Bytes> s = add_desert_visitors(c.data, &w)) {
+                c.data = std::move(*s);
+                changed = true;
+            }
+        }
+        if (mods.no_win_requirement) {
+            std::string w;
+            if (std::optional<Bytes> s = drop_win_requirements(c.data, &w)) {
+                c.data = std::move(*s);
+                changed = true;
             }
         }
         if (mods.arena_saves) {
