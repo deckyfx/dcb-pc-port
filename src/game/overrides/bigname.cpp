@@ -260,7 +260,10 @@ bool dcb::vs_name_picture(const std::string& key, std::vector<uint8_t>& arc) {
     std::vector<uint32_t> offs(count);
     for (size_t i = 0; i < count; ++i)
         offs[i] = arc[i * 4] | arc[i * 4 + 1] << 8 | arc[i * 4 + 2] << 16 | static_cast<uint32_t>(arc[i * 4 + 3]) << 24;
-    if (offs.back() != arc.size()) return false;
+    // In order, past the table, the last one the end of the file: a malformed archive stays as it is.
+    if (offs.back() != arc.size() || offs.front() < first) return false;
+    for (size_t i = 1; i < count; ++i)
+        if (offs[i] < offs[i - 1]) return false;
     const std::vector<uint8_t> picture = name_picture(name);
     std::vector<uint8_t> out(arc.begin(), arc.begin() + offs[count - 2]);  // up to the last TIM
     out.insert(out.end(), picture.begin(), picture.end());

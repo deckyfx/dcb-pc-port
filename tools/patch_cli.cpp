@@ -28,8 +28,13 @@ int rematch(const char* in_path, const std::string& file, const char* out_path) 
         std::fprintf(stderr, "dcb_patch: %s: %s\n", in_path, why.c_str());
         return 1;
     }
-    std::ofstream(out_path, std::ios::binary).write(reinterpret_cast<const char*>(out->data()),
-                                                    static_cast<std::streamsize>(out->size()));
+    std::ofstream out_file(out_path, std::ios::binary);
+    out_file.write(reinterpret_cast<const char*>(out->data()), static_cast<std::streamsize>(out->size()));
+    out_file.close();
+    if (!out_file) {
+        std::fprintf(stderr, "dcb_patch: cannot write %s\n", out_path);
+        return 1;
+    }
     std::printf("%s: %zu -> %zu bytes\n", out_path, pak.size(), out->size());
     return 0;
 }

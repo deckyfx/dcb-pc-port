@@ -3,6 +3,7 @@
 #include "patch/mods.hpp"
 #include "patch/text_internal.hpp"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <set>
@@ -186,35 +187,53 @@ Bytes arena_script(std::vector<size_t>& setups, std::vector<size_t>& item14s, co
     return s;
 }
 
-void test_arena_saves() {
-    std::vector<size_t> setups, item14s;
-    const Bytes in = arena_script(setups, item14s, {7, 140});
-    std::string why;
-    const auto out = patch::mods::add_arena_saves(in, &why);
-    CHECK(out);
-    const auto recs = patch::text::msd_walk(*out);
+/// Every jump lands on a record start, or the end of the script.
+void check_jumps(const Bytes& out) {
+    const auto recs = patch::text::msd_walk(out);
     std::set<size_t> starts;
     for (const auto& rec : recs) starts.insert(rec.offset);
     for (const auto& rec : recs)
-        if (rec.op == 5) CHECK(starts.count(target_of(*out, rec.offset)) || target_of(*out, rec.offset) == out->size());
-    // The first battle's Deck info item is now a jump to items 14 and 15 (Save); A's (deck 140)
-    // menu is untouched.
-    CHECK(patch::rd16(*out, item14s[0]) == 5);
-    const size_t items = target_of(*out, item14s[0]);
-    CHECK(patch::rd16(*out, items) == 0x0B && patch::rd16(*out, items + 6) == 14);
-    CHECK(patch::rd16(*out, items + 8) == 0x0B && patch::rd16(*out, items + 14) == 15);
-    CHECK(Bytes(out->begin() + item14s[1], out->begin() + item14s[1] + 8) ==
-          Bytes(in.begin() + item14s[1], in.begin() + item14s[1] + 8));
-    // Save: the group's save records (cmd6(3), music 125), then the battle's set-up.
-    bool saved = false;
-    for (size_t k = 0; k + 1 < recs.size(); ++k) {
+        if (rec.op == 5) CHECK(starts.count(target_of(out, rec.offset)) || target_of(out, rec.offset) == out.size());
+}
+
+/// The menu's Deck info item (at `at`) is a jump to items 14 and 15 (Save).
+bool has_save_item(const Bytes& out, size_t at) {
+    if (patch::rd16(out, at) != 5) return false;
+    const size_t items = target_of(out, at);
+    return patch::rd16(out, items) == 0x0B && patch::rd16(out, items + 6) == 14 && patch::rd16(out, items + 8) == 0x0B &&
+           patch::rd16(out, items + 14) == 15;
+}
+
+/// The appended save blocks: each runs the group's save (cmd6(3), music 125) then jumps to one of
+/// `setups`; returns how many.
+size_t save_blocks(const Bytes& out, size_t from, const std::vector<size_t>& setups) {
+    const auto recs = patch::text::msd_walk(out);
+    size_t n = 0;
+    for (size_t k = 0; k + 2 < recs.size(); ++k) {
         const auto& r = recs[k];
-        if (r.offset < in.size() || !(r.op == 0x0B && patch::rd16(r.raw, 2) == 6 && patch::rd16(r.raw, 6) == 3)) continue;
+        if (r.offset < from || !(r.op == 0x0B && patch::rd16(r.raw, 2) == 6 && patch::rd16(r.raw, 6) == 3)) continue;
         CHECK(recs[k + 1].op == 0x0B && patch::rd16(recs[k + 1].raw, 6) == 125);
-        CHECK(recs[k + 2].op == 5 && target_of(*out, recs[k + 2].offset) == setups[0]);
-        saved = true;
+        CHECK(recs[k + 2].op == 5);
+        const size_t to = target_of(out, recs[k + 2].offset);
+        CHECK(std::find(setups.begin(), setups.end(), to) != setups.end());
+        ++n;
     }
-    CHECK(saved);
+    return n;
+}
+
+void test_arena_saves() {
+    std::vector<size_t> setups, item14s;
+    const Bytes in = arena_script(setups, item14s, {7, 9, 140});
+    std::string why;
+    const auto out = patch::mods::add_arena_saves(in, &why);
+    CHECK(out);
+    check_jumps(*out);
+    // Both regular battles get Save; A's (deck 140) menu is untouched.
+    CHECK(has_save_item(*out, item14s[0]) && has_save_item(*out, item14s[1]));
+    CHECK(Bytes(out->begin() + item14s[2], out->begin() + item14s[2] + 8) ==
+          Bytes(in.begin() + item14s[2], in.begin() + item14s[2] + 8));
+    // One save block per patched battle, each back to a battle's set-up.
+    CHECK(save_blocks(*out, in.size(), {setups[0], setups[1]}) == 2);
     // A script without an arena menu is left alone.
     Bytes plain(in.begin(), in.begin() + 16);
     cmd(plain, 6);

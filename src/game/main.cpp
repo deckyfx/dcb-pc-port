@@ -436,11 +436,23 @@ int main(int argc, char** argv) {
                 });
             const platform::IniDocument ini =
                 platform::IniDocument::parse(platform::read_text_file(ini_path).value_or(""));
-            const std::optional<std::string> rematch = ini.get("mods", "boss_rematch");
-            dcb::mods::set_boss_rematch(!rematch || (*rematch != "false" && *rematch != "0"));
-            const std::optional<std::string> arena = ini.get("mods", "arena_save");
-            dcb::mods::set_arena_saves(!arena || (*arena != "false" && *arena != "0"));
+            // An invalid value keeps the default, with a warning like the other settings.
+            const auto invalid = [](const char* section, const char* key, const std::string& value, const char* expected,
+                                    const char* fallback) {
+                std::fprintf(stderr, "settings: [%s] %s = \"%s\" is invalid (expected %s); using %s\n", section, key,
+                             value.c_str(), expected, fallback);
+            };
+            const auto flag = [&](const char* key) {
+                const std::optional<std::string> v = ini.get("mods", key);
+                if (!v) return true;
+                if (const std::optional<bool> b = platform::parse_setting_bool(*v)) return *b;
+                invalid("mods", key, *v, "true or false", "true");
+                return true;
+            };
+            dcb::mods::set_boss_rematch(flag("boss_rematch"));
+            dcb::mods::set_arena_saves(flag("arena_save"));
             const std::optional<std::string> names = ini.get("text", "names");
+            if (names && *names != "jp" && *names != "us") invalid("text", "names", *names, "jp or us", "jp");
             dcb::text_set_jp_names(!names || *names != "us");
         }
         dcb::attach_native_files(mmio.disc(), DCB_GAME_ID, exe_assets);

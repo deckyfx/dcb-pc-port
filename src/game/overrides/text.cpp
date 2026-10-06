@@ -209,8 +209,7 @@ const std::vector<NameSwap>& name_swaps() {
 
 bool alnum(char c) { return std::isalnum(static_cast<unsigned char>(c)) != 0; }
 
-void swap_names(std::string& s) {
-    if (!g_jp_names) return;
+void swap_part(std::string& s) {
     for (const NameSwap& n : name_swaps()) {
         for (size_t p = s.find(n.us); p != std::string::npos;) {
             const size_t end = p + n.us.size();
@@ -226,6 +225,41 @@ void swap_names(std::string& s) {
             }
         }
     }
+}
+
+/// swap_part on `s` except where `keep` (the player's name) occurs: a player named "Cody" stays
+/// "Cody", also in a line that already has the name in it and is drawn (swapped) again.
+void swap_names(std::string& s, const std::string& keep = {}) {
+    if (!g_jp_names) return;
+    if (keep.empty()) {
+        swap_part(s);
+        return;
+    }
+    std::string out;
+    size_t from = 0;
+    for (size_t p = s.find(keep); ; p = s.find(keep, from)) {
+        std::string part = s.substr(from, p == std::string::npos ? std::string::npos : p - from);
+        swap_part(part);
+        out += part;
+        if (p == std::string::npos) break;
+        out += keep;
+        from = p + keep.size();
+    }
+    s = std::move(out);
+}
+
+constexpr uint32_t kGameDataPtr = 0x80070C2Cu;  // -> game_data (+0: the player's name, 12 bytes)
+
+/// The player's name, for swap_names (empty before a game is loaded).
+std::string player_name(PsxContext& ctx) {
+    const uint32_t data = psx_read32(&ctx, kGameDataPtr);
+    std::string name;
+    for (uint32_t i = 0; data != 0 && i < 12; ++i) {
+        const char c = static_cast<char>(psx_read8(&ctx, data + i));
+        if (c == 0) break;
+        name.push_back(c);
+    }
+    return name;
 }
 
 // The text catalog (assets/<serial>/text: source.tsv + <lang>.tsv, built by tools/text/en_text.py
@@ -266,7 +300,7 @@ Text load_text(PsxContext& ctx, uint32_t str) {
     for (const LongName& n : g_names)
         for (size_t p = s.find(n.key); p != std::string::npos; p = s.find(n.key, p + n.full.size()))
             s.replace(p, n.key.size(), n.full);
-    swap_names(s);
+    swap_names(s, player_name(ctx));
     // The deck label: "<name>デック" from "%sデック" formats (EXE 800114E0, patched at load; three
     // more in overlays), or "デック" alone (name entry). The name before it is left as typed.
     static const std::string kDeck = "\x83\x66\x83\x62\x83\x4e";  // デック
@@ -443,6 +477,7 @@ Item next_item(const Text& t, size_t& s, Cursor& cur, bool jp_codes = false) {
         if (v >= 0x20 && v < 0x7F) {
             it.step = Step::Glyph;
             it.ch = v;
+            it.advance = advance_of(v, cur.prop);
         }
         return it;
     }

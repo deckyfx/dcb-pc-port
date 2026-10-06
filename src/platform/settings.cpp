@@ -494,6 +494,8 @@ SettingsLocations current_settings_locations() {
     return where;
 }
 
+std::optional<bool> parse_setting_bool(std::string_view value) { return parse_bool(value); }
+
 std::optional<std::string> read_text_file(const std::filesystem::path& path) {
     std::ifstream in(path, std::ios::binary);
     if (!in) return std::nullopt;
