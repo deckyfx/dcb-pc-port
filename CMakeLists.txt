@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 project(dcb_recomp
-    VERSION 0.1.0
+    VERSION 1.0.1
     DESCRIPTION "Static recompilation of Digimon Card Battle (PS1) to native code"
     LANGUAGES C CXX)
 
