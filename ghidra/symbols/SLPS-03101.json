@@ -1076,7 +1076,7 @@
   "0x80049CD4": {
    "name": "deck_record_index",
    "source": "re",
-   "note": "(deck) -> the opponent record index: variants merged (117, 121-127 -> 114; 128-131 -> 119; 132-137 via 80071064; 138 -> 13, 139 -> 0, 141 -> 48). Conf H"
+   "note": "(deck) -> the opponent record index: variants merged (117, 121-127 -> 114; 128-131 -> 119; 132-139 and 141 via the byte table at 80071064 + deck: 132-137 -> 85, 92, 90, 82, 88, 79, 138 -> 13, 139 and 141 -> 0). Conf H"
   },
   "0x801E2E08": {
    "name": "city_menu_open",

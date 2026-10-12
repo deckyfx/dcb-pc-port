@@ -324,10 +324,13 @@ if (player won) 858[idx]++ else 974[idx]++   // capped at 999
 ```
 
 `deck_record_index` (`80049CD4`) merges an opponent's variant decks: 117 and 121-127 → 114
-(Apokarimon), 128-131 → 119 (Nanimon), 132-137 → 85, 92, 90, 82, 88, 79 (table at
-`80071064 + id`), 138 → 13, 139 → 0, 141 → 48; every other deck is its own index. The VS screen
+(Apokarimon), 128-131 → 119 (Nanimon); 132-139 and 141 through the byte table at
+`80071064 + deck`: 132-137 → 85, 92, 90, 82, 88, 79 (Wiseman Tower's Lillymon, MegaKabuterimon,
+Zudomon, Garudamon, MetalGarurumon, WarGreymon), 138 → 13 (Garurumon), 139 and 141 → 0 (Betamon's
+cafe decks share the tutorial's record); every other deck is its own index. The VS screen
 shows the opponent's record from these (`+0x974` its wins, `+0x858` its losses; KAWSEG
-`801F47D4`, `801F57D8`). The tutorial sets bit 15 of entries 0 and 158 only (`80042148`).
+`801F47D4`, `801F57D8`). The tutorial sets bit 15 of entries 0 and 158 only (`80042148`), so Betamon's record says
+"fought" after it too.
 `game_data_init` clears all four arrays (`8002FFD0`-`80030028`). The port's Custom Battle lists
 the decks with bit 15 set ([city-menu.md](city-menu.md#custom-battle)).
 

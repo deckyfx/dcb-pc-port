@@ -7,11 +7,12 @@
 // spell): it closes the message window, sets the city mode to 10 (a task runs; the script waits)
 // and spawns the keyword task (801EE704), whose override (keyword.cpp) runs this screen instead.
 // The screen:
-//   - lists the decks whose record says "fought" (game_data+0xA90, bit 15: every city battle sets
-//     it, under the deck's record index, so variants of one opponent share an entry), from DECK2.DEK
-//     (assets/<serial>/files/B, English: owner +73, deck name +60, prize pack +101, EXP +102), with
-//     the player's wins (+0x858) and losses (+0x974) against each; not deck 0 (the tutorial) or
-//     the player's preset decks (142-158);
+//   - lists the decks 1-141 whose record says "fought" (game_data+0xA90 bit 15 at the deck's
+//     record index, deck_record_index 80049CD4: every city battle sets it, and an opponent's
+//     variant decks share one record, Betamon's cafe decks that of the tutorial's deck 0), one
+//     entry per opponent and deck name, from DECK2.DEK (assets/<serial>/files/B, English: owner
+//     +73, deck name +60, prize pack +101, EXP +102), with the player's wins (+0x858) and losses
+//     (+0x974) from the record; not deck 0 (the tutorial) or the player's preset decks (142-158);
 //   - opens three windows (the keyword screen's, free while this one is up), a per-frame draw hook
 //     that draws them, and runs Up/Down, L1/R1 (a page), Circle (battle) and Cross (back);
 //   - closes them, puts the deck (or -1) in r1, sets the mode back to 0 and reopens the message
@@ -75,6 +76,7 @@ constexpr uint32_t kGameData = 0x80070C2Cu;    // -> game_data
 constexpr uint32_t kPad = 0x8008C420u;         // -> pad 0: +10 pressed this frame, +14 with repeat
 constexpr uint32_t kGrey = 0x80070A64u;        // text_draw_grey's colour
 constexpr uint32_t kPacks = 0x80070EF8u;       // prize pack names (pointers, JP)
+constexpr uint32_t kRecordIndex = 0x80049CD4u; // deck_record_index(deck): the record a deck's battles go to
 // The keyword screen's windows and grid cursor (SAISEG .bss), free while this screen is up.
 constexpr uint32_t kWinList = 0x801F7A20u, kWinInfo = 0x801F7AC0u, kWinHelp = 0x801F7B60u;
 constexpr uint32_t kCursor = 0x801F7A70u;
@@ -159,7 +161,10 @@ std::vector<Opponent> opponents(PsxContext& ctx) {
     const uint32_t gd = psx_read32(&ctx, kGameData);
     if (!ok || !in_ram(gd)) return out;
     for (int d = 1; d < kOpponents; ++d) {
-        if (!(psx_read16(&ctx, gd + 0xA90 + 2 * d) & 0x8000)) continue;
+        // The record the game keeps for this deck (variants share one: Betamon's 139 and 141 that
+        // of the tutorial's deck 0, Apokarimon's nine decks 114's, ...).
+        const auto idx = static_cast<int>(psx::call_guest(ctx, kRecordIndex, static_cast<uint32_t>(d)));
+        if (idx < 0 || idx >= kOpponents || !(psx_read16(&ctx, gd + 0xA90 + 2 * idx) & 0x8000)) continue;
         const uint8_t* r = dek.data() + 8 + d * kDekRecord;
         Opponent o;
         o.deck = d;
@@ -168,8 +173,10 @@ std::vector<Opponent> opponents(PsxContext& ctx) {
         o.name = dcb::text_full_name(o.name) + " Deck";
         dcb::text_swap_names(o.owner);
         dcb::text_swap_names(o.name);
-        o.wins = psx_read16(&ctx, gd + 0x858 + 2 * d);
-        o.losses = psx_read16(&ctx, gd + 0x974 + 2 * d);
+        // One entry per opponent and deck name (Apokarimon's, Nanimon's copies are the same deck).
+        if (std::any_of(out.begin(), out.end(), [&](const Opponent& e) { return e.owner == o.owner && e.name == o.name; })) continue;
+        o.wins = psx_read16(&ctx, gd + 0x858 + 2 * idx);
+        o.losses = psx_read16(&ctx, gd + 0x974 + 2 * idx);
         o.exp = r[102];
         if (const uint32_t p = psx_read32(&ctx, kPacks + 4u * r[101]); in_ram(p)) {
             const std::string jp = guest_string(ctx, p, 32);

@@ -98,7 +98,8 @@ The port's mod (`[mods] custom_battle`): Beginner City's menu gets a 5th place.
   and returns with the script still running; the keyword task's override (`801EE704`) runs the
   Custom Battle screen instead of the keyword entry. Not while the menu probes (the override of
   `city_menu_probe_item`).
-- **Screen:** the decks with `game_data+0xA90` bit 15 (1-141), from the English `DECK2.DEK`
+- **Screen:** the decks 1-141 whose record (`deck_record_index`) has `game_data+0xA90` bit 15, one
+  per opponent and deck name (Betamon's cafe decks share the tutorial's record 0), from the English `DECK2.DEK`
   (owner, deck name, prize pack, EXP) and the player's record against each; the keyword screen's
   windows and cursor; a draw hook and window callbacks that are native code at reserved guest
   addresses (`psx::register_native`, `kNativeBase` `9FF00000`: `psx_dispatch` runs them).
