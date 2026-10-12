@@ -35,6 +35,22 @@ static RecompFunc find_overlay_function(PsxContext* ctx, uint32_t addr) {
     return nullptr;
 }
 
+namespace {
+RecompFunc g_native[kNativeSlots] = {};
+}
+
+bool register_native(uint32_t addr, RecompFunc fn) {
+    if (addr < kNativeBase || (addr - kNativeBase) % 4 != 0 || (addr - kNativeBase) / 4 >= kNativeSlots) return false;
+    g_native[(addr - kNativeBase) / 4] = fn;
+    return true;
+}
+
+/// The native function registered at `addr`, or nullptr.
+static RecompFunc find_native(uint32_t addr) {
+    if (addr < kNativeBase || (addr - kNativeBase) % 4 != 0 || (addr - kNativeBase) / 4 >= kNativeSlots) return nullptr;
+    return g_native[(addr - kNativeBase) / 4];
+}
+
 uint32_t call_guest_on_stack(PsxContext& ctx, uint32_t sp, uint32_t addr, uint32_t a0) {
     const uint32_t old_sp = ctx.r[29];
     ctx.r[29] = sp + 0x100;  // call_guest subtracts its frame from the current sp
@@ -98,6 +114,10 @@ void psx_dispatch(PsxContext* ctx, uint32_t target) {
 
     // Guest code addresses are canonicalised to KSEG0.
     const uint32_t canonical = (target & 0x1FFFFFFFu) | 0x80000000u;
+    if (RecompFunc fn = psx::find_native(canonical)) {  // the port's own code (register_native)
+        fn(ctx);
+        return;
+    }
     if (RecompFunc fn = psx::find_function(canonical)) {
         fn(ctx);
         return;

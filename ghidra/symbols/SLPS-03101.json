@@ -1032,6 +1032,135 @@
    "overlay": "SAISEG",
    "source": "re",
    "note": "draws the cafe list: entry n = face cell (640 + (n%4)*32, 256 + (n/4)*56) 63x56 of the city's face sheet (8-bit TIM at VRAM 640,256). Conf H"
+  },
+  "0x80016988": {
+   "name": "draw_hook_add",
+   "source": "re",
+   "note": "(fn): adds fn to the per-frame draw hook list at 8007C0E0 (null-terminated). Conf H"
+  },
+  "0x800169C4": {
+   "name": "draw_hook_remove",
+   "source": "re",
+   "note": "(fn): removes fn from the draw hook list. Conf H"
+  },
+  "0x80019240": {
+   "name": "cursor_init",
+   "source": "re",
+   "note": "(cursor, rect, -1): a highlight cursor object at rect. Conf H"
+  },
+  "0x8001A284": {
+   "name": "dialog_run",
+   "source": "re",
+   "note": "(dialog): spawns dialog_task and sleeps until it ends; returns the choice (+0xA5). Conf H"
+  },
+  "0x8001A35C": {
+   "name": "dialog_task",
+   "source": "re",
+   "note": "(dialog, parent): the Yes/No dialog's loop: Circle accepts the choice, Cross = No. Conf H"
+  },
+  "0x80021B98": {
+   "name": "msd_vm_unpause",
+   "source": "re",
+   "note": "(vm): vm+0x24 = 0 (msd_vm_step returns -1 while it is set). Conf H"
+  },
+  "0x8002F484": {
+   "name": "player_rank_update",
+   "source": "re",
+   "note": "the player's rank after a city battle (city_battle_task). Conf M"
+  },
+  "0x80048BCC": {
+   "name": "deck_mastery_update",
+   "source": "re",
+   "note": "sets game_data+0xA90 bit 14 when every card of the deck is owned. Conf M"
+  },
+  "0x80049CD4": {
+   "name": "deck_record_index",
+   "source": "re",
+   "note": "(deck) -> the opponent record index: variants merged (117, 121-127 -> 114; 128-131 -> 119; 132-137 via 80071064; 138 -> 13, 139 -> 0, 141 -> 48). Conf H"
+  },
+  "0x801E2E08": {
+   "name": "city_menu_open",
+   "overlay": "SAISEG",
+   "source": "re",
+   "note": "(is_city): host 0x0B cmd0(120 city menu / 97 choice list): the box and its row sprites. Conf H"
+  },
+  "0x801E2FC4": {
+   "name": "city_menu_add_item",
+   "overlay": "SAISEG",
+   "source": "re",
+   "note": "(n): host 0x0B cmd1(n): the next row shows label n (city sheet 768,0 row n; choice sheet 792,0 row n-12). No bounds check. Conf H"
+  },
+  "0x801E3358": {
+   "name": "city_menu_step",
+   "overlay": "SAISEG",
+   "source": "re",
+   "note": "per-frame menu states (table 801F6B5C): slide in, input (r1 = position or -1), slide out, free. Conf H"
+  },
+  "0x801E33A4": {
+   "name": "city_menu_draw",
+   "overlay": "SAISEG",
+   "source": "re",
+   "note": "draws the menu box and rows (sprites through the GTE, OT layers 0x20 / 0x21), palettes for highlight and greyed. Conf H"
+  },
+  "0x801E3CC0": {
+   "name": "city_msg_window_open",
+   "overlay": "SAISEG",
+   "source": "re",
+   "note": "(open): the city message window back (1) or closed (0), as a screen task ends. Conf H"
+  },
+  "0x801E3DC4": {
+   "name": "city_menu_probe_item",
+   "overlay": "SAISEG",
+   "source": "re",
+   "note": "(host): runs the script ahead from a place to its next host command; 0x0A cmd 14 greys the place out. Conf H"
+  },
+  "0x801E7594": {
+   "name": "city_frame",
+   "overlay": "SAISEG",
+   "source": "re",
+   "note": "per-frame city logic, switch on the mode 801F7CDE (1 menu, 10 a task runs). Conf H"
+  },
+  "0x801E7A9C": {
+   "name": "city_main_task",
+   "overlay": "SAISEG",
+   "source": "re",
+   "note": "the city's task: runs the host, leaves on the exit mode 801F7CDD (1 battle, 2 map, 3 save). Conf H"
+  },
+  "0x801E81E8": {
+   "name": "city_draw_cb",
+   "overlay": "SAISEG",
+   "source": "re",
+   "note": "the city's draw callback: the message window, then city_menu_draw. Conf M"
+  },
+  "0x801E88C4": {
+   "name": "city_scene_init",
+   "overlay": "SAISEG",
+   "source": "re",
+   "note": "sets up the city scene; after a battle (FA4+0x1A9 = 1) resumes the script with r1 = 1 won / 0 lost. Conf H"
+  },
+  "0x801EE6A4": {
+   "name": "keyword_draw_hook",
+   "overlay": "SAISEG",
+   "source": "re",
+   "note": "the keyword screen's draw hook: window_draw of its three windows (OT 30). Conf H"
+  },
+  "0x801EEC70": {
+   "name": "sprite_new",
+   "overlay": "SAISEG",
+   "source": "re",
+   "note": "(type) -> a 0x90-byte sprite object (two POLY_FT4) from the table at 801F6D4C. Conf H"
+  },
+  "0x801EEF70": {
+   "name": "sprite_draw",
+   "overlay": "SAISEG",
+   "source": "re",
+   "note": "(sprite): through the GTE into OT *(8007BF80)+0x70+layer*4. Conf H"
+  },
+  "0x801F1AC4": {
+   "name": "sprite_set_rect",
+   "overlay": "SAISEG",
+   "source": "re",
+   "note": "(sprite, rect): the tpage and UVs of a VRAM rect (4-bpp). Conf H"
   }
  }
 }

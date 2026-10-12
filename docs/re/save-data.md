@@ -18,6 +18,7 @@ Per-player data repeats every **10040 bytes** (`0x2738`): player 0 is you (the s
 
 | Offset | Size | What | Written by | Conf. |
 |---|---|---|---|---|
+| `+0x18` / `+0x1A` | u16 × 2 | total wins / losses in city battles (cafe, arena, story; capped at 999, not the tutorial); city host `0x0A cmd 16` reads the wins into r1 | `city_battle_task` (`800440CC`), then `player_rank_update` (`8002F484`) | H |
 | `+0x14` | u16 | a progress count: city host `0x0B 0x12 n` adds n (the city scripts add 1 per flag at start-up; host `0x0A 0x13` clears it) | `city_event_host` (SAISEG `801E6618`) | L |
 | `+0x24` | u32 | play time (frames) | `playtime_tick` (`80014E24`), every frame | H |
 | `+0x28` | u32 | flag word; bit `0x400` set by city host `0x0A 0x12`, bit 9 cleared by `game_data_init` | `city_event_host` | L |
@@ -28,7 +29,10 @@ Per-player data repeats every **10040 bytes** (`0x2738`): player 0 is you (the s
 | `+0x80` | 0x288 × 3 | partner slots ([below](#partners-and-digimentals)); slot 0's card is `+0x2F8` | `partner_add` (`8004A0F8`) | H |
 | `+0x2F9` | u8 | partner level (slot 0) | `partner_gain_exp` (KAWSEG `801F7600`) | M |
 | `+0x2FA` | u16 | partner EXP (slot 0) | `partner_gain_exp` (KAWSEG `801F7600`) | M |
-| `+0x818` | u16 × 32 | battle counters (capped at 999), role unknown (maybe wins per opponent), RAM `800DF9DC` | `battle_counters_add` (KAWSEG `801FCF78`) | M |
+| `+0x818` | u16 × 32 | battle feat counters (capped at 999): one per feat flag set in the battle (`*(801DAF38)+0x840`), announced by KAWSEG `801FE18C`; not per opponent. RAM `800DF9DC` | `battle_feats_add` (KAWSEG `801FCF78`) | M |
+| `+0x858` / `+0x974` | u16 × 142 each | the player's wins / losses against each opponent, by deck record index ([below](#opponent-records-0xa90)) | battle task (`80041650`, block `80042318`-`80042398`) | H |
+| `+0xA90` | u16 × 159 | per deck record: bit 15 = fought (win or loss), bit 14 = all its cards owned, low bits = wins with a preset player deck | same; bit 14 `deck_mastery_update` (`80048BCC`) | H |
+| `+0xBCE` | u16 × 159 | losses with a preset player deck | same | M |
 | `+0x1482` | u8 × 301 | card collection, one byte per card number, RAM `800E0646` | `collection_add_card` (`8004850C`) | H |
 | `+0x15B0` | u16 × 6 per card | a random serial per copy (card × 12 + copy × 2) | `card_copy_serial` (`8004835C`) | M |
 | `+0x2408` | 0x10C × 3 | saved decks ([below](#saved-decks-0x2408)) | `deck_store` (`8004979C`), `deck_fixup` (`8004945C`) | H |
@@ -61,7 +65,7 @@ Palmon (98) `C1 -> C2`, card 30 `41 -> 42 -> C2`.
    battle is set up (and `collection_clear_new` clears the "new" flags first).
 2. After the battle, `battle_rewards_grant` (`80049280`, **M**) calls `collection_add_card` for
    each; a Digi part won is set with `digipart_give` (part 15 in the recorded run: `+0x3D`
-   `04 -> 84`), and KAWSEG `battle_counters_add` adds one to the battle counters at `+0x818`.
+   `04 -> 84`), and KAWSEG `battle_feats_add` adds one to the feat counters at `+0x818`.
    (That array was first taken for the Digi parts: a cheat filling it gave nothing. The
    starting partners' table at `80071AD8`, `0A 0F 00`, gives the three starter parts 10, 15
    and 0.)
@@ -181,9 +185,10 @@ OPENSEG `801EC450`, `deck_entry_set` `800495D8`; seen in a save)
 
 **H** (code, seen at run time). After a battle the game's record update (`battle_result`
 `80041650`, block `800422B4`-`800422FC`) adds one to the winner's active deck `+0x106`
-and the loser's `+0x108` (each capped: 999 kept), and KAWSEG `battle_counters_add`
-(`801FCF78`) the per-opponent `+0x818` counters. `deck_store` (`8004979C`, RAM
-`800498B8`-`800498DC`) keeps the same three capped. There is **no player-level total**:
+and the loser's `+0x108` (each capped: 999 kept), and KAWSEG `battle_feats_add`
+(`801FCF78`) the feat counters at `+0x818`; the per-opponent records are `+0x858` / `+0x974`
+([below](#opponent-records-0xa90)). `deck_store` (`8004979C`, RAM
+`800498B8`-`800498DC`) keeps the same three capped. Apart from the city battles' totals (`+0x18` / `+0x1A`), there is **no player-level total**:
 what the VS and result screens show as "yours" is the active deck's record. The VS screen
 (`vs_screen_draw`, KAWSEG `801F35D8`) copies deck `+0x106`/`+0x108` into its display struct
 (KAWSEG `801FF1E4 + 0x760`-`+0x766`: P1 wins/losses, then P2's; `vs_record_draw`, KAWSEG
@@ -306,3 +311,23 @@ adds the partner). The Digimental events themselves are skipped (their flags are
 
 `cheats/SLPS-03101.txt` (local): all cards ×4 (cards 172-190 only where not owned yet) and all 127 Digi parts,
 as repeat codes over the tables above. See [../cheats.example.txt](../cheats.example.txt).
+
+### Opponent records (`+0xA90`)
+
+The battle task (`80041650`, block `80042318`-`80042398`, only for a city battle: its first
+argument is 1) records each battle against the opponent's deck (**H**):
+
+```
+idx = deck_record_index(deck)            // 80049CD4
+A90[idx] |= 0x8000                       // fought, win or lose
+if (player won) 858[idx]++ else 974[idx]++   // capped at 999
+```
+
+`deck_record_index` (`80049CD4`) merges an opponent's variant decks: 117 and 121-127 → 114
+(Apokarimon), 128-131 → 119 (Nanimon), 132-137 → 85, 92, 90, 82, 88, 79 (table at
+`80071064 + id`), 138 → 13, 139 → 0, 141 → 48; every other deck is its own index. The VS screen
+shows the opponent's record from these (`+0x974` its wins, `+0x858` its losses; KAWSEG
+`801F47D4`, `801F57D8`). The tutorial sets bit 15 of entries 0 and 158 only (`80042148`).
+`game_data_init` clears all four arrays (`8002FFD0`-`80030028`). The port's Custom Battle lists
+the decks with bit 15 set ([city-menu.md](city-menu.md#custom-battle)).
+

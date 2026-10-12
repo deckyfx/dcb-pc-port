@@ -13,6 +13,7 @@ arena_save = true
 player_rooms = true
 postgame_visitors = true
 no_win_requirement = true
+custom_battle = true
 ```
 
 ## Boss rematch
@@ -95,6 +96,18 @@ The post-game chain, in Infinity Tower and then two cities' Battle Cafes:
 
 This mod drops the win counts only; every story step above is still needed, so nothing can show up
 early. The city checks when you enter it: walk in (or out and back in) after the step.
+
+## Custom Battle
+
+Beginner City's menu ("Where do you want to go?") lists **Custom Battle** under Player's Room.
+It opens a list of every opponent you have fought (in a Battle Cafe, an arena or the story), with
+their deck, your wins and losses against them, the EXP and the prize pack they give; pick one
+with Circle (L1 / R1 turn a page, Cross goes back) and the battle starts as a cafe battle does:
+Deck Select first, the usual rewards, and it counts in your records. You are back in Beginner
+City afterwards. An opponent with several decks (Apokarimon, Nanimon) is listed once; the tutorial
+and your own preset decks are not.
+
+How it works (the menu, the host commands and screens, the records): [city-menu.md](../re/city-menu.md).
 
 How it works (the cafe's script structure, the flags): [battle-cafe.md](../re/battle-cafe.md).
 `dcb_patch --rematch <AREAnn.PAK> C/AREAnn.PAK <out>` applies it to one city file, for inspection.

@@ -80,7 +80,8 @@ text and art built from the player's own discs.*
 - [ ] Enhancements: widescreen
 - [ ] Network Battle
 - [x] Mods: beaten Battle Arena bosses (Wormmon, Stingmon, Shadramon, Digimon Emperor, A) can be fought again in the Battle Cafe
-- [ ] Custom Battle mode: pick the opponent and the arena
+- [x] Custom Battle (Beginner City's menu): fight again any opponent you have met, picked from a list
+- [ ] Custom Battle: pick the arena (battle field) too
 - [ ] Rust port of the game logic
 
 ## Quick start
@@ -116,7 +117,7 @@ The wiki lives in [docs/wiki/](docs/wiki/Home.md):
 - [Playing](docs/wiki/Playing.md): settings, hotkeys, pause menu, save states, memory cards,
   Wizardmon's passwords (US or Japanese) and the port's completion codes (CARDnnn, DIGIPARTnnn)
 - [Trainer](docs/wiki/Trainer.md): presets, battle actions, cheat file format, memory search
-- [Mods](docs/wiki/Mods.md): gameplay mods (boss rematches, arena saves, Player Rooms, post-game), turned on or off in `settings.ini`
+- [Mods](docs/wiki/Mods.md): gameplay mods (boss rematches, arena saves, Player Rooms, post-game, Custom Battle), turned on or off in `settings.ini`
 - [English Text](docs/wiki/English-Text.md): English font, card/deck text and text catalog from the US dump
 - [Community Fixes](docs/wiki/Community-Fixes.md): romhacking.net fixes applied to SLPS-03101
 - [Textures](docs/wiki/Textures.md): asset ripper, replacement textures, US images, sprite resizing

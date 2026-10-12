@@ -287,6 +287,42 @@ void test_player_rooms() {
     CHECK(!patch::mods::add_player_rooms(city_script({2, 3, 1, 0}, last, test), &why));
 }
 
+void test_custom_battle() {
+    size_t last = 0, test = 0;
+    const Bytes in = city_script({2, 3, 1, 0}, last, test);  // Beginner City's menu
+    std::string why;
+    const auto out = patch::mods::add_custom_battle(in, &why);
+    CHECK(out);
+    if (!out) return;
+    check_jumps(*out);
+    CHECK(patch::rd32(*out, 8) == out->size());
+    CHECK(patch::rd16(*out, in.size()) == 5 && target_of(*out, in.size()) == out->size());  // the old end still ends
+    // The last place jumps to it and Custom Battle (item 10, the blank button).
+    CHECK(patch::rd16(*out, last) == 5);
+    const size_t items = target_of(*out, last);
+    CHECK(patch::rd16(*out, items + 8) == 0x0B && patch::rd16(*out, items + 10) == 1 && patch::rd16(*out, items + 14) == 10);
+    // Position 5: the port's command (0x0A cmd 0x40), back to the menu's start (cmd6, at 16) on -1,
+    // else cmd2(r1) and the script's start.
+    const auto recs = patch::text::msd_walk(*out);
+    size_t at = 0;
+    for (size_t i = 0; i < recs.size(); ++i)
+        if (recs[i].op == 0x0A && patch::rd16(recs[i].raw, 2) == patch::mods::kCustomBattleCmd) at = i;
+    CHECK(at != 0 && at + 4 < recs.size());
+    if (at != 0 && at + 4 < recs.size()) {
+        CHECK(recs[at + 1].op == 9 && patch::rd16(recs[at + 1].raw, 2) == 1 && static_cast<int32_t>(patch::rd32(recs[at + 1].raw, 8)) == -1);
+        CHECK(recs[at + 2].op == 5 && target_of(*out, recs[at + 2].offset) == 16);
+        CHECK(recs[at + 3].op == 0x0B && patch::rd16(recs[at + 3].raw, 2) == 2 && patch::rd16(recs[at + 3].raw, 4) == 1 &&
+              patch::rd16(recs[at + 3].raw, 6) == 1);  // cmd2(r1)
+        CHECK(recs[at + 4].op == 5 && target_of(*out, recs[at + 4].offset) == 16);
+    }
+    // The first test leads to the dispatch, which tries position 5 after the first one.
+    const size_t dispatch = target_of(*out, test + 12);
+    CHECK(patch::rd32(*out, dispatch + 20 + 8) == 5 && target_of(*out, dispatch + 20 + 12) == recs[at].offset);
+    // A full menu, or one without the Battle Cafe, is left alone.
+    CHECK(!patch::mods::add_custom_battle(city_script({2, 3, 5, 4, 1}, last, test), &why));
+    CHECK(!patch::mods::add_custom_battle(city_script({3, 1, 0}, last, test), &why));
+}
+
 void test_postgame() {
     // Beginner City's start: cmd16() (r1 = wins), skip_if(r1 >= 300), jump, the flag, r360 = 1.
     Bytes s = {'M', 'S', 'C', 'D'};
@@ -441,6 +477,7 @@ int main() {
     test_rematch();
     test_arena_saves();
     test_player_rooms();
+    test_custom_battle();
     test_postgame();
     test_wizardmon_codes();
     test_table();

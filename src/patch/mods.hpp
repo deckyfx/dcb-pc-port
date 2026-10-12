@@ -92,6 +92,16 @@ std::optional<Bytes> drop_win_requirements(View script, std::string* why = nullp
 /// (with `why`) when the script has no keyword spell.
 std::optional<Bytes> add_wizardmon_codes(View script, std::string* why = nullptr);
 
+/// Host command 0x0A cmd kCustomBattleCmd: the port's Custom Battle screen (no such command in the
+/// game: its city host ignores it); r1 = the chosen opponent's deck, or -1.
+constexpr uint16_t kCustomBattleCmd = 0x40;
+
+/// Custom Battle in the city menu (Beginner City: C\AREA00.PAK): a 5th place (the blank button,
+/// item 10) that opens the port's opponent list (host 0x0A cmd 0x40), then `cmd2(r1)`, the game's
+/// own battle, and the script's start; cancelled: the menu again. Appended only. nullopt (with
+/// `why`) when no city menu has a free row.
+std::optional<Bytes> add_custom_battle(View script, std::string* why = nullptr);
+
 /// What to change in one city file.
 struct CityMods {
     std::vector<Rematch> rematches;  ///< add_rematches (none: skipped)
@@ -100,6 +110,7 @@ struct CityMods {
     bool postgame_visitors = false;    ///< add_postgame_visitors
     bool no_win_requirement = false; ///< drop_win_requirements
     bool wizardmon_codes = false;    ///< add_wizardmon_codes
+    bool custom_battle = false;      ///< add_custom_battle
 };
 
 /// A city PAK (C\AREAnn.PAK) with its script chunk passed through the mods in `mods`; nullopt

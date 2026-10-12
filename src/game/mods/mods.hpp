@@ -24,6 +24,9 @@ void set_postgame_visitors(bool on);
 /// Post-game ([mods] no_win_requirement, on by default): BlackMetalGarurumon and BlackWarGreymon
 /// without the 200 / 300 total wins (the story order stays).
 void set_no_win_requirement(bool on);
+/// Custom Battle ([mods] custom_battle, on by default): Beginner City's menu lists Custom Battle,
+/// a list of the opponents already fought to battle again (src/game/overrides/custom_battle.cpp).
+void set_custom_battle(bool on);
 
 /// True when a mod changes the game file `key` ("C/AREA11.PAK", as the file server names it).
 bool wants(const std::string& key);

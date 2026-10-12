@@ -334,6 +334,8 @@ IniDocument default_settings_ini() {
     doc.set("mods", "postgame_visitors", "true");
     doc.add_comment("mods", "no_win_requirement: BlackMetalGarurumon and BlackWarGreymon without 200 / 300 total wins.");
     doc.set("mods", "no_win_requirement", "true");
+    doc.add_comment("mods", "custom_battle: Beginner City's menu lists Custom Battle (fight any opponent you have met again).");
+    doc.set("mods", "custom_battle", "true");
 
     doc.add_comment("keyboard", "SDL scancode names (e.g. Z, Return, Space, Left Shift, Keypad 8, Comma);");
     doc.add_comment("keyboard", "separate several keys with commas; leave empty to unbind.");

@@ -12,6 +12,7 @@ bool g_arena_saves = true;
 bool g_player_rooms = true;
 bool g_postgame_visitors = true;
 bool g_no_win_requirement = true;
+bool g_custom_battle = true;
 }  // namespace
 
 void set_boss_rematch(bool on) { g_boss_rematch = on; }
@@ -19,6 +20,7 @@ void set_arena_saves(bool on) { g_arena_saves = on; }
 void set_player_rooms(bool on) { g_player_rooms = on; }
 void set_postgame_visitors(bool on) { g_postgame_visitors = on; }
 void set_no_win_requirement(bool on) { g_no_win_requirement = on; }
+void set_custom_battle(bool on) { g_custom_battle = on; }
 
 namespace {
 
@@ -33,6 +35,7 @@ patch::mods::CityMods mods_for(const std::string& key) {
     m.postgame_visitors = g_postgame_visitors;
     m.no_win_requirement = g_no_win_requirement;
     m.wizardmon_codes = true;  // always on: the completion codes need it (keyword.cpp)
+    m.custom_battle = g_custom_battle && key == "C/AREA00.PAK";  // Beginner City's menu
     return m;
 }
 
@@ -40,7 +43,7 @@ patch::mods::CityMods mods_for(const std::string& key) {
 
 bool wants(const std::string& key) {
     const patch::mods::CityMods m = mods_for(key);
-    return !m.rematches.empty() || m.arena_saves || m.player_rooms || m.postgame_visitors || m.no_win_requirement || m.wizardmon_codes;
+    return !m.rematches.empty() || m.arena_saves || m.player_rooms || m.postgame_visitors || m.no_win_requirement || m.wizardmon_codes || m.custom_battle;
 }
 
 bool apply(const std::string& key, std::vector<uint8_t>& bytes) {

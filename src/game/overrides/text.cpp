@@ -843,6 +843,14 @@ void dcb::text_set_jp_names(bool on) { g_jp_names = on; }
 
 void dcb::text_swap_names(std::string& s) { swap_names(s); }
 
+std::string dcb::text_full_name(const std::string& s) {
+    for (const LongName& n : g_names)
+        if (n.key == s) return n.full;
+    std::string out = s;
+    if (!out.empty() && static_cast<uint8_t>(out.back()) < 0x0A) out.pop_back();  // a tag byte without a long name
+    return out;
+}
+
 void dcb::text_reword_line(std::string& line, const std::string& previous) {
     for (const LineSwap& r : line_swaps()) {
         if (line == r.us && (r.after.empty() || previous == r.after)) {

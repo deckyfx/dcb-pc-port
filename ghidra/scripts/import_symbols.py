@@ -9,6 +9,8 @@
 # Re-runnable: only renames FUN_* functions, never overwrites a human name.
 import json
 
+from ghidra.program.model.symbol import SourceType
+
 args = getScriptArgs()
 if args:
     sym_path = args[0]
@@ -20,8 +22,11 @@ with open(sym_path) as f:
 
 fm = currentProgram.getFunctionManager()
 applied = skipped = missing = 0
+factory = currentProgram.getAddressFactory()
 for addr_str, sym in sorted(data.get("symbols", {}).items()):
-    addr = toAddr(int(addr_str, 16))
+    # An overlay function (e.g. "overlay": "SAISEG") lives in that overlay's address space.
+    space = factory.getAddressSpace(sym["overlay"]) if sym.get("overlay") else None
+    addr = space.getAddress(addr_str) if space else toAddr(addr_str)  # strings: Java ints are signed
     fn = fm.getFunctionAt(addr)
     if fn is None:
         missing += 1
@@ -29,6 +34,6 @@ for addr_str, sym in sorted(data.get("symbols", {}).items()):
     if not fn.getName().startswith("FUN_"):
         skipped += 1  # a human name already lives here; never overwrite
         continue
-    fn.setName(sym["name"], ghidra.program.model.symbol.SourceType.USER_DEFINED)
+    fn.setName(sym["name"], SourceType.USER_DEFINED)
     applied += 1
 print("import_symbols: %d applied, %d kept, %d addresses without function" % (applied, skipped, missing))
