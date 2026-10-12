@@ -18,6 +18,8 @@
 //   - closes them, puts the deck (or -1) in r1, sets the mode back to 0 and reopens the message
 //     window (801E3CC0(1)), as the keyword task ends. The script then runs `cmd2(r1)`: the game's
 //     own battle, Deck Select, rewards and records included.
+// Back from that battle the city would restore a cafe's "back from a battle" state (two portraits
+// over the city, the menu stuck): the override of city_scene_init sets a plain entry's instead.
 // The draw hook and the window callbacks are native functions at reserved guest addresses
 // (psx::register_native), so the game calls them like its own.
 //
@@ -66,6 +68,11 @@ constexpr uint32_t kHelpCb = psx::kNativeBase + 0x10;
 constexpr uint32_t kVmStep = 0x80021198u;      // msd_vm_step(vm, regs) -> 1 at a host command
 constexpr uint32_t kMenuDraw = 0x801E33A4u;    // SAISEG city_menu_draw
 constexpr uint32_t kMenuProbe = 0x801E3DC4u;   // SAISEG city_menu_probe_item: runs the script ahead
+constexpr uint32_t kSceneInit = 0x801E88C4u;   // SAISEG city_scene_init: the city scene, resumed after a battle
+// City scene state (base 801F7BD0): what city_scene_init sets on a plain entry (its else branch).
+constexpr uint32_t kSceneBase = 0x801F7BD0u;
+constexpr uint32_t kFromBattle = kSceneBase + 268;  // 801F7CDC u8: 1 = back from a battle (host 0x0A cmd 3 closes that)
+constexpr uint32_t kScene = 0x801F7CEAu;            // u8: the scene a battle was started in (0x0B cmd8: 1 the cafe; 0xFF the city)
 constexpr uint32_t kHost = 0x801F7E80u;        // -> city host state: +4 the VM, +8 the registers (r1 at +4)
 constexpr uint32_t kCityMode = 0x801F7CDEu;    // u8: 10 while a city task runs, 0 resumes the script
 constexpr uint32_t kMenuType = 0x801F7C52u;    // u8: 1 the city menu, 0 a choice list
@@ -448,6 +455,21 @@ void dcb_msd_vm_step(PsxContext* ctx) {
     // running (an unknown command would end it: r0 = 0). That task's override runs this screen.
     psx_write16(ctx, vm + 0x1A, kKeywordCmd);
     g_pending = true;
+}
+
+// SAISEG 801E88C4 city_scene_init: the original. A battle the game starts is always in a talk
+// scene (a cafe, an arena): back from it, the city restores that scene and its "back from a battle"
+// state (801F7CDC = 1, 801F7CE4 = 9: the two portraits; the scene's host 0x0A cmd 3 closes it).
+// Custom Battle's starts in the city itself (scene 0xFF), which has neither portraits nor that
+// command: there the plain entry's state is set instead (the original's else branch).
+void dcb_city_scene_init(PsxContext* ctx) {
+    psx_call_original(ctx, kSceneInit);
+    if (psx_read8(ctx, kFromBattle) != 1 || psx_read8(ctx, kScene) != 0xFF) return;
+    for (const uint32_t off : {228u, 229u, 230u}) psx_write8(ctx, kSceneBase + off, 0);  // 801F7CB4-6
+    psx_write32(ctx, kSceneBase + 188, 0);  // 801F7C8C
+    psx_write32(ctx, kSceneBase + 184, 0);  // 801F7C88
+    psx_write8(ctx, kFromBattle, 0);
+    psx_write8(ctx, kSceneBase + 276, 4);   // 801F7CE4: the scene state of a plain entry
 }
 
 // SAISEG 801E3DC4 city_menu_probe_item(host): the original, the Custom Battle command not run.
