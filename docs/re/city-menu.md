@@ -102,5 +102,9 @@ The port's mod (`[mods] custom_battle`): Beginner City's menu gets a 5th place.
   (owner, deck name, prize pack, EXP) and the player's record against each; the keyword screen's
   windows and cursor; a draw hook and window callbacks that are native code at reserved guest
   addresses (`psx::register_native`, `kNativeBase` `9FF00000`: `psx_dispatch` runs them).
-- **Label:** the override of `city_menu_draw` writes "Custom Battle" over the item whose sprite
-  shows label row 10.
+- **Label:** "Custom Battle" is composed into the label sheet's blank row 10 in VRAM from the
+  English sheet's own letters (C of Cafe, u of Menu, s of Player's, t of Battle, o and m of Room,
+  then Battle; a letter = the texels that differ from row 10's background, which every row
+  shares), so the game draws it in its palettes (normal / highlighted / greyed) like the other
+  places; once per sheet load, from the `city_menu_draw` override (`hle::Gpu::poke_vram`). With
+  the JP sheet (no English "Battle Cafe" in row 2) the words are written over the button instead.

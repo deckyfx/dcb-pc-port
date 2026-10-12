@@ -23,11 +23,18 @@
 // When the city menu opens it probes each place (city_menu_probe_item runs the script ahead to the
 // place's host command); the command is not run then.
 //
-// The menu label: the blank button has no text; the override of the menu's draw (801E33A4) writes
-// "Custom Battle" over the item whose sprite shows label row 10.
+// The menu label: the blank button (label sheet row 10) has no text. With the English sheet in VRAM
+// (every city's 88x176 4-bpp sheet at (768,0), 16 texels a row: Player's Room, Menu, Battle Cafe,
+// ...), "Custom Battle" is composed into that row from the sheet's own letters (C from Cafe, u from
+// Menu, s from Player's, t from Battle, o and m from Room, then Battle), so the row is drawn by the
+// game's sprite with the game's palettes: normal, highlighted and greyed out like the other places.
+// A letter is the texels that differ from row 10's background (every row shares it). Otherwise (no
+// English sheet) the override of the menu's draw (801E33A4) writes the words over the button.
 
 #include "custom_battle.hpp"
 
+#include "gpu/gpu.hpp"
+#include "hw/mmio.hpp"
 #include "native_files.hpp"
 #include "text.hpp"
 
@@ -37,6 +44,7 @@
 #include <psx/runtime.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cstdio>
 #include <cstring>
 #include <initializer_list>
@@ -174,6 +182,110 @@ std::vector<Opponent> opponents(PsxContext& ctx) {
 
 void text(PsxContext& ctx, int x, int y, int ot, const std::string& s) {
     dcb::text_draw_verbatim(ctx, x, y, 7, 0, kGrey, ot, s, nullptr);
+}
+
+// --- the menu label -------------------------------------------------------------------------------
+
+constexpr int kSheetX = 768, kSheetY = 0;  // the city label sheet in VRAM (halfword x), 4 texels a word
+constexpr int kLabelW = 88, kLabelH = 16;
+
+/// A letter (or a word) of the English sheet: label `row`, its strokes' columns (`core_l`-`core_r`,
+/// one outline texel either side), moved `dy` rows, from texel row `y_from` (the apostrophe of
+/// "Player's" left out).
+struct Piece {
+    int row, core_l, core_r, dy, y_from;
+};
+constexpr Piece kCustom[] = {{2, 51, 56, 0, 0}, {1, 49, 53, 0, 0}, {0, 42, 46, -1, 4},
+                             {2, 26, 29, 0, 0}, {0, 64, 67, -1, 0}, {0, 69, 75, -1, 0}};
+constexpr Piece kBattle[] = {{2, 12, 45, 0, 0}};
+constexpr int kWordGap = 6;  // stroke columns between the words, as in "Battle Cafe"
+/// The strokes of "Battle Cafe" (row 2) in the English sheet: tells it from the JP one.
+constexpr std::pair<int, int> kBattleCafe[] = {{12, 17}, {19, 23}, {26, 29}, {31, 34}, {37, 38}, {41, 45}, {51, 56}};
+
+using Cell = std::array<uint8_t, kLabelW * kLabelH>;
+
+int sheet_texel(const uint16_t* vram, int row, int x, int y) {
+    const uint16_t h = vram[static_cast<size_t>((kSheetY + row * kLabelH + y) & 511) * 1024 + ((kSheetX + x / 4) & 1023)];
+    return (h >> ((x & 3) * 4)) & 15;
+}
+
+Cell read_cell(const uint16_t* vram, int row) {
+    Cell c{};
+    for (int y = 0; y < kLabelH; ++y)
+        for (int x = 0; x < kLabelW; ++x) c[static_cast<size_t>(y * kLabelW + x)] = static_cast<uint8_t>(sheet_texel(vram, row, x, y));
+    return c;
+}
+
+/// True when row 2's strokes (texels 2-6 that differ from `bg`) are the English "Battle Cafe".
+bool english_sheet(const uint16_t* vram, const Cell& bg) {
+    std::vector<std::pair<int, int>> runs;
+    int start = -1;
+    for (int x = 0; x <= kLabelW; ++x) {
+        bool stroke = false;
+        for (int y = 0; x < kLabelW && y < kLabelH && !stroke; ++y) {
+            const int v = sheet_texel(vram, 2, x, y);
+            stroke = v != bg[static_cast<size_t>(y * kLabelW + x)] && v >= 2 && v <= 6;
+        }
+        if (stroke && start < 0) start = x;
+        if (!stroke && start >= 0) {
+            runs.emplace_back(start, x - 1);
+            start = -1;
+        }
+    }
+    if (runs.size() < std::size(kBattleCafe)) return false;
+    for (size_t i = 0; i < std::size(kBattleCafe); ++i)
+        if (runs[i] != kBattleCafe[i]) return false;
+    return true;
+}
+
+/// "Custom Battle" on `bg` (row 10), from the sheet's letters (see the top of the file).
+Cell compose_label(const uint16_t* vram, const Cell& bg) {
+    Cell out = bg;
+    const auto width = [](const Piece* p, size_t n) {
+        int w = -1;
+        for (size_t i = 0; i < n; ++i) w += p[i].core_r - p[i].core_l + 2;
+        return w;
+    };
+    const auto place = [&](const Piece* p, size_t n, int x) {
+        for (size_t i = 0; i < n; ++i) {
+            for (int sx = p[i].core_l - 1; sx <= p[i].core_r + 1; ++sx)
+                for (int y = p[i].y_from; y < kLabelH; ++y) {
+                    const int v = sheet_texel(vram, p[i].row, sx, y);
+                    const int ty = y + p[i].dy, tx = x + (sx - p[i].core_l);
+                    if (v == bg[static_cast<size_t>(y * kLabelW + sx)] || ty < 0 || ty >= kLabelH || tx < 0 || tx >= kLabelW) continue;
+                    out[static_cast<size_t>(ty * kLabelW + tx)] = static_cast<uint8_t>(v);
+                }
+            x += p[i].core_r - p[i].core_l + 2;
+        }
+        return x;
+    };
+    const int custom = width(kCustom, std::size(kCustom)), battle = width(kBattle, std::size(kBattle));
+    const int x = kLabelW / 2 + 1 - (custom + kWordGap + battle) / 2;  // centred as "Battle Arena"
+    place(kBattle, std::size(kBattle), place(kCustom, std::size(kCustom), x) + kWordGap - 1);
+    return out;
+}
+
+/// Puts the composed label in row 10 when the city's sheet is the English one and the row is not
+/// it already (a city loads its sheet afresh); false when there is no English sheet.
+bool label_in_sheet(PsxContext& ctx) {
+    static Cell composed{};
+    static bool have = false;
+    auto* mmio = static_cast<hle::Mmio*>(psx::Machine::from(&ctx).mmio());
+    if (!mmio) return false;
+    hle::Gpu& gpu = mmio->gpu();
+    const uint16_t* vram = gpu.vram();
+    const Cell row10 = read_cell(vram, kCustomBattleItem);
+    if (have && row10 == composed) return true;
+    if (!english_sheet(vram, row10)) return false;  // the JP sheet, or row 10 is not blank
+    composed = compose_label(vram, row10);
+    have = true;
+    for (int y = 0; y < kLabelH; ++y)
+        for (int w = 0; w < kLabelW / 4; ++w) {
+            uint16_t h = 0;
+            for (int k = 0; k < 4; ++k) h = static_cast<uint16_t>(h | composed[static_cast<size_t>(y * kLabelW + w * 4 + k)] << (k * 4));
+            gpu.poke_vram(kSheetX + w, kSheetY + kCustomBattleItem * kLabelH + y, h);
+        }
+    return true;
 }
 
 // --- the native functions -------------------------------------------------------------------------
@@ -338,10 +450,12 @@ void dcb_city_menu_probe(PsxContext* ctx) {
     g_probing = false;
 }
 
-// SAISEG 801E33A4 city_menu_draw: the original, then "Custom Battle" on the blank button.
+// SAISEG 801E33A4 city_menu_draw: the original, with "Custom Battle" in the label sheet's blank
+// row (or, without the English sheet, written over the button).
 void dcb_city_menu_draw(PsxContext* ctx) {
     psx_call_original(ctx, kMenuDraw);
     if (psx_read8(ctx, kMenuType) != 1) return;
+    if (label_in_sheet(*ctx)) return;  // the game draws it, in its palettes
     const int count = static_cast<int8_t>(psx_read8(ctx, kMenuCount));
     const uint32_t buffer = psx_read8(ctx, kPrimBuffer) & 1;
     for (int i = 0; i < count && i < 5; ++i) {
