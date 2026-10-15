@@ -24,6 +24,8 @@ documented in [../RE_WORKFLOW.md](../RE_WORKFLOW.md).
   US GameShark codes), and the battle hotkeys.
 - [Battle Cafe](battle-cafe.md) — the city script VM's ops, the city host's cafe and battle
   commands, how a cafe lists its opponents and starts a battle, the face sheet, the bosses' flags.
+- [Cards](cards.md) — card numbers by kind, the CARD2.CDD records, every 301-card assumption,
+  the save's spare bytes, fusion and reward rules, card art; what a new card needs
 - [City menu and screens](city-menu.md) — the city menu (places, probe, label sheet), host
   commands that open screens (tasks, draw hooks, windows), a battle from a city; Custom Battle
 - [Text engine](text-engine.md) — SJIS/ASCII encoding, the JP/US renderers, fonts and glyph

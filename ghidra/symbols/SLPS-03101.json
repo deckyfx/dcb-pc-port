@@ -1173,6 +1173,56 @@
    "overlay": "SAISEG",
    "source": "re",
    "note": "the arena-style talk scene with two portraits (host 0x0A cmd 0xC with scene 801F7CEA, or back from a battle whose scene is not the cafe). Conf M"
+  },
+  "0x80048A8C": {
+   "name": "card_record_get",
+   "source": "re",
+   "note": "(card) -> record: <191 Digimon (0x134), >292 Digivolve (0x68), else Option (0xDA). Conf H"
+  },
+  "0x800489DC": {
+   "name": "card_specialty_icon",
+   "source": "re",
+   "note": "(card) -> specialty icon (5 / 6 for non-Digimon). Conf H"
+  },
+  "0x80048A34": {
+   "name": "card_level_icon",
+   "source": "re",
+   "note": "(card) -> level icon (4 / 5 for non-Digimon). Conf H"
+  },
+  "0x80048988": {
+   "name": "card_from_kind_index",
+   "source": "re",
+   "note": "(kind, index) -> card number (191 / 293 bases). Conf H"
+  },
+  "0x800495D8": {
+   "name": "deck_entry_set",
+   "source": "re",
+   "note": "card number -> deck entry u8 kind + u8 index. Conf H"
+  },
+  "0x80049324": {
+   "name": "collection_seen_count",
+   "source": "re",
+   "note": "counts the cards seen into game_data+0x12 (loop of 301). Conf H"
+  },
+  "0x8002F444": {
+   "name": "save_checksum_write",
+   "source": "re",
+   "note": "(len, buf): XOR and 8-bit sum of the save image at buf+len. Conf H"
+  },
+  "0x8002F3E0": {
+   "name": "save_checksum_verify",
+   "source": "re",
+   "note": "(len, buf): checks save_checksum_write's two bytes. Conf H"
+  },
+  "0x80030578": {
+   "name": "digimon_record_by_model",
+   "source": "re",
+   "note": "(model id) -> the first Digimon record (0-0xBE) with that +0xE5. Conf H"
+  },
+  "0x8003082C": {
+   "name": "battle_model_load",
+   "source": "re",
+   "note": "loads a card's battle model F:\\%03d.PAK by record +0xE5 (model_pak_load 8003063C). Conf H"
   }
  }
 }
