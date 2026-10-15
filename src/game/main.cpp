@@ -562,6 +562,9 @@ int main(int argc, char** argv) {
             auto& [pad_frame, mdec_seen, movie_until, skip_until] = frame_state;
             bool any_press = host->take_any_press();
             uint16_t pad = static_cast<uint16_t>(host->pad_buttons(0) & scripted_pad(pad_frame, &any_press));
+            // Record / replay before the movie handling below, so a replayed key skips a movie on
+            // the frame the recorded one did (a replay that let it play on would fall out of step).
+            input_log.apply(pad_frame, pad, any_press);
             if (mmio.mdec_transfers() != mdec_seen) {
                 mdec_seen = mmio.mdec_transfers();
                 movie_until = pad_frame + 15;
@@ -571,7 +574,6 @@ int main(int argc, char** argv) {
             // A native movie is skipped by any key or Start, like the disc one.
             auto& movie = dcb::movie_host();
             if (movie.active && (any_press || (pad & platform::Start) == 0)) movie.skip = true;
-            input_log.apply(pad_frame, pad, any_press);
             mmio.set_pad_buttons(0, pad);
             // DCB_TRACE_INPUT: what the game's pad library last read over the port.
             static const bool trace_input = std::getenv("DCB_TRACE_INPUT") != nullptr;
