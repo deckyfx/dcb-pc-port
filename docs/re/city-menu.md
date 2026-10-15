@@ -112,6 +112,11 @@ The port's mod (`[mods] custom_battle`): Beginner City's menu gets a 5th place.
   addresses (`psx::register_native`, `kNativeBase` `9FF00000`: `psx_dispatch` runs them).
 - **Back from the battle:** it was started in the city scene (0xFF), where nothing closes the
   "back from a battle" state; the override of `city_scene_init` sets a plain entry's state then.
+- **Portrait:** entry 12 of the deck's `B:\MATCH\NNN.ARC` (the VS screen's 128×112 8-bit portrait,
+  normally at VRAM (320,112), palette (320,255)), uploaded through the GPU's transfer command
+  (GP0 A0h, so the texture replacer gives it the US art: it matches uploads by content) to VRAM
+  the city leaves free (picture (512,384), palette (0,248), found with `DCB_SNAPSHOT_VRAM`), and
+  drawn as one sprite from the text primitive pool (`dcb::text_draw_image`).
 - **Label:** "Custom Battle" is composed into the label sheet's blank row 10 in VRAM from the
   English sheet's own letters (C of Cafe, u of Menu, s of Player's, t of Battle, o and m of Room,
   then Battle; a letter = the texels that differ from row 10's background, which every row

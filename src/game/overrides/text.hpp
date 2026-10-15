@@ -39,6 +39,12 @@ struct TextAlias {
 /// draws them, so they never touch another screen that reuses the overlay window.
 void text_set_aliases(const TextAlias* list, size_t count);
 
+/// Draws a VRAM image (e.g. a portrait the port uploaded) as one sprite in OT entry `ot`: (x, y)
+/// on screen, w x h pixels from texel (u, v) of texture page `tpage` (the GP0 E1h bits: page x/64,
+/// page y/256 << 4, colour depth << 7) with palette `clut` ((y << 6) | (x >> 4)). Through the text
+/// primitive pool, like the text; nothing when it is full.
+void text_draw_image(PsxContext& ctx, int x, int y, int w, int h, int u, int v, uint16_t tpage, uint16_t clut, int ot);
+
 /// Draws `s` exactly as typed, one character at a time: no catalog, long names or deck label,
 /// and letters are letters (never JP codes). ASCII takes the US font, Shift-JIS the JP original
 /// (draw arguments as 8002AE00: rgb is a guest pointer). `x_of` (optional) receives each

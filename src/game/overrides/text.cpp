@@ -860,6 +860,33 @@ void dcb::text_reword_line(std::string& line, const std::string& previous) {
     }
 }
 
+void dcb::text_draw_image(PsxContext& ctx, int x, int y, int w, int h, int u, int v, uint16_t tpage, uint16_t clut,
+                          int ot) {
+    if (prim_full(ctx)) return;
+    const uint32_t p = prim_alloc(ctx);
+    // The text pool's DR_TPAGE + SPRT packet, with a real texture page (GP0 E1h) instead of the
+    // font's private-sheet marker, and an opaque raw-texture SPRT (code 0x65).
+    wr32(ctx, p + 0x04, 0xE1000000u | tpage);
+    wr8(ctx, p + 0x03, 1);
+    wr8(ctx, p + 0x0C, 0x80);
+    wr8(ctx, p + 0x0D, 0x80);
+    wr8(ctx, p + 0x0E, 0x80);
+    wr8(ctx, p + 0x0F, 0x65);
+    wr16(ctx, p + 0x10, static_cast<uint16_t>(x));
+    wr16(ctx, p + 0x12, static_cast<uint16_t>(y));
+    wr8(ctx, p + 0x14, static_cast<uint8_t>(u));
+    wr8(ctx, p + 0x15, static_cast<uint8_t>(v));
+    wr16(ctx, p + 0x16, clut);
+    wr16(ctx, p + 0x18, static_cast<uint16_t>(w));
+    wr16(ctx, p + 0x1A, static_cast<uint16_t>(h));
+    const uint32_t frame = rd32(ctx, kOtBase);
+    const uint32_t ot_addr = frame + 0x70u + static_cast<uint32_t>(ot) * 4u;
+    const uint32_t head = rd32(ctx, ot_addr) & 0x00FFFFFFu;
+    wr32(ctx, p + 0x08, (rd32(ctx, p + 0x08) & 0xFF000000u) | head);
+    wr32(ctx, p + 0x00, (rd32(ctx, p + 0x00) & 0xFF000000u) | ((p + 8u) & 0x00FFFFFFu));
+    wr32(ctx, ot_addr, (rd32(ctx, ot_addr) & 0xFF000000u) | (p & 0x00FFFFFFu));
+}
+
 void dcb::text_draw_verbatim(PsxContext& ctx, int x, int y, int clut, int prop, uint32_t rgb, int ot,
                              const std::string& s, std::vector<int>* x_of) {
     const bool font = load_font(ctx);

@@ -101,6 +101,7 @@ constexpr uint16_t kKeywordCmd = 15;  // city host 0x0A cmd 15: the keyword scre
 constexpr uint16_t kUp = 0x1000, kDown = 0x4000, kL1 = 0x4, kR1 = 0x8, kCircle = 0x20, kCross = 0x40;
 constexpr int kOt = 30;            // the windows' OT entry (the keyword screen's)
 constexpr int kRowH = 14, kRows = 11;
+constexpr int kTop = 32;  // the windows' top
 constexpr int kCustomBattleItem = 10;  // the city menu's blank button
 
 constexpr int kDecks = 159, kOpponents = 142, kDekRecord = 104;
@@ -115,6 +116,8 @@ struct Screen {
     bool open = false;
     std::vector<Opponent> list;
     int cursor = 0, top = 0;
+    int portrait_deck = -1;  // the deck whose portrait is in VRAM (-1 none)
+    bool portrait = false;   // it is there and can be drawn
     uint32_t buf = 0;  // guest scratch on the task's stack: rects, the help line
 } g;
 
@@ -196,6 +199,60 @@ std::vector<Opponent> opponents(PsxContext& ctx) {
 
 void text(PsxContext& ctx, int x, int y, int ot, const std::string& s) {
     dcb::text_draw_verbatim(ctx, x, y, 7, 0, kGrey, ot, s, nullptr);
+}
+
+// --- the portrait ---------------------------------------------------------------------------------
+//
+// The VS screen's archive of a deck (B:\MATCH\NNN.ARC, NNN = the deck: a u32 offset table, then
+// TIMs) holds the opponent's 128x112 8-bit portrait as entry 12 (normally at VRAM (320,112), its
+// palette at (320,255)). Uploaded here to VRAM the city does not use (found free with
+// DCB_SNAPSHOT_VRAM on the screen: picture (512,384), palette (0,248), between the display
+// buffers) through the GPU's own transfer command, so the texture replacer gives it the US art as
+// on the VS screen (it matches uploads by content).
+constexpr int kPortraitEntry = 12;
+constexpr int kPortraitX = 512, kPortraitY = 384, kPortraitW = 64, kPortraitH = 112;  // VRAM words
+constexpr int kPortraitClutX = 0, kPortraitClutY = 248;
+constexpr uint16_t kPortraitTpage = (kPortraitX / 64) | ((kPortraitY / 256) << 4) | (1 << 7);  // 8-bit
+constexpr uint16_t kPortraitClut = (kPortraitClutY << 6) | (kPortraitClutX >> 4);
+constexpr int kPortraitU = (kPortraitX % 64) * 2, kPortraitV = kPortraitY % 256;
+
+void upload(hle::Gpu& gpu, int x, int y, int w, int h, const uint8_t* data) {
+    gpu.gp0(0x01000000u);  // clear the texture cache
+    gpu.gp0(0xA0000000u);  // CPU -> VRAM
+    gpu.gp0(static_cast<uint32_t>(y) << 16 | static_cast<uint32_t>(x));
+    gpu.gp0(static_cast<uint32_t>(h) << 16 | static_cast<uint32_t>(w));
+    std::vector<uint32_t> words((static_cast<size_t>(w) * h + 1) / 2);
+    std::memcpy(words.data(), data, static_cast<size_t>(w) * h * 2);
+    gpu.gp0_block(words.data(), words.size());
+}
+
+/// Puts deck `deck`'s portrait in VRAM; false when there is none (no archive, another layout).
+bool load_portrait(PsxContext& ctx, int deck) {
+    auto* mmio = static_cast<hle::Mmio*>(psx::Machine::from(&ctx).mmio());
+    if (!mmio || mmio->gpu().receiving_vram()) return false;
+    char name[32];
+    std::snprintf(name, sizeof name, "files/B/MATCH/%03d.ARC", deck);
+    const std::string path = dcb::asset_path(name);
+    FILE* in = path.empty() ? nullptr : std::fopen(path.c_str(), "rb");
+    if (!in) return false;
+    std::vector<uint8_t> arc;
+    uint8_t chunk[4096];
+    for (size_t n; (n = std::fread(chunk, 1, sizeof chunk, in)) > 0;) arc.insert(arc.end(), chunk, chunk + n);
+    std::fclose(in);
+    const auto u32 = [&](size_t at) {
+        return at + 4 <= arc.size() ? static_cast<uint32_t>(arc[at] | arc[at + 1] << 8 | arc[at + 2] << 16 | arc[at + 3] << 24) : 0u;
+    };
+    const auto u16 = [&](size_t at) { return at + 2 <= arc.size() ? static_cast<int>(arc[at] | arc[at + 1] << 8) : 0; };
+    if (u32(0) / 4 <= kPortraitEntry + 1) return false;
+    const size_t tim = u32(4 * kPortraitEntry);
+    if (u32(tim) != 0x10 || u32(tim + 4) != 9) return false;  // a TIM, 8-bit with a palette
+    const size_t clut = tim + 8, image = clut + u32(clut);
+    if (u16(clut + 8) != 256 || u16(clut + 10) != 1 || u16(image + 8) != kPortraitW || u16(image + 10) != kPortraitH ||
+        image + 12 + kPortraitW * kPortraitH * 2 > arc.size())
+        return false;
+    upload(mmio->gpu(), kPortraitClutX, kPortraitClutY, 256, 1, arc.data() + clut + 12);
+    upload(mmio->gpu(), kPortraitX, kPortraitY, kPortraitW, kPortraitH, arc.data() + image + 12);
+    return true;
 }
 
 // --- the menu label -------------------------------------------------------------------------------
@@ -332,21 +389,36 @@ void info_cb(PsxContext* ctx) {
     if (!g.open || g.list.empty()) return;
     const Window w = window(*ctx);
     const Opponent& o = g.list[static_cast<size_t>(g.cursor)];
-    int y = w.y + 4;
+    // The portrait on top (128 x 112, as wide as the window), then the deck and the record.
+    int y = w.y + 2;
+    if (g.portrait && g.portrait_deck == o.deck)
+        dcb::text_draw_image(*ctx, w.x, y, kPortraitW * 2, kPortraitH, kPortraitU, kPortraitV, kPortraitTpage,
+                             kPortraitClut, w.ot);
+    y += kPortraitH + 2;
     const auto line = [&](const std::string& s) {
-        text(*ctx, w.x + 6, y, w.ot, s);
+        text(*ctx, w.x + 4, y, w.ot, s);
         y += kRowH;
     };
-    line(o.owner);
     line(o.name);
-    y += kRowH / 2;
-    line("Wins " + std::to_string(o.wins));
-    line("Losses " + std::to_string(o.losses));
-    y += kRowH / 2;
-    line("EXP +" + std::to_string(o.exp));
+    line("W " + std::to_string(o.wins) + "  L " + std::to_string(o.losses) + "  EXP +" + std::to_string(o.exp));
     if (!o.pack.empty()) line(o.pack);
-    y = w.y + 4 + 10 * kRowH;
-    line(std::to_string(g.cursor + 1) + " / " + std::to_string(g.list.size()));
+}
+
+/// The help line (with the list position) in the task's scratch, for text_draw_grey.
+void set_help(PsxContext& c) {
+    std::string help = "*b0 Battle   *b2 Back   L1/R1 Page";
+    if (!g.list.empty()) help += "      " + std::to_string(g.cursor + 1) + " / " + std::to_string(g.list.size());
+    help.resize(std::min<size_t>(help.size(), 63));
+    for (size_t i = 0; i <= help.size(); ++i) psx_write8(&c, g.buf + 64 + static_cast<uint32_t>(i), i < help.size() ? help[i] : 0);
+}
+
+/// The selected opponent's portrait in VRAM, once per selection.
+void show_portrait(PsxContext& c) {
+    if (g.list.empty()) return;
+    const int deck = g.list[static_cast<size_t>(g.cursor)].deck;
+    if (deck == g.portrait_deck) return;
+    g.portrait = load_portrait(c, deck);
+    g.portrait_deck = deck;
 }
 
 void help_cb(PsxContext* ctx) {
@@ -371,16 +443,19 @@ void task(PsxContext* ctx) {
     c.r[kSp] = g.buf;
     g.list = opponents(c);
     g.cursor = g.top = 0;
-    const std::string help = "*b0 Battle   *b2 Back   L1/R1 Page";
-    for (size_t i = 0; i <= help.size(); ++i) psx_write8(&c, g.buf + 64 + static_cast<uint32_t>(i), i < help.size() ? help[i] : 0);
+    g.portrait_deck = -1;
+    g.portrait = false;
+    set_help(c);
+    show_portrait(c);
 
-    put_rect(c, g.buf, 16, 20, 152, kRows * kRowH + 6);
-    put_rect(c, g.buf + 8, 176, 20, 128, kRows * kRowH + 6);
-    put_rect(c, g.buf + 16, 16, 186, 288, 18);
+    // Below the city's corner light (top right), which is drawn over everything.
+    put_rect(c, g.buf, 16, kTop, 152, kRows * kRowH + 6);
+    put_rect(c, g.buf + 8, 176, kTop, 128, kRows * kRowH + 6);
+    put_rect(c, g.buf + 16, 16, kTop + kRows * kRowH + 12, 288, 18);
     call(c, kWindowInit, {kWinList, g.buf, 0xFFFFFFFFu, 0xFFFFFFFFu, 8, 38, 128, 12});
     call(c, kWindowInit, {kWinInfo, g.buf + 8, 0xFFFFFFFFu, 0xFFFFFFFFu, 8, 38, 128, 12});
     call(c, kWindowInit, {kWinHelp, g.buf + 16, 0xFFFFFFFFu, 0xFFFFFFFFu, 8, 38, 128, 12});
-    put_rect(c, g.buf + 24, 20, 22, 144, 13);
+    put_rect(c, g.buf + 24, 20, kTop + 2, 144, 13);
     call(c, kCursorInit, {kCursor, g.buf + 24, 0xFFFFFFFFu});
     g.open = true;
     call(c, kHookAdd, {kDrawHook});
@@ -397,7 +472,11 @@ void task(PsxContext* ctx) {
         else if (n > 0 && (held & kDown)) g.cursor = (g.cursor + 1) % n;
         else if (n > 0 && (held & kL1)) g.cursor = std::max(0, g.cursor - kRows);
         else if (n > 0 && (held & kR1)) g.cursor = std::min(n - 1, g.cursor + kRows);
-        if (g.cursor != before) call(c, kSound, {2});
+        if (g.cursor != before) {
+            call(c, kSound, {2});
+            set_help(c);
+            show_portrait(c);
+        }
         g.top = std::clamp(g.top, std::max(0, g.cursor - kRows + 1), g.cursor);
         if ((pressed & kCircle) && n > 0) {
             call(c, kSound, {0});

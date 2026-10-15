@@ -101,7 +101,7 @@ early. The city checks when you enter it: walk in (or out and back in) after the
 
 Beginner City's menu ("Where do you want to go?") lists **Custom Battle** under Player's Room.
 It opens a list of every opponent you have fought (in a Battle Cafe, an arena or the story), with
-their deck, your wins and losses against them, the EXP and the prize pack they give; pick one
+their portrait, their deck, your wins and losses against them, the EXP and the prize pack they give; pick one
 with Circle (L1 / R1 turn a page, Cross goes back) and the battle starts as a cafe battle does:
 Deck Select first, the usual rewards, and it counts in your records. You are back in Beginner
 City afterwards. An opponent with several decks (Apokarimon, Nanimon) is listed once; the tutorial
