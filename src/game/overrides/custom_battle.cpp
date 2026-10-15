@@ -49,6 +49,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <initializer_list>
 #include <string>
@@ -542,8 +543,13 @@ void dcb_msd_vm_step(PsxContext* ctx) {
 // Custom Battle's starts in the city itself (scene 0xFF), which has neither portraits nor that
 // command: there the plain entry's state is set instead (the original's else branch).
 void dcb_city_scene_init(PsxContext* ctx) {
+    static const bool trace = std::getenv("DCB_TRACE_CITY") != nullptr;
     psx_call_original(ctx, kSceneInit);
+    if (trace)
+        std::fprintf(stderr, "[city] scene init: from_battle %d scene %02X state %d mode %d\n", psx_read8(ctx, kFromBattle),
+                     psx_read8(ctx, kScene), psx_read8(ctx, kSceneBase + 276), psx_read8(ctx, kCityMode));
     if (psx_read8(ctx, kFromBattle) != 1 || psx_read8(ctx, kScene) != 0xFF) return;
+    if (trace) std::fprintf(stderr, "[city] Custom Battle return: plain scene state\n");
     for (const uint32_t off : {228u, 229u, 230u}) psx_write8(ctx, kSceneBase + off, 0);  // 801F7CB4-6
     psx_write32(ctx, kSceneBase + 188, 0);  // 801F7C8C
     psx_write32(ctx, kSceneBase + 184, 0);  // 801F7C88

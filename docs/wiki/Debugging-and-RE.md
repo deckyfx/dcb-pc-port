@@ -91,6 +91,7 @@ Everything the runtime reads from the environment, with the page that explains i
 | `DCB_SNAPSHOT=<dir>` | write the displayed frame as `frame_NNNNN.ppm` every 30 frames |
 | `DCB_SNAPSHOT_VRAM=1` | with `DCB_SNAPSHOT`, also the whole 1024x512 VRAM (`vram_NNNNN.ppm`) |
 | `DCB_AUDIO_DUMP=<file>` | raw s16le stereo 44100 Hz of everything played (`ffmpeg -f s16le -ar 44100 -ac 2`) |
+| `DCB_TRACE_CITY=1` | log the city's scene state when it is set up (after a battle: which scene, the "back from a battle" flag, the Custom Battle fix) |
 | `DCB_FAST=1` | run unpaced (no frame-rate throttling) |
 | `DCB_WATCHDOG=<seconds>` | abort after that many seconds (not on Windows) |
 | `DCB_STATE_SAVE_AT`, `DCB_STATE_LOAD_AT`, `DCB_EXIT_AT`, `DCB_RESET_AT`, `DCB_STATE_STRESS`, `DCB_STATE_DUMP_AT`, `DCB_STATE_DUMP_PATH` | scripted save-state checks (above) |
