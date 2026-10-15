@@ -18,6 +18,7 @@ constexpr uint16_t kOpJump = 5, kOpArith = 7, kOpText = 8, kOpSkipIf = 9, kOpCmd
 constexpr uint16_t kCmpEq = 0, kCmpNe = 3;  // op 9 comparisons: skip the next record when true
 constexpr uint16_t kRegChoice = 1;    // r1: the Yes / No choice, then the battle result (0 = lost)
 constexpr uint16_t kRegPick = 2;      // r2: the cafe menu's pick
+constexpr uint16_t kCustomBattleItem = 10;    // the city menu's blank button (label sheet row 10)
 constexpr uint16_t kRegApokarimonBeaten = 248;  // set when Apokarimon is beaten in the Infinity Tower arena
 constexpr uint16_t kRegNanimonWins = 363;       // Nanimon's defeats (his city, his prizes)
 constexpr uint16_t kRegNanimonDone = 349;       // set with the 10th defeat's prize
@@ -491,6 +492,79 @@ std::optional<Bytes> add_player_rooms(View script, std::string* why) {
     return out;
 }
 
+std::optional<Bytes> add_custom_battle(View script, std::string* why) {
+    std::vector<MsdRecord> recs;
+    try {
+        recs = text::msd_walk(script);
+    } catch (const std::exception& e) {
+        if (why) *why = e.what();
+        return std::nullopt;
+    }
+    const auto item = [&](size_t i) { return recs[i].op == kOpCmd0 + 1 && cmd_of(recs[i]) == 1; };
+    const auto host = [&](size_t i, uint16_t c) { return recs[i].op == kOpCmd0 && cmd_of(recs[i]) == c; };
+    for (size_t i = 1; i + 1 < recs.size(); ++i) {
+        // The city menu, as add_player_rooms finds it: cmd0(120), the places, the pick, the tests.
+        if (!(recs[i].op == kOpCmd0 + 1 && cmd_of(recs[i]) == 0 && arg_of(recs[i], 0) == 120)) continue;
+        size_t k = i + 1;
+        std::vector<uint16_t> places;
+        while (k < recs.size() && item(k)) places.push_back(arg_of(recs[k++], 0));
+        const auto has = [&](uint16_t v) { return std::find(places.begin(), places.end(), v) != places.end(); };
+        constexpr size_t kMenuRows = 5;
+        if (!has(1) || !has(2) || has(kCustomBattleItem) || places.size() >= kMenuRows || k >= recs.size() || !host(k, 1))
+            continue;
+        const size_t pick = k, last_item = k - 1, first_test = pick + 1;
+        if (first_test + 2 >= recs.size() || recs[first_test].op != kOpSkipIf || rd16(recs[first_test].raw, 2) != kRegChoice ||
+            rd16(recs[first_test].raw, 4) != kCmpNe || rd16(recs[first_test].raw, 6) != 0 || recs[first_test + 1].op != kOpJump)
+            continue;
+        // The menu's start: its lines ("Where do you want to go?", the map hint) and the message
+        // window before them (cmd6()); a cancelled Custom Battle shows the menu again from there.
+        size_t start = i;
+        while (start > 0 && (recs[start - 1].op == kOpText || host(start - 1, 4))) --start;
+        if (start > 0 && host(start - 1, 6)) --start;
+        const int32_t position = static_cast<int32_t>(places.size()) + 1;
+
+        Bytes out(script.begin(), script.end());
+        Assembler a(out);
+        const size_t end_jump = a.jump();  // running off the old end still ends the script
+        // The places, then Custom Battle (the blank button, item 10), back to the pick.
+        const size_t items_at = a.here();
+        a.raw(recs[last_item].raw);
+        a.cmd(1, {kCustomBattleItem});
+        a.jump(recs[pick].offset);
+        // Custom Battle: the port's screen (host 0x0A cmd 0x40, src/game/overrides/custom_battle.cpp)
+        // puts the opponent's deck in r1, or -1 (back to the menu); then the game's own battle
+        // (Deck Select, rewards, the win count) and the script's start (the city, its music).
+        const size_t custom_at = a.here();
+        a.cmd(kCustomBattleCmd);
+        a.skip_if(kRegChoice, kCmpNe, -1);
+        a.jump(recs[start].offset);
+        wr16(out, kOpCmd0 + 1);  // cmd2(r1): a register argument
+        wr16(out, 2);
+        wr16(out, 1);
+        wr16(out, kRegChoice);
+        a.jump(kHeader);
+        // The dispatch: the original first test, then the new position, then the other tests.
+        const size_t dispatch_at = a.here();
+        a.raw(recs[first_test].raw);
+        a.jump(jump_target(script, recs[first_test + 1]));
+        a.skip_if(kRegChoice, kCmpNe, position);
+        a.jump(custom_at);
+        a.jump(recs[first_test + 2].offset);
+        a.set_target(end_jump, a.here());
+
+        put16(out, recs[last_item].offset, kOpJump);
+        put16(out, recs[last_item].offset + 2, 0);
+        put32(out, recs[last_item].offset + 4, static_cast<uint32_t>(items_at - kHeader));
+        put16(out, recs[first_test].offset + 6, 1);  // the first test never skips (r1 != r1) ...
+        put32(out, recs[first_test].offset + 8, kRegChoice);
+        put32(out, recs[first_test + 1].offset + 4, static_cast<uint32_t>(dispatch_at - kHeader));  // ... into the new dispatch
+        put32(out, 8, static_cast<uint32_t>(out.size()));
+        return out;
+    }
+    if (why) *why = "no city menu with room for Custom Battle";
+    return std::nullopt;
+}
+
 std::optional<Bytes> add_postgame_visitors(View script, std::string* why) {
     std::vector<MsdRecord> recs;
     try {
@@ -760,6 +834,13 @@ std::optional<Bytes> patch_city_pak(View pak, const CityMods& mods, std::string*
             }
         }
         // Post-game shortcuts: in-place test changes only (no code appended).
+        if (mods.custom_battle) {
+            std::string w;
+            if (std::optional<Bytes> s = add_custom_battle(c.data, &w)) {
+                c.data = std::move(*s);
+                changed = true;
+            }
+        }
         if (mods.postgame_visitors) {
             std::string w;
             if (std::optional<Bytes> s = add_postgame_visitors(c.data, &w)) {

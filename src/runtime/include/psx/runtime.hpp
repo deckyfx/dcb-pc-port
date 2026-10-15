@@ -86,4 +86,13 @@ uint32_t call_guest(PsxContext& ctx, uint32_t addr, uint32_t a0 = 0, uint32_t a1
 /// Same, on an explicit guest stack (e.g. the kernel's interrupt stack).
 uint32_t call_guest_on_stack(PsxContext& ctx, uint32_t sp, uint32_t addr, uint32_t a0 = 0);
 
+/// Native code the game calls through a pointer (a task entry, a per-frame draw hook, a window
+/// callback) needs a guest address. Addresses from kNativeBase up (KSEG0, above RAM: no game code
+/// there) are reserved for it; psx_dispatch runs the function registered at one. Fixed addresses,
+/// registered at start-up, so a pointer the game stored stays valid across save states.
+constexpr uint32_t kNativeBase = 0x9FF00000u;
+constexpr uint32_t kNativeSlots = 256;
+/// Register `fn` at `addr` (kNativeBase + 4 * n, n < kNativeSlots); false for any other address.
+bool register_native(uint32_t addr, RecompFunc fn);
+
 }  // namespace psx

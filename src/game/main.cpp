@@ -15,6 +15,7 @@
 #include "cheat_presets.hpp"
 #include "version.hpp"
 #include "overrides/battle.hpp"
+#include "overrides/custom_battle.hpp"
 #include "overrides/fusion.hpp"
 #include "overrides/movies.hpp"
 #include "overrides/native_files.hpp"
@@ -454,11 +455,13 @@ int main(int argc, char** argv) {
             dcb::mods::set_player_rooms(flag("player_rooms"));
             dcb::mods::set_postgame_visitors(flag("postgame_visitors"));
             dcb::mods::set_no_win_requirement(flag("no_win_requirement"));
+            dcb::mods::set_custom_battle(flag("custom_battle"));
             const std::optional<std::string> names = ini.get("text", "names");
             if (names && *names != "jp" && *names != "us") invalid("text", "names", *names, "jp or us", "jp");
             dcb::text_set_jp_names(!names || *names != "us");
         }
         dcb::attach_native_files(mmio.disc(), DCB_GAME_ID, exe_assets);
+        dcb::custom_battle_register();  // native code the game calls by address (Custom Battle's screen)
         hle::HdTextures* hd_textures = nullptr;  // for the exit summary
         // Texture replacement (dcb_asset_ripper output). First found wins:
         //   DCB_HD_PACK=<.pak|folder> (+ DCB_HD_MANIFEST=<file> if the manifest lives elsewhere),

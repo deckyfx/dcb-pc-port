@@ -16,6 +16,7 @@
 //     range, or a card the game never gives this way (172-190), is a wrong keyword (-1).
 
 #include "keyword.hpp"
+#include "custom_battle.hpp"
 #include "keyword_match.hpp"
 #include "text.hpp"
 #include "typewriter.hpp"
@@ -109,6 +110,7 @@ extern "C" {
 
 // SAISEG 801EE704: keyword_check(buf), the entry screen and the keyword match (see above).
 void dcb_keyword_check(PsxContext* ctx) {
+    if (dcb::custom_battle_run(ctx)) return;  // the city asked for Custom Battle (custom_battle.cpp)
     const uint32_t buf = ctx->r[kA0];
     psx_call_original(ctx, kKeywordCheck);
     const uint32_t result = psx_read32(ctx, psx_read32(ctx, kScriptRegs) + 8) + 4;

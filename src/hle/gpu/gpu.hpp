@@ -71,6 +71,10 @@ public:
 
     /// 1024x512 VRAM, row-major, PS1 pixel format (bit15 mask, 5:5:5 BGR, red in bits 0-4).
     const uint16_t* vram() const { return vram_.data(); }
+    /// A VRAM word written by the port, not through a GPU command (e.g. a menu label composed from
+    /// the game's own glyphs, src/game/overrides/custom_battle.cpp). Save states carry it like the
+    /// rest of VRAM.
+    void poke_vram(int32_t x, int32_t y, uint16_t value) { at(x, y) = value; }
 
     /// Display configuration from GP1(03h,05h,06h,07h,08h).
     struct Display {
