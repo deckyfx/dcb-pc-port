@@ -19,7 +19,8 @@ tools/ghidra/import_ghidra.sh SLPS-03101     # ghidra_psx_ldr loader + Psy-Q sig
 `.mcp.json` registers the `ghidra` server (bethington/ghidra-mcp 6.0.0, built for Ghidra 12.1.2).
 Install or reinstall it with `tools/ghidra/setup_ghidra_mcp.sh`.
 
-Start Ghidra with `tools/ghidra/ghidra_gui.sh` (or `./dcb.sh -G`): it launches through PyGhidra (so
+Start Ghidra with `tools/ghidra/ghidra_gui.sh` (or `./dcb.sh -G`, or from anywhere through a symlink on
+your PATH: `ln -s "$PWD/tools/ghidra/ghidra_gui.sh" ~/.local/bin/ghidra`): it launches through PyGhidra (so
 `.py` scripts work in the GUI) and sets `GHIDRA_MCP_ALLOW_SCRIPTS=1` (so MCP can run repo scripts;
 this allows arbitrary Java in Ghidra, loopback only). Then in Ghidra:
 
