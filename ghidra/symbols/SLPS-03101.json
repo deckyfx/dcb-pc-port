@@ -1124,7 +1124,7 @@
    "name": "city_main_task",
    "overlay": "SAISEG",
    "source": "re",
-   "note": "the city's task: runs the host, leaves on the exit mode 801F7CDD (1 battle, 2 map, 3 save). Conf H"
+   "note": "the city's task: flags, the host loop (city_frame) until r0 = 0, then the exit mode 801F7CDD (1 battle 800440CC, 2 map, 3 save). Back from a battle (FA4+0x1A9 = 1) it starts the talk scene by FA4+0x1A8: 1 the cafe (801EA518), else the arena talk scene (801EBB18). Conf H"
   },
   "0x801E81E8": {
    "name": "city_draw_cb",
@@ -1133,10 +1133,10 @@
    "note": "the city's draw callback: the message window, then city_menu_draw. Conf M"
   },
   "0x801E88C4": {
-   "name": "city_scene_init",
+   "name": "cafe_scene_init",
    "overlay": "SAISEG",
    "source": "re",
-   "note": "sets up the city scene; after a battle (FA4+0x1A9 = 1) resumes the script with r1 = 1 won / 0 lost. Conf H"
+   "note": "the Battle Cafe scene's set-up (its only caller is the cafe scene task 801EA518): sprites; back from a battle (FA4+0x1A9 = 1) resumes the script with r1 = 1 won / 0 lost and the 'back from a battle' state (801F7CDC = 1, 801F7CE4 = 9: the two portraits). Conf H"
   },
   "0x801EE6A4": {
    "name": "keyword_draw_hook",
@@ -1161,6 +1161,68 @@
    "overlay": "SAISEG",
    "source": "re",
    "note": "(sprite, rect): the tpage and UVs of a VRAM rect (4-bpp). Conf H"
+  },
+  "0x801EA518": {
+   "name": "cafe_scene_task",
+   "overlay": "SAISEG",
+   "source": "re",
+   "note": "the Battle Cafe scene (host 0x0A cmd2, or back from a cafe battle); state 801F7CE4. Conf H"
+  },
+  "0x801EBB18": {
+   "name": "talk_scene_task",
+   "overlay": "SAISEG",
+   "source": "re",
+   "note": "the arena-style talk scene with two portraits (host 0x0A cmd 0xC with scene 801F7CEA, or back from a battle whose scene is not the cafe). Conf M"
+  },
+  "0x80048A8C": {
+   "name": "card_record_get",
+   "source": "re",
+   "note": "(card) -> record: <191 Digimon (0x134), >292 Digivolve (0x68), else Option (0xDA). Conf H"
+  },
+  "0x800489DC": {
+   "name": "card_specialty_icon",
+   "source": "re",
+   "note": "(card) -> specialty icon (5 / 6 for non-Digimon). Conf H"
+  },
+  "0x80048A34": {
+   "name": "card_level_icon",
+   "source": "re",
+   "note": "(card) -> level icon (4 / 5 for non-Digimon). Conf H"
+  },
+  "0x80048988": {
+   "name": "card_from_kind_index",
+   "source": "re",
+   "note": "(kind, index) -> card number (191 / 293 bases). Conf H"
+  },
+  "0x800495D8": {
+   "name": "deck_entry_set",
+   "source": "re",
+   "note": "card number -> deck entry u8 kind + u8 index. Conf H"
+  },
+  "0x80049324": {
+   "name": "collection_seen_count",
+   "source": "re",
+   "note": "counts the cards seen into game_data+0x12 (loop of 301). Conf H"
+  },
+  "0x8002F444": {
+   "name": "save_checksum_write",
+   "source": "re",
+   "note": "(len, buf): XOR and 8-bit sum of the save image at buf+len. Conf H"
+  },
+  "0x8002F3E0": {
+   "name": "save_checksum_verify",
+   "source": "re",
+   "note": "(len, buf): checks save_checksum_write's two bytes. Conf H"
+  },
+  "0x80030578": {
+   "name": "digimon_record_by_model",
+   "source": "re",
+   "note": "(model id) -> the first Digimon record (0-0xBE) with that +0xE5. Conf H"
+  },
+  "0x8003082C": {
+   "name": "battle_model_load",
+   "source": "re",
+   "note": "loads a card's battle model F:\\%03d.PAK by record +0xE5 (model_pak_load 8003063C). Conf H"
   }
  }
 }

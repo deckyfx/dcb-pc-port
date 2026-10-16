@@ -83,12 +83,13 @@ KAWSEG and `DECK2.DEK`, sets `*(80070C30)+4` = the deck and `+8` = its record, r
 `cmd2` with **r1 = 1 won, 0 lost**; the music is the script's (`cmd15` after `cmd2`). **H**, seen
 at run time.
 
-Back in the city, `city_scene_init` (`801E88C4`) restores the scene the battle was started in
-(`801F7CEA` = `FA4+0x1A8`, set by `0x0B cmd8(n)`: 1 the cafe, 0 Player Rooms, 0xFF the city) and
-the "back from a battle" state: `801F7CDC` = 1 and `801F7CE4` = 9 (the cafe scene task `801EA518`
-shows the player's and the opponent's portraits); the cafe's `0x0A cmd3()` (its list pick) sees
-`7CDC` and closes it (`7CE4` = 7). A plain entry sets `7CB4`-`7CB6`, `7C88`, `7C8C`, `7CDC` to 0
-and `7CE4` = 4. The game only battles from a talk scene. **H**
+Back in the city, `city_main_task` (`801E7A9C`) sees the resume flag (`FA4+0x1A9` = 1) and starts
+the talk scene the battle came from, by the scene id `0x0B cmd8(n)` left in `FA4+0x1A8`: 1 the
+Battle Cafe's task (`801EA518`), anything else the arena-style talk scene (`801EBB18`). The cafe's
+set-up (`cafe_scene_init`, `801E88C4`, called only from `801EA518`) resumes the script and sets the
+"back from a battle" state (`801F7CDC` = 1, `801F7CE4` = 9: the two portraits), which the cafe's
+`0x0A cmd3()` (its list pick) closes (`7CE4` = 7). The game only battles from a talk scene. **H**,
+seen at run time (an input replay of a Custom Battle, `DCB_TRACE_CITY`).
 
 Deck 0 runs the tutorial; decks 142-158 are the player's preset decks. The VS screen loads
 `B:\MATCH\NNN.ARC` (NNN = the deck): its TIM 12 is the opponent's 128×112 portrait.
@@ -110,8 +111,15 @@ The port's mod (`[mods] custom_battle`): Beginner City's menu gets a 5th place.
   (owner, deck name, prize pack, EXP) and the player's record against each; the keyword screen's
   windows and cursor; a draw hook and window callbacks that are native code at reserved guest
   addresses (`psx::register_native`, `kNativeBase` `9FF00000`: `psx_dispatch` runs them).
-- **Back from the battle:** it was started in the city scene (0xFF), where nothing closes the
-  "back from a battle" state; the override of `city_scene_init` sets a plain entry's state then.
+- **Back from the battle:** it was started in the city scene (scene id 0xFF), so the city would
+  start the arena talk scene with no opponent (two portraits over the city, the menu stuck); the
+  override of `city_main_task` clears the resume flag then, and the city starts as a plain entry
+  (the script goes back to its start after `cmd2` anyway).
+- **Portrait:** entry 12 of the deck's `B:\MATCH\NNN.ARC` (the VS screen's 128×112 8-bit portrait,
+  normally at VRAM (320,112), palette (320,255)), uploaded through the GPU's transfer command
+  (GP0 A0h, so the texture replacer gives it the US art: it matches uploads by content) to VRAM
+  the city leaves free (picture (512,384), palette (0,248), found with `DCB_SNAPSHOT_VRAM`), and
+  drawn as one sprite from the text primitive pool (`dcb::text_draw_image`).
 - **Label:** "Custom Battle" is composed into the label sheet's blank row 10 in VRAM from the
   English sheet's own letters (C of Cafe, u of Menu, s of Player's, t of Battle, o and m of Room,
   then Battle; a letter = the texels that differ from row 10's background, which every row
