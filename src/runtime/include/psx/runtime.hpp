@@ -57,9 +57,12 @@ public:
     void set_poll_handler(PollHandler* handler) { poll_ = handler; }
     PollHandler* poll_handler() const { return poll_; }
     MmioHandler* mmio() const { return mmio_; }
+    /// Port RAM (PSX_EXT_BASE, PSX_EXT_SIZE bytes): see recomp.h.
+    uint8_t* ext() { return ext_.data(); }
     BiosHandler* bios() const { return bios_; }
 
-    /// Save state: CPU/GTE registers, guest time, main RAM and the scratchpad (chunk "CPU ").
+    /// Save state: CPU/GTE registers, guest time, main RAM, the scratchpad and port RAM (chunk
+    /// "CPU "; version 1, without port RAM, still loads).
     void save_state(StateWriter& w) const;
     void load_state(StateReader& r);
 
@@ -70,6 +73,7 @@ private:
     PsxContext ctx_{};
     std::unique_ptr<std::array<uint8_t, PSX_RAM_SIZE>> ram_;
     std::array<uint8_t, PSX_SCRATCH_SIZE> scratch_{};
+    std::vector<uint8_t> ext_ = std::vector<uint8_t>(PSX_EXT_SIZE, 0);
     MmioHandler* mmio_ = nullptr;
     BiosHandler* bios_ = nullptr;
     PollHandler* poll_ = nullptr;

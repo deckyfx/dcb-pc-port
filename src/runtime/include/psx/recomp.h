@@ -17,6 +17,11 @@ extern "C" {
 #define PSX_RAM_SIZE     0x200000u   /* 2 MiB main RAM, mirrored 4x below 0x00800000 */
 #define PSX_SCRATCH_BASE 0x1F800000u
 #define PSX_SCRATCH_SIZE 0x400u      /* 1 KiB data cache used as fast RAM */
+/* Port RAM: guest-visible memory the console does not have, for data the port adds (the new
+ * cards' database). Physical 0x00800000, just past main RAM and its mirrors, so the generated
+ * code reaches it through the slow path and main RAM, its mirrors and the heap stay as they are. */
+#define PSX_EXT_BASE     0x00800000u
+#define PSX_EXT_SIZE     0x100000u    /* 1 MiB */
 
 /** R3000A architectural state plus the guest memory the generated code touches directly. */
 typedef struct PsxContext {
