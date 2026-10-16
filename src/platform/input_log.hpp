@@ -1,7 +1,9 @@
 #pragma once
-// Input record / replay: a compact, change-only log of the pad state the game was given each
-// VBLANK frame, written while playing (DCB_RECORD) and fed back later (DCB_REPLAY). Guest time
-// is virtual, so replaying a log reproduces the run frame for frame. Pure C++, no SDL.
+// Input record / replay: a compact, change-only log of each VBLANK frame's input (the pad and the
+// "any key" pulse, as the host gives them, before the port's movie handling turns a press into a
+// Start tap: that step is deterministic, so a replay repeats it), written while playing
+// (DCB_RECORD) and fed back later (DCB_REPLAY). Guest time is virtual, so replaying a log
+// reproduces the run frame for frame. Pure C++, no SDL.
 //
 // File format (text, '\n' lines, '#' starts a comment):
 //
@@ -120,8 +122,8 @@ private:
 };
 
 /// The per-run glue main() uses: configured from the environment, applied once per frame to
-/// the pad state that is about to be given to the game.
-///   DCB_RECORD=<file>     record every frame's final state
+/// the host's input, before the movie handling derives from it what the game is given.
+///   DCB_RECORD=<file>     record every frame's input
 ///   DCB_REPLAY=<file>     replace host input (keyboard, gamepad, DCB_PAD_SCRIPT, FMV skip) with
 ///                         the log until it ends, then hand input back to the host
 ///   DCB_REPLAY_EXIT=1     quit (exit status 0) when the replay ends, for scripted regressions
@@ -134,8 +136,8 @@ public:
     InputLog() = default;
     InputLog(std::optional<InputRecording> replay, std::unique_ptr<InputRecorder> recorder, bool exit_after_replay);
 
-    /// Per frame, just before the state is handed to the game: while replaying, overwrite
-    /// `pad`/`any_press` with the recorded state; then record the result.
+    /// Per frame, on the host's input, before the movie handling: while replaying, overwrite
+    /// `pad`/`any_press` with the recorded input; then record the result.
     void apply(uint64_t frame, uint16_t& pad, bool& any_press);
 
     /// A save state was loaded and the game continues at `frame`: a finished replay resumes if
