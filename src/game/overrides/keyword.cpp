@@ -13,9 +13,11 @@
 //     only when the player has none of it. The item is given here, with the game's own calls,
 //     and r1 says what happened for the lines the mod adds to the script (patch/mods.cpp,
 //     add_wizardmon_codes): 100 a card, 101 a Digi-Part, 102 already owned. A number out of
-//     range, or a card the game never gives this way (172-190), is a wrong keyword (-1).
+//     range, or a card the game never gives this way (172-190), is a wrong keyword (-1). The new
+//     cards (301 on, cards/cards.hpp) are given too.
 
 #include "keyword.hpp"
+#include "../cards/cards.hpp"
 #include "custom_battle.hpp"
 #include "keyword_match.hpp"
 #include "text.hpp"
@@ -41,10 +43,8 @@ constexpr int kA0 = 4, kA1 = 5, kA2 = 6, kV0 = 2;
 constexpr uint32_t kKeywordCheck = 0x801EE704u;
 constexpr uint32_t kScriptRegs = 0x801F7E80u;   // -> city script state; +8 -> registers (r1 at +4)
 constexpr uint32_t kCollection = 0x800E0646u;   // one byte per card, low 3 bits = copies
-constexpr uint32_t kCardDb = 0x801DB000u;       // -> card database, 0x134 bytes per card, name at +3
-constexpr uint32_t kCardRecord = 0x134u;
 constexpr uint32_t kPartEffects = 0x80071990u;  // Digi-Part effect strings, one pointer per part
-constexpr int kCards = 301, kParts = 127;
+constexpr int kParts = 127;
 constexpr int kFirstUngivable = 172, kLastUngivable = 190;  // collection_add_card refuses them
 
 constexpr int32_t kWrong = -1, kGotCard = 100, kGotPart = 101, kOwned = 102;
@@ -61,7 +61,7 @@ std::string english(PsxContext& ctx, const std::string& s) {
 }
 
 int32_t give_card(PsxContext& ctx, int card) {
-    if (card >= kCards || (card >= kFirstUngivable && card <= kLastUngivable)) return kWrong;
+    if (card >= dcb::cards::card_limit() || (card >= kFirstUngivable && card <= kLastUngivable)) return kWrong;
     if ((psx_read8(&ctx, kCollection + static_cast<uint32_t>(card)) & 7) != 0) return kOwned;
     ctx.r[kA0] = 0;
     ctx.r[kA1] = static_cast<uint32_t>(card);
@@ -69,8 +69,8 @@ int32_t give_card(PsxContext& ctx, int card) {
     f_8004850C(&ctx);
     if (static_cast<int32_t>(ctx.r[kV0]) < 0) return kWrong;
     std::string name;
-    if (const uint32_t db = psx_read32(&ctx, kCardDb))
-        name = english(ctx, dcb::typewriter::read_string(ctx, db + kCardRecord * static_cast<uint32_t>(card) + 3, 32));
+    if (const uint32_t record = dcb::cards::record(ctx, card))  // name at +3
+        name = english(ctx, dcb::typewriter::read_string(ctx, record + 3, 32));
     g_gift = (name.empty() ? "Card No." + std::to_string(card) : name) + " Card";
     g_gift_more.clear();
     return kGotCard;

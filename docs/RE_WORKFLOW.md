@@ -109,6 +109,10 @@ JSON carries `(addr, overlay, symbol)` so the diff works without Ghidra open.
 - **C overrides** (`config/<serial>/overrides.json` + `src/game/overrides/`):
   replace a recompiled function natively. Start log-and-call-through
   (the original still compiles as `f_<addr>`), then change behavior.
+- **Runtime immediates** (`config/<serial>/immediates.json`): an instruction's
+  immediate (addiu / slti / sltiu) read from a variable the port sets, e.g. a
+  loop bound of 301 cards that grows with the new cards. The encoded value is
+  checked at recompile time.
 - **Save states** to retry in seconds: save just before the call, poke, load,
   repeat.
 

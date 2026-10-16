@@ -127,7 +127,15 @@ private:
         out_ << "    " << code << "  /* " << hexlabel(in.pc) << ": " << disasm(in) << " */\n";
     }
 
-    std::string imm_s(const Instr& in) const { return hex32(static_cast<uint32_t>(in.simm())); }
+    /// A runtime variable standing for this instruction's immediate (immediates.json), or "".
+    std::string imm_var(const Instr& in) const {
+        const auto it = prog_.immediates.find({seg_.overlay ? seg_.name : std::string{}, in.pc});
+        return it == prog_.immediates.end() ? std::string{} : it->second;
+    }
+    std::string imm_s(const Instr& in) const {
+        if (const std::string v = imm_var(in); !v.empty()) return "(uint32_t)" + v;
+        return hex32(static_cast<uint32_t>(in.simm()));
+    }
     std::string addr(const Instr& in) const { return reg(in.rs) + " + " + imm_s(in); }
 
     /// Guest call to a statically known target.
@@ -167,7 +175,11 @@ private:
             case Op::Slt:  assign(in, in.rd, "(int32_t)" + s + " < (int32_t)" + t); break;
             case Op::Sltu: assign(in, in.rd, s + " < " + t); break;
             case Op::Addi: case Op::Addiu: assign(in, in.rt, s + " + " + imm_s(in)); break;
-            case Op::Slti:  assign(in, in.rt, "(int32_t)" + s + " < " + std::to_string(in.simm())); break;
+            case Op::Slti: {
+                const std::string v = imm_var(in);
+                assign(in, in.rt, "(int32_t)" + s + " < " + (v.empty() ? std::to_string(in.simm()) : "(int32_t)" + v));
+                break;
+            }
             case Op::Sltiu: assign(in, in.rt, s + " < " + imm_s(in)); break;
             case Op::Andi: assign(in, in.rt, s + " & " + hex32(in.imm)); break;
             case Op::Ori:  assign(in, in.rt, s + " | " + hex32(in.imm)); break;
@@ -367,6 +379,10 @@ EmitStats emit_program(const Program& prog, const Analysis& analysis, const fs::
     }
     for (const auto& [key, sym] : prog.overlay_overrides)
         decls << "void " << sym << "(PsxContext* ctx);  /* " << key.first << " " << hex32(key.second) << " */\n";
+    std::set<std::string> imm_vars;
+    for (const auto& [key, sym] : prog.immediates) imm_vars.insert(sym);
+    if (!imm_vars.empty()) decls << "\n/* Runtime immediates (config/<id>/immediates.json), set by the port. */\n";
+    for (const std::string& v : imm_vars) decls << "extern int32_t " << v << ";\n";
     write_if_changed(out_dir / "recomp_funcs.h", decls.str());
     written.insert(out_dir / "recomp_funcs.h");
 
