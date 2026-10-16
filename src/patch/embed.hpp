@@ -21,5 +21,7 @@ struct File {
 std::span<const File> text_config();
 /// config/SLPS-03101/sprites.txt (the sprite sizes the US title art is drawn at).
 std::span<const File> art_config();
+/// config/SLPS-03101/cards/*.ini (new cards, src/patch/cards.hpp), sorted by name.
+std::span<const File> cards_config();
 
 }  // namespace patch::embedded

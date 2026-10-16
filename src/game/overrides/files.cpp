@@ -12,7 +12,9 @@
 // once. Bytes come from assets/<serial>/files/<X>/<DIR>/<NAME.EXT> when that loose file exists
 // (any size: modded files need not fit the disc), else from the archive entry, read through
 // hle::Disc (which honours assets/<serial>/disc/ overrides) without touching the drive. A file a
-// gameplay mod changes (mods/mods.hpp) is read whole and served patched, like a loose file.
+// gameplay mod or the new cards change (mods/mods.hpp, cards/cards.hpp) is read whole and served
+// patched, like a loose file. A name the disc does not have is served from a loose file of that
+// name, or as a copy of the file it stands for (a new card's battle model).
 //
 // DCB_CD_FILES=1 keeps the original CD path (for comparison); DCB_LOG_FILES=1 logs every open.
 
@@ -22,6 +24,7 @@
 
 #include "native_files.hpp"
 
+#include "../cards/cards.hpp"
 #include "../mods/mods.hpp"
 
 #include <psx/backtrace.hpp>
@@ -164,7 +167,21 @@ bool resolve(const std::string& path, bool want_dir, uint32_t& id, Dir* dir_out)
     for (size_t i = 0; i < parts.size(); ++i) {
         const bool last = i + 1 == parts.size();
         const vfs::TocEntry* e = find(dir, parts[i], !last || want_dir);
-        if (!e) return false;
+        const bool on_disc = e != nullptr;
+        std::string alias;
+        if (!e && last && !want_dir) {
+            // Not on the disc: a loose file of that name, or a file standing for another one (a
+            // new card's battle model: cards/cards.hpp).
+            const std::string key = dir.drive_path + "/" + parts[i];
+            if (dcb::asset_path(std::string("files/") + key).empty()) {
+                alias = dcb::cards::alias(key);
+                if (alias.empty() || !(e = find(dir, alias, false))) return false;
+            }
+        }
+        if (!e && (!last || want_dir)) return false;
+        if (on_disc && last && !want_dir && !dcb::cards::alias(dir.drive_path + "/" + parts[i]).empty())
+            std::fprintf(stderr, "[file] %s is on the disc: a new card's model copy is not used (pick an id the disc lacks)\n",
+                         path.c_str());
         if (!last || want_dir) {
             const Dir* sub = load_dir(dir.lba, e->sector, dir.drive_path + "/" + parts[i]);
             if (!sub) return false;
@@ -189,11 +206,13 @@ bool resolve(const std::string& path, bool want_dir, uint32_t& id, Dir* dir_out)
         }
         bool modded = false;
         const bool vs_name = key.rfind("B/MATCH/", 0) == 0;  // the opponent's name picture
-        if (dcb::mods::wants(key) || vs_name) {
+        if (dcb::mods::wants(key) || vs_name || dcb::cards::wants(key)) {
             std::vector<uint8_t> bytes = src.bytes;
             if (src.loose || read_sectors(src.lba, (src.size + 2047) / 2048, bytes)) {
                 bytes.resize(src.size);
-                if (vs_name ? dcb::vs_name_picture(key, bytes) : dcb::mods::apply(key, bytes)) {
+                bool changed = vs_name ? dcb::vs_name_picture(key, bytes) : dcb::mods::apply(key, bytes);
+                changed = dcb::cards::patch_file(key, bytes) || changed;  // the new cards' records
+                if (changed) {
                     src.bytes = std::move(bytes);
                     src.size = static_cast<uint32_t>(src.bytes.size());
                     src.loose = modded = true;
@@ -204,8 +223,9 @@ bool resolve(const std::string& path, bool want_dir, uint32_t& id, Dir* dir_out)
         g_sources.push_back(std::move(src));
         g_source_ids.emplace(key, id);
         if (log_files())
-            std::printf("[file] %s: %u bytes from %s%s\n", path.c_str(), g_sources[id].size,
-                        loose.empty() ? "the game data" : loose.c_str(), modded ? " (patched by a mod)" : "");
+            std::printf("[file] %s: %u bytes from %s%s%s\n", path.c_str(), g_sources[id].size,
+                        loose.empty() ? "the game data" : loose.c_str(), alias.empty() ? "" : (" (a copy of " + alias + ")").c_str(),
+                        modded ? " (patched)" : "");
         return true;
     }
     if (want_dir && dir_out) *dir_out = dir;

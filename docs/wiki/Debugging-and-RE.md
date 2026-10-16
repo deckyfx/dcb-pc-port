@@ -92,6 +92,8 @@ Everything the runtime reads from the environment, with the page that explains i
 | `DCB_SNAPSHOT_VRAM=1` | with `DCB_SNAPSHOT`, also the whole 1024x512 VRAM (`vram_NNNNN.ppm`) |
 | `DCB_AUDIO_DUMP=<file>` | raw s16le stereo 44100 Hz of everything played (`ffmpeg -f s16le -ar 44100 -ac 2`) |
 | `DCB_TRACE_CITY=1` | log the city's scene state when it is set up (after a battle: which scene, the "back from a battle" flag, the Custom Battle fix) |
+| `DCB_TRACE_CARDS=1` | log what the new cards' Card Menu / Deck Edit wrappers add ([Cards](Cards.md)) |
+| `DCB_VERIFY_REWARDS=1` | on every battle reward, run the game's own pick and the port's (over cards 0-300) from the same RAM and log whether the cards, rand()'s seed and the collection agree |
 | `DCB_FAST=1` | run unpaced (no frame-rate throttling) |
 | `DCB_WATCHDOG=<seconds>` | abort after that many seconds (not on Windows) |
 | `DCB_STATE_SAVE_AT`, `DCB_STATE_LOAD_AT`, `DCB_EXIT_AT`, `DCB_RESET_AT`, `DCB_STATE_STRESS`, `DCB_STATE_DUMP_AT`, `DCB_STATE_DUMP_PATH` | scripted save-state checks (above) |

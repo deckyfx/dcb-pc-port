@@ -83,6 +83,16 @@ add_custom_command(OUTPUT ${DCB_PATCH_ART_EMBED}
     DEPENDS ${DCB_PATCH_ART_CONFIG} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/EmbedFiles.cmake
     COMMENT "Embedding the sprite sizes" VERBATIM)
 target_sources(dcb_patch PRIVATE ${DCB_PATCH_ART_EMBED})
+# New cards (config/SLPS-03101/cards/*.ini, src/patch/cards.hpp).
+file(GLOB DCB_PATCH_CARDS_CONFIG CONFIGURE_DEPENDS config/SLPS-03101/cards/*.ini)
+set(DCB_PATCH_CARDS_EMBED ${CMAKE_CURRENT_BINARY_DIR}/generated/patch_cards_config.cpp)
+string(REPLACE ";" "|" DCB_PATCH_CARDS_FILES "${DCB_PATCH_CARDS_CONFIG}")
+add_custom_command(OUTPUT ${DCB_PATCH_CARDS_EMBED}
+    COMMAND ${CMAKE_COMMAND} -DOUT=${DCB_PATCH_CARDS_EMBED} -DFILES=${DCB_PATCH_CARDS_FILES}
+            -DNAMESPACE=patch::embedded -DFUNCTION=cards_config -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/EmbedFiles.cmake
+    DEPENDS ${DCB_PATCH_CARDS_CONFIG} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/EmbedFiles.cmake
+    COMMENT "Embedding the new cards" VERBATIM)
+target_sources(dcb_patch PRIVATE ${DCB_PATCH_CARDS_EMBED})
 
 # ---------------------------------------------------------------------------
 # psx_hle — native replacements: BIOS call tables, Psy-Q libraries,

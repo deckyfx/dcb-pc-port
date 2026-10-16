@@ -559,7 +559,7 @@
    "name": "name_box_draw",
    "overlay": "SUBSEG",
    "source": "re",
-   "note": "deck name box, window callback: as OPENSEG 801EBE18, plus the \u30c7\u30c3\u30af label (801E116C) at x + 76; cursor 801F60C8. Overridden: src/game/overrides/name_entry.cpp. Conf H"
+   "note": "deck name box, window callback: as OPENSEG 801EBE18, plus the デック label (801E116C) at x + 76; cursor 801F60C8. Overridden: src/game/overrides/name_entry.cpp. Conf H"
   },
   "0x801E4450": {
    "name": "name_entry",
@@ -1223,6 +1223,128 @@
    "name": "battle_model_load",
    "source": "re",
    "note": "loads a card's battle model F:\\%03d.PAK by record +0xE5 (model_pak_load 8003063C). Conf H"
+  },
+  "0x80043168": {
+   "name": "battle_active_slot",
+   "source": "re",
+   "note": "(player) -> the hand slot of the player's active Digimon: the first of the 3 bytes at the battle player struct (*801DAF40[player]) +0x1C6 that is not -1 (hand entries at +0x10 + (slot % 30) * 8: kind, deck index, u16 card, record*), else -1. Reads only. Conf H"
+  },
+  "0x8004835C": {
+   "name": "card_copy_serial",
+   "source": "re",
+   "note": "(player, card, copy): a random u16 serial unlike the card's earlier copies, into game_data +0x15B0 + card * 12 + copy * 2 (read only by the trade); called by collection_add_card for each copy slot up to 6. Overridden: none for the port's new cards (src/game/cards/cards.cpp). Conf H"
+  },
+  "0x801ED064": {
+   "name": "best_damage_update",
+   "overlay": "KAWSEG",
+   "source": "re",
+   "note": "(battle player*): for player 0 (unless +0x81F of the battle state is set), the attack's damage (+0x164 + attack * 2) into the per-Digimon best at game_data +0xD0C + deck index * 6 + attack * 2 (191 Digimon). Overridden: skipped for the port's new cards. Conf H"
+  },
+  "0x8004979C": {
+   "name": "deck_store",
+   "source": "re",
+   "note": "(player, deck*, slot or -1) -> 0, -1 when no free slot: copies a deck into game_data +0x2408 + slot * 0x10C and rebuilds each entry ({kind, index, u16 card, record*} at +0x10 + 8 * i) from kind + index inline (Digimon: card = index). Overridden for the new cards (src/game/cards/cards.cpp). Conf H"
+  },
+  "0x8004844C": {
+   "name": "collection_clear_flag80",
+   "source": "re",
+   "note": "(player): clears bit 0x80 of every collection byte (game_data +0x1482, 301). Conf H"
+  },
+  "0x80044B4C": {
+   "name": "battle_card_art_load",
+   "source": "re",
+   "note": "(param): battle setup: B:\\CBTL_SYS.ARC uploaded, then B:\\M_CARD.ARC: each player's 30 deck cards' mini cards uploaded to the hand slots (x 0x2C0 + player * 0x80 + (i % 6) * 0x14, y (i / 6) * 40; CLUT at the TIM's own position, i.e. its group row) and the partners'. Conf H"
+  },
+  "0x800447D8": {
+   "name": "battle_card_preview_task",
+   "source": "re",
+   "note": "(task) the battle's big card picture: B:\\CARD\\LC%03d.TIM of the card under the cursor into one of 6 cached slots (battle state +0x7E0: {s16 card, u8 shown, u8 age}). Conf H"
+  },
+  "0x8001BD88": {
+   "name": "pak_find",
+   "source": "re",
+   "note": "(pak, type, id) -> the entry data or 0: PAK entries {s16 type, s16 id, u32 size, data}, a negative type ends it (models: type 0 model, 5 texture by model id; 1 animations 0-7; 2 effects). Conf H"
+  },
+  "0x80023AB0": {
+   "name": "model_object_load",
+   "source": "re",
+   "note": "(slot, model id, -1, pak, flag) -> 1: the 3D object of a model PAK: entries looked up by the model id (pak_find type 0 / 5; else M:\\%03d.omd). Conf M"
+  },
+  "0x8003063C": {
+   "name": "model_pak_load",
+   "source": "re",
+   "note": "(slot, id, G?, anim) -> pak: loads F:\\%03d.PAK (G: when the third argument is 1) and its object; with anim 0 plays animation 7 (the special fusion scenes 236-254). Conf H"
+  },
+  "0x8001AE10": {
+   "name": "heap_alloc",
+   "source": "re",
+   "note": "(size, owner) -> block: first fit over the block table at 8008C428 ({address | 0x80000000 used, size, owner} x 1024); 8001AF30 (owner -2) and 8001AF50 (the current task) wrap it. Conf H"
+  },
+  "0x801EDD88": {
+   "name": "preview_slot",
+   "overlay": "KAWSEG",
+   "source": "re",
+   "note": "(): the card picture cache slot of the card under the cursor (by a card number made from kind + index inline) into battle state +0x826. Overridden natively (cards.cpp). Conf H"
+  },
+  "0x801EA3DC": {
+   "name": "card_tables_build",
+   "overlay": "SUBSEG",
+   "source": "re",
+   "note": "(): record pointers by card number into 801F7178 (and a copy at 801F7638; u32 x 301 each, 3 spare words), partner records from game_data in place of their cards. Conf H"
+  },
+  "0x801EC6E8": {
+   "name": "card_pages_build",
+   "overlay": "SUBSEG",
+   "source": "re",
+   "note": "(): the Card Menu's 8 type pages (801F7FD0 + 4 * page -> {u16 card, u16 copies} lists, -1 ends, 40 per page). Conf H"
+  },
+  "0x801ECC2C": {
+   "name": "card_totals",
+   "overlay": "SUBSEG",
+   "source": "re",
+   "note": "(): Card Menu totals: copies 801F7FFA, seen 801F7FF8, Options / Digivolve, per page and all. Conf H"
+  },
+  "0x801EC0B0": {
+   "name": "card_list_icon",
+   "overlay": "SUBSEG",
+   "source": "re",
+   "note": "(card, x, y, a3, stack arg): Deck Edit's 24x24 DECK.TIS icon: VRAM x 576 + (n / 50) * 64 + (n % 5) * 12, y 256 + ((n % 50) / 5) * 24 (300 at 560, 480), CLUT row 504 + specialty (509 Options, 510 Digivolve and 200). Conf H"
+  },
+  "0x801EC250": {
+   "name": "sprite_draw_vram",
+   "overlay": "SUBSEG",
+   "source": "re",
+   "note": "(x, y, clut, vram x, vram y, w, h, 1, a3, -1, stack arg): draws a VRAM rect as a sprite (the list icons). Conf M"
+  },
+  "0x801EE13C": {
+   "name": "card_detail_draw",
+   "overlay": "SUBSEG",
+   "source": "re",
+   "note": "(window): the Card Menu's card page (stats by card number from the per-Digimon arrays). Conf H"
+  },
+  "0x801F191C": {
+   "name": "deck_card_info_draw",
+   "overlay": "SUBSEG",
+   "source": "re",
+   "note": "(window): Deck Edit's panel for the deck entry under the cursor. Conf H"
+  },
+  "0x801ED004": {
+   "name": "card_menu_task",
+   "overlay": "SUBSEG",
+   "source": "re",
+   "note": "(task) the Card Menu; the card list (struct 801F5CC4, row count static at +0x20) set up from it. Conf H"
+  },
+  "0x801F0300": {
+   "name": "deck_edit_init",
+   "overlay": "SUBSEG",
+   "source": "re",
+   "note": "(): Deck Edit set-up: available copies per card (801F7BF0), tables, the card list. Conf H"
+  },
+  "0x801EC9A0": {
+   "name": "deck_counts_unused",
+   "overlay": "SUBSEG",
+   "source": "re",
+   "note": "(player): per-card counts over the 3 decks into [801F7FC4]: nothing calls it. Conf H"
   }
  }
 }
