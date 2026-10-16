@@ -118,6 +118,7 @@ struct Screen {
     int cursor = 0, top = 0;
     int portrait_deck = -1;  // the deck whose portrait is in VRAM (-1 none)
     bool portrait = false;   // it is there and can be drawn
+    bool portrait_pending = false;  // not loaded only because the GPU was receiving an upload: retried
     uint32_t buf = 0;  // guest scratch on the task's stack: rects, the help line
 } g;
 
@@ -226,10 +227,16 @@ void upload(hle::Gpu& gpu, int x, int y, int w, int h, const uint8_t* data) {
     gpu.gp0_block(words.data(), words.size());
 }
 
-/// Puts deck `deck`'s portrait in VRAM; false when there is none (no archive, another layout).
-bool load_portrait(PsxContext& ctx, int deck) {
+/// Puts deck `deck`'s portrait in VRAM; false when there is none (no archive, another layout), or
+/// for now (`pending`: the GPU is in the middle of another upload).
+bool load_portrait(PsxContext& ctx, int deck, bool& pending) {
+    pending = false;
     auto* mmio = static_cast<hle::Mmio*>(psx::Machine::from(&ctx).mmio());
-    if (!mmio || mmio->gpu().receiving_vram()) return false;
+    if (!mmio) return false;
+    if (mmio->gpu().receiving_vram()) {
+        pending = true;
+        return false;
+    }
     char name[32];
     std::snprintf(name, sizeof name, "files/B/MATCH/%03d.ARC", deck);
     const std::string path = dcb::asset_path(name);
@@ -412,12 +419,12 @@ void set_help(PsxContext& c) {
     for (size_t i = 0; i <= help.size(); ++i) psx_write8(&c, g.buf + 64 + static_cast<uint32_t>(i), i < help.size() ? help[i] : 0);
 }
 
-/// The selected opponent's portrait in VRAM, once per selection.
+/// The selected opponent's portrait in VRAM, once per selection (again while pending).
 void show_portrait(PsxContext& c) {
     if (g.list.empty()) return;
     const int deck = g.list[static_cast<size_t>(g.cursor)].deck;
-    if (deck == g.portrait_deck) return;
-    g.portrait = load_portrait(c, deck);
+    if (deck == g.portrait_deck && !g.portrait_pending) return;
+    g.portrait = load_portrait(c, deck, g.portrait_pending);
     g.portrait_deck = deck;
 }
 
@@ -444,7 +451,7 @@ void task(PsxContext* ctx) {
     g.list = opponents(c);
     g.cursor = g.top = 0;
     g.portrait_deck = -1;
-    g.portrait = false;
+    g.portrait = g.portrait_pending = false;
     set_help(c);
     show_portrait(c);
 
@@ -464,6 +471,7 @@ void task(PsxContext* ctx) {
     const int n = static_cast<int>(g.list.size());
     for (;;) {
         call(c, kSleep, {1});
+        if (g.portrait_pending) show_portrait(c);
         const uint32_t pad = psx_read32(&c, kPad);
         if (!in_ram(pad)) continue;
         const uint16_t pressed = psx_read16(&c, pad + 10), held = psx_read16(&c, pad + 14);

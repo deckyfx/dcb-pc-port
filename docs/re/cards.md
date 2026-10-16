@@ -23,7 +23,9 @@ numbers in one byte too. **H**
 
 ## The database: `B:\CARD2.CDD`
 
-Header `"ADCD"` (US `"0ACD"`), u16 Digimon count 191, u8 Option count 102, u8 Digivolve count 8,
+Header `"ADCD"` (US `"0ACD"`), u16 Digimon count 191, u8 Option count 102, u8 Digivolve count 8
+(the older tools and [HYBRID_EN_ASSETS.md](../HYBRID_EN_ASSETS.md) call these arrays `digimon`,
+`item` and `option`: `item` = kind 1 Option cards, `option` = kind 2 Digivolve cards),
 then the three record arrays back to back, uncompressed (8 + 191·0x134 + 102·0xDA + 8·0x68 =
 81904 bytes, the file). The US file differs only in the text block (4×21 bytes instead of 4×19)
 and one condition byte of cards 5, 13, 128. **H**
@@ -53,8 +55,8 @@ uses the records in place: Digimon at `801DB000`, Options at `801DAFF8`, Digivol
 | `+0xE6` | panel icon |
 | `+0xE7` | effect text, 4 × 19 |
 
-**Option record** (0xDA): `+0`-`+0x19` as above; conditions at `+0x1C`, effects at `+0x5C`, icon
-`+0x8C`, text 4×19 at `+0x8D`. **Digivolve record** (0x68): `+0x18` / `+0x19` as above, `+0x1A`
+**Option record** (kind 1, raw `item`, 0xDA): `+0`-`+0x19` as above; conditions at `+0x1C`, effects at `+0x5C`, icon
+`+0x8C`, text 4×19 at `+0x8D`. **Digivolve record** (kind 2, raw `option`, 0x68): `+0x18` / `+0x19` as above, `+0x1A`
 a sub-id 0-7, text 4×19 at `+0x1B`. **H** (fields), M (some meanings).
 
 ## Where 301 cards are assumed

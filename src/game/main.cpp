@@ -564,6 +564,8 @@ int main(int argc, char** argv) {
             uint16_t pad = static_cast<uint16_t>(host->pad_buttons(0) & scripted_pad(pad_frame, &any_press));
             // Record / replay before the movie handling below, so a replayed key skips a movie on
             // the frame the recorded one did (a replay that let it play on would fall out of step).
+            // The log holds this input, not the pad after the movie handling: that is derived from
+            // it (and the MDEC) the same way on replay.
             input_log.apply(pad_frame, pad, any_press);
             if (mmio.mdec_transfers() != mdec_seen) {
                 mdec_seen = mmio.mdec_transfers();

@@ -18,8 +18,9 @@ skips the opening movie in a headless run.
 
 ## Input record / replay
 
-`DCB_RECORD=<file>` logs the pad state the game is given each frame (after keyboard, gamepad,
-`DCB_PAD_SCRIPT` and the movie-skip tap are combined), plus the "any key" pulse.
+`DCB_RECORD=<file>` logs each frame's input (keyboard, gamepad and `DCB_PAD_SCRIPT` combined), plus
+the "any key" pulse; the Start tap the port makes of a press during a movie is derived from it, the
+same way on replay.
 `DCB_REPLAY=<file>` feeds such a log back: host input is ignored until the log ends, then control
 returns to the keyboard/gamepad; add `DCB_REPLAY_EXIT=1` to quit at that point instead.
 
