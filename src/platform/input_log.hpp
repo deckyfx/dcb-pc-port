@@ -32,7 +32,8 @@ namespace platform {
 inline constexpr std::string_view kInputLogMagic = "DCB-INPUT";
 inline constexpr int kInputLogVersion = 1;
 
-/// What the game is given on one frame.
+/// One frame's host input, before the movie handling (which derives the pad the game is given
+/// from it: a press during a movie becomes a Start tap).
 struct InputState {
     uint16_t pad = 0xFFFF;   ///< active-low pad bits (0xFFFF = nothing pressed)
     bool any_press = false;  ///< the one-frame "any key" pulse
