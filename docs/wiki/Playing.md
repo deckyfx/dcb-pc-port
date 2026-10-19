@@ -48,7 +48,7 @@ long-vowel mark `ー` from the katakana page, which types a dash.
 ### Completion codes
 
 The port adds codes for filling the collection, always on: **`CARDnnn`** gives card number `nnn`
-(0-300) and **`DIGIPARTnnn`** Digi-Part `nnn` (0-126), only when you have **none** of it (one copy
+(0-300, and the port's new cards from 301: [Cards](Cards.md)) and **`DIGIPARTnnn`** Digi-Part `nnn` (0-126), only when you have **none** of it (one copy
 of the card, or the part, and Wizardmon says you already have it). `CARD7`, `CARD007` and
 `CARD-007` all work. Card numbers 172-190 (the armor Digimon and the partners' cards) cannot be
 made this way, as the game never adds them to the collection; nor can a number out of range.

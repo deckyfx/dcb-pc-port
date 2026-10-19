@@ -119,6 +119,29 @@ Program load_program(const fs::path& root, const std::string& game_id, uint32_t 
             prog.known_functions.push_back(addr);  // must exist as an entry
         }
     }
+    // Instructions whose immediate is a runtime variable (a bound the port moves, e.g. the card
+    // count). Each names the immediate it has, so a wrong address is an error, not a silent change.
+    const fs::path imm_path = root / "config" / game_id / "immediates.json";
+    if (fs::exists(imm_path)) {
+        const json cfg = read_json(imm_path);
+        for (const auto& o : cfg.at("immediates")) {
+            const uint32_t addr = hex(o.at("addr"));
+            const std::string overlay = o.value("overlay", std::string{});
+            const auto seg = std::find_if(prog.segments.begin(), prog.segments.end(), [&](const Segment& s) {
+                return overlay.empty() ? !s.overlay : s.overlay && s.name == overlay;
+            });
+            const std::string where = (overlay.empty() ? std::string("boot EXE") : overlay) + " " + o.at("addr").get<std::string>();
+            if (seg == prog.segments.end() || !seg->in_code(addr)) throw std::runtime_error("immediate outside code: " + where);
+            const Instr in = seg->instr(addr);
+            const bool alu = in.op == Op::Addiu || in.op == Op::Addi || in.op == Op::Slti || in.op == Op::Sltiu;
+            if (!alu || in.simm() != o.at("value").get<int32_t>())
+                throw std::runtime_error("immediate at " + where + ": not addiu/slti/sltiu with immediate " +
+                                         std::to_string(o.at("value").get<int32_t>()));
+            const std::string symbol = o.at("symbol").get<std::string>();
+            if (!prog.immediates.emplace(std::make_pair(overlay, addr), symbol).second)
+                throw std::runtime_error("two immediates at " + where);
+        }
+    }
     return prog;
 }
 

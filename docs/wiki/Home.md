@@ -13,6 +13,7 @@ onto it from the player's own US dump (SLUS-01328). No game data is ever part of
 | [Playing](Playing.md) | `settings.ini`, memory-card saves, the native pause menu, save states, performance overlay, pause / frame advance / fast-forward |
 | [Trainer](Trainer.md) | Built-in presets, battle actions (F10/F11/F12), GameShark-style cheat file, memory search |
 | [Mods](Mods.md) | Gameplay mods: boss rematches in the Battle Cafe (`[mods]` in settings.ini) |
+| [Cards](Cards.md) | New cards (301 on): defining one, getting it, its art and battle model, what is not done yet |
 | [English Text](English-Text.md) | English font, card/deck text, city scripts and the text catalog built from the US dump |
 | [Community Fixes](Community-Fixes.md) | romhacking.net `.xdelta` fixes applied to SLPS-03101 |
 | [Textures](Textures.md) | Asset ripper, texture replacement packs, US images in the JP game, resizing sprites |

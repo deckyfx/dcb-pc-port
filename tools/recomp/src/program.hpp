@@ -36,6 +36,9 @@ struct Program {
     std::map<uint32_t, std::string> overrides;  ///< main-EXE entry -> native replacement symbol
     /// (overlay name, entry) -> native replacement symbol ("overlay" in overrides.json).
     std::map<std::pair<std::string, uint32_t>, std::string> overlay_overrides;
+    /// (overlay name, "" for the boot EXE; instruction) -> a C variable used as that instruction's
+    /// immediate instead of the encoded one (config/<id>/immediates.json).
+    std::map<std::pair<std::string, uint32_t>, std::string> immediates;
 
     const Segment& main() const { return segments.front(); }
     /// Overlay window shared by all overlays: [lo, hi).

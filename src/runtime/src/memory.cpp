@@ -11,7 +11,7 @@ constexpr uint32_t kMmioBase = 0x1F801000u;
 constexpr uint32_t kMmioEnd = 0x1F803000u;
 constexpr uint32_t kCacheControl = 0xFFFE0130u;
 
-enum class Region { Scratch, Mmio, CacheControl, Unmapped };
+enum class Region { Scratch, Mmio, Ext, CacheControl, Unmapped };
 
 Region classify(uint32_t addr, uint32_t& phys) {
     if (addr == kCacheControl) return Region::CacheControl;
@@ -19,6 +19,7 @@ Region classify(uint32_t addr, uint32_t& phys) {
     // The scratchpad is only visible through KUSEG and KSEG0, not uncached KSEG1.
     if (phys - PSX_SCRATCH_BASE < PSX_SCRATCH_SIZE && addr < 0xA0000000u) return Region::Scratch;
     if (phys >= kMmioBase && phys < kMmioEnd) return Region::Mmio;
+    if (phys - PSX_EXT_BASE < PSX_EXT_SIZE) return Region::Ext;
     return Region::Unmapped;
 }
 
@@ -33,6 +34,12 @@ uint32_t read(PsxContext* ctx, uint32_t addr, unsigned width) {
         case Region::Mmio:
             if (auto* mmio = psx::Machine::from(ctx).mmio()) return mmio->read(phys, width);
             break;
+        case Region::Ext: {
+            uint32_t v = 0;
+            const uint32_t off = phys - PSX_EXT_BASE;
+            if (off + width <= PSX_EXT_SIZE) std::memcpy(&v, psx::Machine::from(ctx).ext() + off, width);
+            return v;
+        }
         case Region::CacheControl:
             return 0;
         case Region::Unmapped:
@@ -51,6 +58,11 @@ void write(PsxContext* ctx, uint32_t addr, uint32_t value, unsigned width) {
         case Region::Mmio:
             if (auto* mmio = psx::Machine::from(ctx).mmio()) return mmio->write(phys, value, width);
             break;
+        case Region::Ext: {
+            const uint32_t off = phys - PSX_EXT_BASE;
+            if (off + width <= PSX_EXT_SIZE) std::memcpy(psx::Machine::from(ctx).ext() + off, &value, width);
+            return;
+        }
         case Region::CacheControl:
             return;
         case Region::Unmapped:

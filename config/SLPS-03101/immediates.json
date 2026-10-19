@@ -1,0 +1,12 @@
+{
+  "_comment": "Instructions whose immediate is a runtime variable the port sets (tools/recomp: the encoded value is checked, then the C code reads the variable). dcb_card_limit: 301 + the new cards (src/game/cards/cards.cpp); loops that only flag or count each card's own byte run over the new ones too.",
+  "immediates": [
+    { "addr": "0x80048498", "value": 301, "symbol": "dcb_card_limit", "why": "8004844C: clears flag 0x80 of each card's collection byte" },
+    { "addr": "0x800484F8", "value": 301, "symbol": "dcb_card_limit", "why": "collection_clear_new: clears each card's 'new' flag (0x20)" },
+    { "addr": "0x8002FED0", "value": 301, "symbol": "dcb_card_limit", "why": "game_data_init: clears each card's collection byte (a new game)" },
+    { "addr": "0x801EA794", "overlay": "SUBSEG", "value": 301, "symbol": "dcb_card_limit", "why": "Card Menu / Deck Edit sort: the number of table entries sorted (the comparators read records and per-card bytes only)" },
+    { "addr": "0x801F042C", "overlay": "SUBSEG", "value": 301, "symbol": "dcb_card_limit", "why": "Deck Edit init: the available copies per card (801F7BF0, allocated 304 bytes)" },
+    { "addr": "0x801EDD38", "overlay": "SUBSEG", "value": 301, "symbol": "dcb_card_limit", "why": "Card Menu 'complete' mark: every card seen" },
+    { "addr": "0x801EDDCC", "overlay": "SUBSEG", "value": 1608, "symbol": "dcb_card_copies_limit", "why": "Card Menu 'complete' mark: the copies total" }
+  ]
+}

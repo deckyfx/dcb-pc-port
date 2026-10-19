@@ -6,8 +6,9 @@
 paused while it is open; `F4` or `Esc` closes it, `Tab` switches between its pages:
 
 - **General:** things outside a card battle.
-  - Presets: cheats built into the port for this game (all cards ×4, all 127 Digi parts). They
-    cannot be edited; their on/off state is saved in the cheat file as `!preset <name> on|off`.
+  - Presets: cheats built into the port for this game (all cards ×4, all 127 Digi parts, and the
+    port's new cards ×4: [Cards](Cards.md)). They cannot be edited; their on/off state is saved in
+    the cheat file as `!preset <name> on|off`.
   - "Outside battle" toggles (saved as `!toggle` lines, as before when they were on the Battle
     page): every Fusion Shop fusion mutates, mutations give a Digi-Jewel, and all Digimentals.
     Izzy's Mutation Detector does not block mutations: the keeper only warns, and "yes" still

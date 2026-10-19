@@ -68,7 +68,7 @@ ExeInfo Machine::load_exe(const std::vector<uint8_t>& data) {
 }
 
 void Machine::save_state(StateWriter& w) const {
-    w.begin(state_tag("CPU "), 1);
+    w.begin(state_tag("CPU "), 2);
     w.pod(ctx_.r);
     w.u32(ctx_.hi);
     w.u32(ctx_.lo);
@@ -80,11 +80,12 @@ void Machine::save_state(StateWriter& w) const {
     w.u64(ctx_.cycles);
     w.bytes(ram_->data(), PSX_RAM_SIZE);
     w.bytes(scratch_.data(), PSX_SCRATCH_SIZE);
+    w.bytes(ext_.data(), PSX_EXT_SIZE);
     w.end();
 }
 
 void Machine::load_state(StateReader& r) {
-    r.begin(state_tag("CPU "), 1);
+    const uint32_t version = r.begin(state_tag("CPU "), 2);
     r.pod(ctx_.r);
     ctx_.hi = r.u32();
     ctx_.lo = r.u32();
@@ -96,6 +97,7 @@ void Machine::load_state(StateReader& r) {
     ctx_.cycles = r.u64();
     r.bytes(ram_->data(), PSX_RAM_SIZE);
     r.bytes(scratch_.data(), PSX_SCRATCH_SIZE);
+    if (version >= 2) r.bytes(ext_.data(), PSX_EXT_SIZE);  // version 1: port RAM kept as it is
     r.end();
 }
 
